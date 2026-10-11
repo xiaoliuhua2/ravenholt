@@ -9,11 +9,17 @@ import websockets
 from database import get_async_session
 from model.sandbox.containers import SandboxContainer
 from schema.sandbox.containers import SandboxContainerStatus
-from service.sandbox.control_proxy import resolve_sandbox_control_proxy_target, sandbox_control_proxy_token_headers
 
 
 _DEFAULT_SHELL_ROWS = 24
 _DEFAULT_SHELL_COLS = 80
+
+# 交互式 shell 原先由容器内 Go 控制面的 WebSocket /shell 提供；Strix 官方沙箱镜像没有该
+# 控制面，无法建立 PTY 会话。这里显式失败，避免伪装成可用。
+_SHELL_UNAVAILABLE_MESSAGE = (
+    "sandbox container shell is unavailable: the Strix sandbox image does not provide the "
+    "in-container control plane (/shell) that the interactive shell relied on"
+)
 
 
 @dataclass
@@ -44,20 +50,7 @@ async def open_container_shell(
     rows: int = _DEFAULT_SHELL_ROWS,
     cols: int = _DEFAULT_SHELL_COLS,
 ) -> ContainerShellSession:
-    target = await resolve_sandbox_control_proxy_target(id, require_running=True)
-    if target is None:
-        raise ValueError("sandbox container not found")
-    url = f"{target.ws_base_url}/shell?token={target.token}"
-    websocket = await websockets.connect(
-        url,
-        additional_headers=sandbox_control_proxy_token_headers(target),
-        proxy=None,
-        open_timeout=10,
-        close_timeout=5,
-        max_size=2**20,
-    )
-    await websocket.send(_resize_message(rows, cols))
-    return ContainerShellSession(websocket=websocket)
+    raise RuntimeError(_SHELL_UNAVAILABLE_MESSAGE)
 
 
 async def resize_container_shell(session: ContainerShellSession, rows: int, cols: int) -> None:

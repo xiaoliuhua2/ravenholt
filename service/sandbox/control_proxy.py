@@ -1,7 +1,5 @@
-import asyncio
 from dataclasses import dataclass
 
-import httpx
 from sqlmodel import select
 
 from database import get_async_session
@@ -13,11 +11,6 @@ from service.sandbox.egress import (
     SandboxEgressSelection,
     sandbox_egress_container_environment,
 )
-
-
-_http_client: httpx.AsyncClient | None = None
-_EGRESS_APPLY_ATTEMPTS = 3
-_EGRESS_APPLY_RETRY_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -63,18 +56,9 @@ def sandbox_control_proxy_token_headers(target: SandboxControlProxyTarget) -> di
     return {"X-Sandbox-Token": target.token}
 
 
-def _get_http_client() -> httpx.AsyncClient:
-    global _http_client
-    if _http_client is None:
-        _http_client = httpx.AsyncClient(timeout=httpx.Timeout(10.0), trust_env=False)
-    return _http_client
-
-
 async def close_control_proxy_http_client() -> None:
-    global _http_client
-    if _http_client is not None:
-        await _http_client.aclose()
-        _http_client = None
+    # 旧的 Go 控制面 HTTP 客户端已移除，保留空实现以兼容既有调用方。
+    return None
 
 
 async def resolve_container_egress_environment(container_id: int) -> dict[str, str]:
@@ -122,20 +106,10 @@ async def apply_managed_proxy_egress_to_running_containers(egress_proxy_id: int)
 
 
 async def apply_egress_environment(target: SandboxControlProxyTarget, environment: dict[str, str]) -> None:
-    payload = {"environment": environment}
-    last_error: Exception | None = None
-    for attempt in range(_EGRESS_APPLY_ATTEMPTS):
-        try:
-            response = await _get_http_client().post(
-                f"{target.base_url}/egress",
-                json=payload,
-                headers=sandbox_control_proxy_token_headers(target),
-            )
-            response.raise_for_status()
-            return
-        except (httpx.HTTPError, OSError) as exc:
-            last_error = exc
-            if attempt < _EGRESS_APPLY_ATTEMPTS - 1:
-                await asyncio.sleep(_EGRESS_APPLY_RETRY_SECONDS)
-    if last_error is not None:
-        raise last_error
+    # XuanMu 依赖容器内常驻的 Go 控制面（POST /egress）动态刷新出网环境；Strix 官方沙箱镜像
+    # 没有该控制面，运行中的容器无法再动态应用 egress 配置。egress 环境仅在容器创建时通过
+    # docker create 注入，修改需要重建容器。这里显式失败，避免伪装成已生效。
+    raise RuntimeError(
+        "sandbox egress cannot be applied at runtime: the Strix sandbox image has no in-container "
+        "control plane; egress environment is only set when the container is created"
+    )

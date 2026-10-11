@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 
 from model.egress_proxy.proxies import EgressProxy
@@ -7,7 +8,10 @@ from service.egress_proxy.proxies import egress_proxy_upstream
 
 
 NO_PROXY_VALUE = "localhost,127.0.0.1,::1"
-LOCAL_EGRESS_PROXY_URL = "http://127.0.0.1:8118"
+# XuanMu 的运行时出网代理（容器内 127.0.0.1:8118）由镜像内置的 Go 控制面提供；Strix 官方
+# 沙箱镜像没有该控制面。默认不再注入指向 8118 的代理环境，否则会把沙箱全部出网请求指向
+# 一个不存在的代理、直接弄坏出网。如需容器内运行时代理，显式设置该环境变量。
+RUNTIME_PROXY_URL_ENV = "SANDBOX_EGRESS_RUNTIME_PROXY_URL"
 EGRESS_UPSTREAM_TYPE_ENV = "SANDBOX_EGRESS_UPSTREAM_TYPE"
 EGRESS_UPSTREAM_ADDR_ENV = "SANDBOX_EGRESS_UPSTREAM_ADDR"
 
@@ -19,13 +23,16 @@ class SandboxEgressSelection:
 
 
 def sandbox_runtime_proxy_environment() -> dict[str, str]:
+    proxy_url = os.environ.get(RUNTIME_PROXY_URL_ENV, "").strip()
+    if not proxy_url:
+        return {}
     return {
-        "HTTP_PROXY": LOCAL_EGRESS_PROXY_URL,
-        "http_proxy": LOCAL_EGRESS_PROXY_URL,
-        "HTTPS_PROXY": LOCAL_EGRESS_PROXY_URL,
-        "https_proxy": LOCAL_EGRESS_PROXY_URL,
-        "ALL_PROXY": LOCAL_EGRESS_PROXY_URL,
-        "all_proxy": LOCAL_EGRESS_PROXY_URL,
+        "HTTP_PROXY": proxy_url,
+        "http_proxy": proxy_url,
+        "HTTPS_PROXY": proxy_url,
+        "https_proxy": proxy_url,
+        "ALL_PROXY": proxy_url,
+        "all_proxy": proxy_url,
         "NO_PROXY": NO_PROXY_VALUE,
         "no_proxy": NO_PROXY_VALUE,
     }
