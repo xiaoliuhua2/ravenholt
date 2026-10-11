@@ -28,6 +28,13 @@ _COMMAND_TERMINATE_TIMEOUT_SECONDS = 5
 # 沙箱内命令执行的工作目录。改用 Strix 官方沙箱镜像后其 WORKDIR 为 /workspace
 # （用户 pentester）；XuanMu 原镜像为 /root。可用环境变量覆盖，便于两种镜像共存。
 _COMMAND_WORKDIR = os.environ.get("SANDBOX_COMMAND_WORKDIR", "/workspace")
+# 沙箱内命令的 PATH：Strix 镜像里 katana/httpx 在 ~/go/bin、semgrep 在 ~/.local/bin，
+# 非登录 shell 的默认 PATH 找不到它们，必须显式注入。
+_SANDBOX_PATH = os.environ.get(
+    "SANDBOX_COMMAND_PATH",
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    ":/home/pentester/go/bin:/home/pentester/.local/bin",
+)
 
 
 class _SandboxCommandCancelled(RuntimeError):
@@ -178,7 +185,7 @@ def _execute_container_command_sync(
         exec_response = client.api.exec_create(
             container=container.id,
             cmd=["/bin/sh", "-lc", _wrap_cancellable_command(command, marker_path)],
-            environment=environment or None,
+            environment={**(environment or {}), "PATH": _SANDBOX_PATH},
             workdir=_COMMAND_WORKDIR,
             stdout=True,
             stderr=True,
