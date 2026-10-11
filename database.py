@@ -15,6 +15,8 @@ from model.agent.event_log import AgentEventLog
 from model.agent.context_compactions import AgentContextCompaction
 from model.agent.sessions import AgentSessionMeta
 from model.blackboard.nodes import BlackboardNode
+from model.evidence.evidence import Evidence
+from model.evidence.verifier_runs import VerifierRun
 from model.sandbox.containers import SandboxContainer
 from model.sandbox.images import SandboxImage
 from model.system_user.users import SystemUser
@@ -37,6 +39,7 @@ _registered_models = [
     WorkProjectAsset, WorkProjectFinding,
     WorkProjectGraphEdge, WorkProjectAttackPath, WorkProjectAttackPathStep,
     BlackboardNode,
+    Evidence, VerifierRun,
     AgentSessionMeta, AgentMessageMeta, AgentContextCompaction,
     AgentSubordinateTask, AgentNotification, SandboxAsyncJob, AgentEventLog,
 ]
