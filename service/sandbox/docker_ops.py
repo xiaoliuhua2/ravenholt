@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import os
+import shlex
 from dataclasses import dataclass
 
 import docker
@@ -10,11 +14,21 @@ from service.host.docker import docker_client_for_host
 
 logger = get_logger(__name__)
 
+# 容器保活命令：XuanMu 原镜像靠 supervisord 常驻；Strix 官方沙箱镜像的
+# docker-entrypoint.sh 执行完即退出（镜像没有常驻 CMD），必须显式给一个
+# 常驻命令容器才会保持 running。可用 SANDBOX_CONTAINER_COMMAND 覆盖，设为空串则不注入。
+_CONTAINER_COMMAND = os.environ.get("SANDBOX_CONTAINER_COMMAND", "sleep infinity")
+
 
 @dataclass(frozen=True)
 class DockerContainerState:
     exists: bool
     status: str = ""
+
+
+def _resolve_container_command() -> list[str] | None:
+    value = _CONTAINER_COMMAND.strip()
+    return shlex.split(value) if value else None
 
 
 def _to_docker_ports(port_mappings: list[SandboxContainerPortMapping]) -> dict[str, tuple[str, int]] | None:
@@ -32,6 +46,7 @@ def create_container_sync(
     container_name_prefix: str,
     port_mappings: list[SandboxContainerPortMapping],
     environment: dict[str, str] | None = None,
+    command: list[str] | None = None,
 ) -> tuple[str, str]:
     client = docker_client_for_host(host)
     try:
@@ -43,6 +58,9 @@ def create_container_sync(
         }
         if environment:
             create_kwargs["environment"] = environment
+        resolved_command = command if command is not None else _resolve_container_command()
+        if resolved_command:
+            create_kwargs["command"] = resolved_command
 
         container = client.containers.create(
             **create_kwargs,
