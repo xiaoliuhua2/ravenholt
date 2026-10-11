@@ -1,4 +1,5 @@
 import asyncio
+import os
 import shlex
 import threading
 from uuid import uuid4
@@ -24,7 +25,9 @@ logger = get_logger(__name__)
 
 _COMMAND_CANCEL_JOIN_TIMEOUT_SECONDS = 3
 _COMMAND_TERMINATE_TIMEOUT_SECONDS = 5
-_COMMAND_WORKDIR = "/root"
+# 沙箱内命令执行的工作目录。改用 Strix 官方沙箱镜像后其 WORKDIR 为 /workspace
+# （用户 pentester）；XuanMu 原镜像为 /root。可用环境变量覆盖，便于两种镜像共存。
+_COMMAND_WORKDIR = os.environ.get("SANDBOX_COMMAND_WORKDIR", "/workspace")
 
 
 class _SandboxCommandCancelled(RuntimeError):
