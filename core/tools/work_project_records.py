@@ -23,6 +23,7 @@ from service.work_project.findings import (
     query_work_project_findings,
     update_work_project_finding,
 )
+from service.evidence.gate import assert_finding_verifiable
 from service.work_project.graph import (
     create_work_project_attack_path,
     create_work_project_attack_path_step,
@@ -167,15 +168,17 @@ async def create_or_update_work_project_finding(
 
     A finding describes a weakness or proven issue. Set asset_id to the affected asset.
     When a finding substantiates a relationship or attack step, set edge_id to that graph edge.
-    status is one of suspected, validated, false_positive; the finding's description and impact
-    carry the proof, so mark it validated only once it is actually confirmed.
+    status is one of suspected, validated, false_positive; suspected is the only status that may
+    omit evidence. To move a finding to a terminal status you MUST set evidence_id to a stored
+    evidence pack whose independent verifier replay returned reproduced; otherwise the request is
+    rejected and the finding is saved as suspected. Agent narratives are never evidence.
 
     Args:
         finding_id: int | None finding id to update. Use null to create a new finding.
-        finding: WorkProjectFindingRequest with asset_id/edge_id, title, severity, status, description, and impact.
+        finding: WorkProjectFindingRequest with asset_id/edge_id/evidence_id, title, severity, status, description, and impact.
 
     Returns:
-        JSON status with the compact saved finding record.
+        JSON status with the compact saved finding record, plus a note when a terminal status was rejected.
     """
     project_id = _project_id(ctx)
     if project_id is None:
@@ -191,7 +194,16 @@ async def create_or_update_work_project_finding(
         saved, error = await update_work_project_finding(project_id, finding_id, finding)
     if error:
         return work_project_error(error)
-    return work_project_success({"finding": _compact_finding(_dump(saved))})
+    payload: dict = {"finding": _compact_finding(_dump(saved))}
+    # Evidence gate: the service downgrades any terminal status that lacks
+    # reproduced evidence back to 'suspected'. Detect that downgrade here so the
+    # model learns why its status choice was rejected.
+    if saved is not None and saved.status != finding.status:
+        _ok, reason = await assert_finding_verifiable(finding.evidence_id)
+        payload["note"] = (
+            f"status '{finding.status.value}' rejected and downgraded to '{saved.status.value}': {reason}"
+        )
+    return work_project_success(payload)
 
 
 @function_tool
@@ -404,7 +416,7 @@ def _compact_asset(item: dict) -> dict:
 
 
 def _compact_finding(item: dict) -> dict:
-    return _pick(item, ("id", "asset_id", "edge_id", "title", "severity", "status", "description", "impact", "validated_at"))
+    return _pick(item, ("id", "asset_id", "edge_id", "evidence_id", "title", "severity", "status", "description", "impact", "validated_at"))
 
 
 def _compact_edge(item: dict) -> dict:

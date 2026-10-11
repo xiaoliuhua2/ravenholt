@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from database import get_async_session
+from model.evidence.evidence import Evidence
 from model.work_project.assets import WorkProjectAsset
 from model.work_project.findings import WorkProjectFinding
 from model.work_project.graph import WorkProjectGraphEdge
@@ -14,6 +15,7 @@ from schema.work_project.findings import (
     WorkProjectFindingStatus,
 )
 from service.common.pagination import Page, paginate_statement
+from service.evidence.gate import assert_finding_verifiable
 
 
 async def query_work_project_findings(
@@ -59,20 +61,25 @@ async def create_work_project_finding(
         error = await _validate_refs(session, project_id, request)
         if error:
             return None, error
+        # Evidence gate: a non-draft status is only honoured when the attached
+        # evidence was independently reproduced; otherwise the status falls back
+        # to draft ('suspected'). See service/evidence/gate.py.
+        status = await _gated_status(request.status, request.evidence_id)
         finding = WorkProjectFinding(
             project_id=project_id,
             asset_id=request.asset_id,
             edge_id=request.edge_id,
+            evidence_id=request.evidence_id,
             title=request.title,
             severity=request.severity,
-            status=request.status,
+            status=status,
             description=request.description,
             impact=request.impact,
             created_by_agent_code=created_by_agent_code.strip(),
             created_from_session_id=created_from_session_id.strip(),
             created_at=now,
             updated_at=now,
-            validated_at=now if request.status == WorkProjectFindingStatus.VALIDATED else None,
+            validated_at=now if status == WorkProjectFindingStatus.VALIDATED else None,
         )
         session.add(finding)
         try:
@@ -97,19 +104,22 @@ async def update_work_project_finding(
         error = await _validate_refs(session, project_id, request)
         if error:
             return None, error
+        # Evidence gate (see create_work_project_finding / service/evidence/gate.py).
+        status = await _gated_status(request.status, request.evidence_id)
         previous_status = finding.status
         now = datetime.now()
         finding.asset_id = request.asset_id
         finding.edge_id = request.edge_id
+        finding.evidence_id = request.evidence_id
         finding.title = request.title
         finding.severity = request.severity
-        finding.status = request.status
+        finding.status = status
         finding.description = request.description
         finding.impact = request.impact
         finding.updated_at = now
-        if request.status == WorkProjectFindingStatus.VALIDATED and previous_status != WorkProjectFindingStatus.VALIDATED:
+        if status == WorkProjectFindingStatus.VALIDATED and previous_status != WorkProjectFindingStatus.VALIDATED:
             finding.validated_at = now
-        elif request.status != WorkProjectFindingStatus.VALIDATED:
+        elif status != WorkProjectFindingStatus.VALIDATED:
             finding.validated_at = None
         session.add(finding)
         try:
@@ -141,4 +151,26 @@ async def _validate_refs(session, project_id: int, request: WorkProjectFindingRe
         edge = await session.get(WorkProjectGraphEdge, request.edge_id)
         if edge is None or edge.project_id != project_id:
             return "graph edge not found"
+    if request.evidence_id is not None:
+        evidence = await session.get(Evidence, request.evidence_id)
+        if evidence is None:
+            return "evidence not found"
     return ""
+
+
+async def _gated_status(
+    status: WorkProjectFindingStatus,
+    evidence_id: int | None,
+) -> WorkProjectFindingStatus:
+    """Apply the evidence gate to a requested finding status.
+
+    Only ``suspected`` (the draft state) may be written without evidence. Any
+    other (terminal) status is downgraded to ``suspected`` unless the attached
+    evidence was independently reproduced. We downgrade rather than raise so the
+    finding itself is still recorded; the caller compares requested vs saved
+    status to surface the reason to the agent.
+    """
+    if status == WorkProjectFindingStatus.SUSPECTED:
+        return status
+    ok, _reason = await assert_finding_verifiable(evidence_id)
+    return status if ok else WorkProjectFindingStatus.SUSPECTED

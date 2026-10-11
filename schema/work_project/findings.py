@@ -27,6 +27,7 @@ class WorkProjectFindingSchema(BaseModel):
     project_id: int
     asset_id: int | None = None
     edge_id: int | None = None
+    evidence_id: int | None = None
     title: str
     severity: WorkProjectFindingSeverity
     status: WorkProjectFindingStatus
@@ -44,6 +45,7 @@ class WorkProjectFindingRequest(BaseModel):
 
     asset_id: int | None = Field(default=None, gt=0, description="Asset this finding is about.")
     edge_id: int | None = Field(default=None, gt=0, description="Relationship edge this finding substantiates, when it backs a relation or attack step.")
+    evidence_id: int | None = Field(default=None, gt=0, description="Reproducible evidence for this finding; required before status may leave 'suspected'.")
     title: str = Field(min_length=1, max_length=255)
     severity: WorkProjectFindingSeverity = WorkProjectFindingSeverity.INFO
     status: WorkProjectFindingStatus = WorkProjectFindingStatus.SUSPECTED

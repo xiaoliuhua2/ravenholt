@@ -20,6 +20,8 @@ class WorkProjectFinding(SQLModel, table=True):
     project_id: int = Field(foreign_key="work_projects.id", index=True, ondelete="CASCADE")
     asset_id: int | None = Field(default=None, foreign_key="work_project_assets.id", index=True, ondelete="SET NULL")
     edge_id: int | None = Field(default=None, foreign_key="work_project_graph_edges.id", index=True, ondelete="SET NULL")
+    # evidence gate: only findings backed by reproduced evidence may leave 'suspected'
+    evidence_id: int | None = Field(default=None, foreign_key="evidence.id", index=True, ondelete="SET NULL")
     title: str = Field(default="", index=True)
     severity: WorkProjectFindingSeverity = Field(default=WorkProjectFindingSeverity.INFO, sa_column=Column(String(32), nullable=False))
     status: WorkProjectFindingStatus = Field(default=WorkProjectFindingStatus.SUSPECTED, sa_column=Column(String(32), nullable=False))
