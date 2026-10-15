@@ -3,7 +3,7 @@ from enum import StrEnum
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from schema.agent.events import AgentContentEventSchema, AgentEventSchema, AgentInputPart, validate_agent_input_content
 
@@ -67,6 +67,36 @@ class AgentTurnResponse(BaseModel):
     events: list[AgentEventSchema]
 
 
+# Strix 运行时驱动的回合：由 root 在运行时动态派生子代理，故只给一个任务描述。
+# 富文本输入（含附件图片）走 content，与 task 至少提供一个。
+class StrixTurnRequest(BaseModel):
+    # 纯文本任务；与 content 至少提供一个（见下方 model_validator）。
+    # 用 None 而非 "" 作为默认：带 default 的字段会被前端生成器当成必填。
+    task: str | None = Field(default=None, max_length=20000)
+    content: list[AgentInputPart] | None = Field(default=None, min_length=1, max_length=8)
+    agent_code: str | None = Field(default=None, min_length=1, max_length=32)
+
+    @field_validator("task", mode="before")
+    @classmethod
+    def normalize_task(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def validate_content(cls, value: list[AgentInputPart] | None) -> list[AgentInputPart] | None:
+        if value is not None:
+            validate_agent_input_content(value)
+        return value
+
+    @model_validator(mode="after")
+    def require_task_or_content(self) -> "StrixTurnRequest":
+        if not self.task and not self.content:
+            raise ValueError("task 与 content 至少提供一个")
+        return self
+
+
 class UpdateAgentSessionTitleRequest(BaseModel):
     title: str = Field(min_length=1, max_length=80)
 
@@ -76,10 +106,6 @@ class UpdateAgentSessionTitleRequest(BaseModel):
         if isinstance(value, str):
             return value.strip()
         return value
-
-
-class UpdateAgentSessionSandboxContainerRequest(BaseModel):
-    sandbox_container_id: int | None = Field(gt=0)
 
 
 # one available agent; surfaced to the @-mention picker in the chat input

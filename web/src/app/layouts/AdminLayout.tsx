@@ -1,12 +1,18 @@
 import { Avatar, Button } from "@douyinfe/semi-ui";
-import { FolderKanban, LogOut, MessageSquareCode, Settings, Users } from "lucide-react";
+import { FolderKanban, FolderPlus, LogOut, MessageSquareCode, Network, ScrollText, Settings, ShieldCheck, Users } from "lucide-react";
 import { ReactNode, Suspense, useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { SessionList } from "../../features/playground/SessionList";
 import { useAgentSessionContext } from "../../features/playground/AgentSessionProvider";
+import { usePendingConfirmationCount } from "../../features/policy-confirmations/usePendingConfirmationCount";
+import { WorkProjectFormModal } from "../../features/work-projects/WorkProjectFormModal";
+import { createWorkProject } from "../../shared/api/workProjects";
+import type { CreateWorkProjectRequest } from "../../shared/api/types";
 import { useAuth } from "../../shared/auth/AuthProvider";
+import { useResourceSubmit } from "../../shared/hooks/useResourceSubmit";
 import { cx } from "../../shared/lib/className";
-import xuanmuLogo from "../../assets/xuanmu-logo.svg";
+import { ThemeSwitcher } from "../../shared/theme/ThemeSwitcher";
+import ravenholtLogo from "../../assets/ravenholt-logo.svg";
 import { preloadAdminRoute, preloadAdminRoutes } from "../routePreload";
 
 type AdminLayoutContext = {
@@ -22,11 +28,18 @@ export function useRefreshWorkProjects() {
   return useOutletContext<AdminLayoutContext>().refreshWorkProjects;
 }
 
+const upstreamUrl = "https://github.com/usestrix/strix";
+const versionLabel = "v0.2.1";
+const versionTitle = `Ravenholt ${versionLabel} · 基于 strix 构建`;
+
 const navItems = [
-  { path: "/playground", label: "Playground", eyebrow: "Agent Workbench", icon: MessageSquareCode },
-  { path: "/work-projects", label: "Work Projects", eyebrow: "Project Operations", icon: FolderKanban, adminOnly: true },
-  { path: "/system-users", label: "System Users", eyebrow: "Access Control", icon: Users, adminOnly: true },
-  { path: "/system-config", label: "System Config", eyebrow: "Runtime Configuration", icon: Settings, adminOnly: true },
+  { path: "/playground", label: "操作台", eyebrow: "智能体工作台", icon: MessageSquareCode },
+  { path: "/work-projects", label: "工作项目", eyebrow: "项目运营", icon: FolderKanban, adminOnly: true },
+  { path: "/egress-proxies", label: "出口代理", eyebrow: "网络出口", icon: Network, adminOnly: true },
+  { path: "/policy-confirmations", label: "策略审批", eyebrow: "红线管控", icon: ShieldCheck, adminOnly: true },
+  { path: "/audit-events", label: "审计日志", eyebrow: "安全审计", icon: ScrollText, adminOnly: true },
+  { path: "/system-users", label: "系统用户", eyebrow: "访问控制", icon: Users, adminOnly: true },
+  { path: "/system-config", label: "系统配置", eyebrow: "运行参数", icon: Settings, adminOnly: true },
 ];
 
 export function AdminLayout() {
@@ -35,6 +48,7 @@ export function AdminLayout() {
   const location = useLocation();
   const [headerActions, setHeaderActionsState] = useState<ReactNode>(null);
   const [projectListVersion, setProjectListVersion] = useState(0);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
   const {
     sessions,
     sessionsLoading,
@@ -55,9 +69,24 @@ export function AdminLayout() {
     return () => window.clearTimeout(id);
   }, []);
 
+  const isAdmin = user?.role === "admin";
+  // 待确认动作许可数量：仅管理员轮询，用于导航角标提醒。
+  const pendingConfirmations = usePendingConfirmationCount(Boolean(isAdmin));
+
   const refreshWorkProjects = useCallback(() => {
     setProjectListVersion((version) => version + 1);
   }, []);
+
+  const { saving: creatingProject, submit: submitProject } = useResourceSubmit({
+    onSuccess: () => {
+      setProjectModalOpen(false);
+      refreshWorkProjects();
+    },
+  });
+
+  const handleCreateProject = (payload: CreateWorkProjectRequest) => (
+    submitProject(() => createWorkProject(payload))
+  );
 
   const handleSelectAgentSession = useCallback((sessionId: string) => {
     selectSession(sessionId);
@@ -73,86 +102,101 @@ export function AdminLayout() {
     navigate("/login", { replace: true });
   };
 
-  const isAdmin = user?.role === "admin";
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
   const activeItem = visibleNavItems.find((item) => location.pathname.startsWith(item.path));
-  const contentMode = location.pathname.startsWith("/playground") ? "fixed" : "scroll";
+  const isPlayground = location.pathname.startsWith("/playground");
+  const contentMode = isPlayground ? "fixed" : "scroll";
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <div className="brand-lockup">
-          <img className="brand-logo" src={xuanmuLogo} alt="" />
-          <div>
-            <div className="brand-name">XuanMu</div>
-            <div className="brand-kicker">红队智能体协作平台</div>
-          </div>
+    <div className={cx("admin-shell", isPlayground && "admin-shell-context")}>
+      <aside className="admin-rail">
+        <img className="rail-logo" src={ravenholtLogo} alt="Ravenholt" title={versionTitle} />
+
+        <nav className="rail-nav" aria-label="主导航">
+          {visibleNavItems.map((item) => {
+            const Icon = item.icon;
+            const badge = item.path === "/policy-confirmations" ? pendingConfirmations : 0;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className="rail-item"
+                title={item.label}
+                aria-label={item.label}
+                onFocus={() => preloadAdminRoute(item.path)}
+                onPointerDown={() => preloadAdminRoute(item.path)}
+                onPointerEnter={() => preloadAdminRoute(item.path)}
+              >
+                <Icon size={18} />
+                {badge > 0 ? (
+                  <span className="rail-item-badge">{badge > 99 ? "99+" : badge}</span>
+                ) : null}
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="rail-account">
+          <ThemeSwitcher rail />
+          <Avatar size="small" color="red">{user?.username?.[0]?.toUpperCase() || "U"}</Avatar>
+          <Button icon={<LogOut size={16} />} theme="borderless" type="tertiary" onClick={handleSignOut} aria-label="退出登录" />
         </div>
 
-        <div className="admin-sidebar-body">
-          <div className="admin-sidebar-top">
-            <NavLink
-              to="/playground"
-              className="admin-nav-link"
-              onFocus={() => preloadAdminRoute("/playground")}
-              onPointerDown={() => preloadAdminRoute("/playground")}
-              onPointerEnter={() => preloadAdminRoute("/playground")}
-            >
-              <MessageSquareCode size={18} />
-              <span>Playground</span>
-            </NavLink>
-            <div className="admin-sidebar-secondary">
-              <SessionList
-                sessions={sessions}
-                loading={sessionsLoading}
-                activeSessionId={activeSessionId}
-                projectListVersion={projectListVersion}
-                onSelect={handleSelectAgentSession}
-                onDelete={deleteSession}
-                onRefreshSessions={refreshSessions}
-                onDropRuntime={dropSessionRuntime}
-                onSyncSessionSummaries={syncSessionSummaries}
-              />
-            </div>
-          </div>
-
-          <nav className="admin-nav admin-nav-bottom" aria-label="Primary navigation">
-            {visibleNavItems.slice(1).map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className="admin-nav-link"
-                  onFocus={() => preloadAdminRoute(item.path)}
-                  onPointerDown={() => preloadAdminRoute(item.path)}
-                  onPointerEnter={() => preloadAdminRoute(item.path)}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </nav>
-        </div>
-        <div className="admin-sidebar-footer">
-          <span className="brand-version">XuanMu v0.2.1</span>
-          <span className="brand-fork">Based on <a href="https://github.com/yv1ing/Z3r0" target="_blank" rel="noopener noreferrer">Z3r0</a></span>
+        <div className="rail-meta" title={versionTitle}>
+          <span>{versionLabel}</span>
+          <a href={upstreamUrl} target="_blank" rel="noopener noreferrer">strix</a>
         </div>
       </aside>
 
+      {isPlayground ? (
+        <section className="admin-context" aria-label="会话">
+          <div className="admin-context-head">
+            <span>会话</span>
+            <em>{sessions.length}</em>
+          </div>
+          {isAdmin ? (
+            <div className="admin-context-actions">
+              <Button
+                block
+                icon={<FolderPlus size={15} />}
+                theme="solid"
+                type="primary"
+                onClick={() => setProjectModalOpen(true)}
+              >
+                新建项目
+              </Button>
+            </div>
+          ) : null}
+          <div className="admin-context-body">
+            <SessionList
+              sessions={sessions}
+              loading={sessionsLoading}
+              activeSessionId={activeSessionId}
+              projectListVersion={projectListVersion}
+              onSelect={handleSelectAgentSession}
+              onDelete={deleteSession}
+              onRefreshSessions={refreshSessions}
+              onDropRuntime={dropSessionRuntime}
+              onSyncSessionSummaries={syncSessionSummaries}
+            />
+          </div>
+          <WorkProjectFormModal
+            open={projectModalOpen}
+            saving={creatingProject}
+            onCancel={() => setProjectModalOpen(false)}
+            onSubmit={handleCreateProject}
+          />
+        </section>
+      ) : null}
+
       <div className="admin-main">
         <header className="admin-topbar">
-          <div>
-            <div className="page-eyebrow">{activeItem?.eyebrow || "Operations"}</div>
-            <h1>{activeItem?.label || "Console"}</h1>
+          <div className="topbar-title">
+            <div className="page-eyebrow">{activeItem?.eyebrow || "运维"}</div>
+            <h1>{activeItem?.label || "控制台"}</h1>
           </div>
           <div className="topbar-actions">
             {headerActions ? <div className="topbar-resource-actions">{headerActions}</div> : null}
-            <div className="topbar-session-actions">
-              <Avatar size="small" color="red">{user?.username?.[0]?.toUpperCase() || "U"}</Avatar>
-              <Button icon={<LogOut size={16} />} theme="borderless" type="tertiary" onClick={handleSignOut} aria-label="Sign out" />
-            </div>
           </div>
         </header>
         <main className="admin-content">

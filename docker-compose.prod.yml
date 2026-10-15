@@ -1,43 +1,43 @@
 services:
   app:
-    image: z3r0:latest
+    image: ravenholt:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: z3r0-app
+    container_name: ravenholt-app
     restart: always
     network_mode: host
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./.xuanmu:/app/.xuanmu
+      - ./.ravenholt:/app/.ravenholt
       - /var/run/docker.sock:/var/run/docker.sock
 
   postgres:
     image: postgres:16-alpine
-    container_name: z3r0-postgres
+    container_name: ravenholt-postgres
     restart: always
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: z3r0
+      POSTGRES_DB: ravenholt
     ports:
       - 5432:5432
     volumes:
       - ./.postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d z3r0"]
+      test: ["CMD-SHELL", "pg_isready -U root -d ravenholt"]
       interval: 5s
       timeout: 5s
       retries: 20
     
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: z3r0-pgadmin
+    container_name: ravenholt-pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: me@yvling.cn
+      PGADMIN_DEFAULT_EMAIL: xiaoliuhua2@users.noreply.github.com
       PGADMIN_DEFAULT_PASSWORD: 123456
       PGADMIN_LISTEN_PORT: 5433
     ports:

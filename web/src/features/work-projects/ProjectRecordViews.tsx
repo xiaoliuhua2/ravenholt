@@ -1,5 +1,5 @@
 import { Empty, TabPane, Tabs, Tag } from "@douyinfe/semi-ui";
-import { Boxes, Bug, FileText, GitBranch, List, Network, Route } from "lucide-react";
+import { Boxes, Bug, Download, FileText, GitBranch, List, Network, Route } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { showApiError } from "../../shared/api/feedback";
 import { WORK_PROJECT_ASSET_TYPE } from "../../shared/api/contract";
@@ -34,6 +34,7 @@ import {
 } from "../../shared/lib/labels";
 import { ProjectGraphCanvas } from "./ProjectGraphCanvas";
 import { BlackboardGraphCanvas } from "./BlackboardGraphCanvas";
+import { exportFindingReport, reportPreviewText, VulnReportModal } from "./VulnReportModal";
 import { filledDetailItems, type DetailItem } from "./workProjectDetails";
 import { formatWorkProjectAsset } from "./workProjectView";
 
@@ -58,19 +59,19 @@ export function WorkProjectRecordTabs({
       className={cx("project-record-tabs", className)}
       defaultActiveKey={initialTab}
     >
-      <TabPane tab={<TabLabel icon={<Boxes size={14} />} text="Assets" />} itemKey="assets">
+      <TabPane tab={<TabLabel icon={<Boxes size={14} />} text="资产" />} itemKey="assets">
         <AssetList assets={records.assets} />
       </TabPane>
-      <TabPane tab={<TabLabel icon={<Bug size={14} />} text="Findings" />} itemKey="findings">
-        <FindingList findings={records.findings} assets={records.assets} />
+      <TabPane tab={<TabLabel icon={<Bug size={14} />} text="发现" />} itemKey="findings">
+        <FindingList findings={records.findings} assets={records.assets} projectId={projectId} />
       </TabPane>
-      <TabPane tab={<TabLabel icon={<Route size={14} />} text="Attack Paths" />} itemKey="attack-paths">
+      <TabPane tab={<TabLabel icon={<Route size={14} />} text="攻击路径" />} itemKey="attack-paths">
         <AttackPathList assets={records.assets} graph={records.graph} />
       </TabPane>
-      <TabPane tab={<TabLabel icon={<Network size={14} />} text="Graph" />} itemKey="graph">
+      <TabPane tab={<TabLabel icon={<Network size={14} />} text="图" />} itemKey="graph">
         <GraphView assets={records.assets} graph={records.graph} />
       </TabPane>
-      <TabPane tab={<TabLabel icon={<GitBranch size={14} />} text="Blackboard" />} itemKey="blackboard">
+      <TabPane tab={<TabLabel icon={<GitBranch size={14} />} text="黑板" />} itemKey="blackboard">
         <BlackboardList projectId={projectId} />
       </TabPane>
     </Tabs>
@@ -78,7 +79,7 @@ export function WorkProjectRecordTabs({
 }
 
 export function AssetList({ assets }: { assets: WorkProjectAsset[] }) {
-  if (!assets.length) return <RecordEmpty title="No assets." />;
+  if (!assets.length) return <RecordEmpty title="暂无资产。" />;
   return (
     <div className="project-record-list">
       {assets.map((asset) => (
@@ -92,7 +93,7 @@ export function AssetList({ assets }: { assets: WorkProjectAsset[] }) {
           </header>
           <RecordDetails items={assetBaseMeta(asset)} />
           <RecordDetails className="project-record-details-extension" items={[
-            ["Banner", asset.extra?.banner],
+            ["横幅", asset.extra?.banner],
           ]} />
         </article>
       ))}
@@ -100,13 +101,49 @@ export function AssetList({ assets }: { assets: WorkProjectAsset[] }) {
   );
 }
 
-export function FindingList({ findings, assets }: { findings: WorkProjectFinding[]; assets: WorkProjectAsset[] }) {
+export function FindingList({
+  findings,
+  assets,
+  projectId,
+}: {
+  findings: WorkProjectFinding[];
+  assets: WorkProjectAsset[];
+  projectId?: number;
+}) {
   const assetLabels = useAssetLabels(assets);
-  if (!findings.length) return <RecordEmpty title="No findings." />;
+  // 点开发现卡片 → 展示按 src-hunt 规范版（7 段）排版的详细漏洞报告。
+  const [reportFinding, setReportFinding] = useState<WorkProjectFinding | null>(null);
+  const [exportingId, setExportingId] = useState<number | null>(null);
+  if (!findings.length) return <RecordEmpty title="暂无发现。" />;
+
+  const handleExport = async (finding: WorkProjectFinding) => {
+    setExportingId(finding.id);
+    try {
+      await exportFindingReport(projectId, finding);
+    } catch (error) {
+      showApiError(error);
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   return (
     <div className="project-record-list">
       {findings.map((finding) => (
-        <article key={finding.id} className="project-record-row">
+        <article
+          key={finding.id}
+          className="project-record-row project-record-row-clickable"
+          role="button"
+          tabIndex={0}
+          aria-label={`查看漏洞报告：${finding.title}`}
+          onClick={() => setReportFinding(finding)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setReportFinding(finding);
+            }
+          }}
+        >
           <header>
             <strong>{finding.title}</strong>
             <div>
@@ -114,14 +151,37 @@ export function FindingList({ findings, assets }: { findings: WorkProjectFinding
               <Tag color={WORK_PROJECT_FINDING_STATUS_COLOR[finding.status]}>{WORK_PROJECT_FINDING_STATUS_LABEL[finding.status]}</Tag>
             </div>
           </header>
-          <p>{finding.description || finding.impact || "No description"}</p>
+          <p className="project-record-row-preview">
+            {reportPreviewText(finding.description) || finding.impact || "暂无描述"}
+          </p>
           <RecordDetails items={[
-            ["Asset", finding.asset_id ? assetLabels.get(finding.asset_id) ?? `#${finding.asset_id}` : undefined],
-            ["Substantiates edge", finding.edge_id ? `#${finding.edge_id}` : undefined],
-            ["Updated", formatDateTime(finding.updated_at)],
+            ["资产", finding.asset_id ? assetLabels.get(finding.asset_id) ?? `#${finding.asset_id}` : undefined],
+            ["关联边", finding.edge_id ? `#${finding.edge_id}` : undefined],
+            ["更新时间", formatDateTime(finding.updated_at)],
           ]} />
+          <footer className="project-record-row-foot">
+            <button
+              type="button"
+              className="project-record-row-export"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleExport(finding);
+              }}
+              disabled={exportingId === finding.id}
+              aria-label={`导出漏洞报告（.md）：${finding.title}`}
+            >
+              <Download size={13} />
+              {exportingId === finding.id ? "导出中…" : "导出 .md"}
+            </button>
+          </footer>
         </article>
       ))}
+      <VulnReportModal
+        open={reportFinding !== null}
+        finding={reportFinding}
+        projectId={projectId}
+        onClose={() => setReportFinding(null)}
+      />
     </div>
   );
 }
@@ -129,7 +189,7 @@ export function FindingList({ findings, assets }: { findings: WorkProjectFinding
 export function AttackPathList({ assets, graph }: { assets: WorkProjectAsset[]; graph: WorkProjectGraphSnapshot }) {
   const assetLabels = useAssetLabels(assets);
   const edgesById = useMemo(() => new Map(graph.edges.map((edge) => [edge.id, edge])), [graph.edges]);
-  if (!graph.attack_paths.length) return <RecordEmpty title="No attack paths." />;
+  if (!graph.attack_paths.length) return <RecordEmpty title="暂无攻击路径。" />;
   const stepsByPath = groupSteps(graph.attack_path_steps);
   return (
     <div className="project-record-list">
@@ -158,7 +218,7 @@ export function AttackPathList({ assets, graph }: { assets: WorkProjectAsset[]; 
 }
 
 export function GraphView({ assets, graph }: { assets: WorkProjectAsset[]; graph: WorkProjectGraphSnapshot }) {
-  if (!assets.length) return <RecordEmpty title="No assets to graph." />;
+  if (!assets.length) return <RecordEmpty title="暂无可绘制的资产。" />;
   return <ProjectGraphCanvas assets={assets} edges={graph.edges} />;
 }
 
@@ -192,9 +252,9 @@ function BlackboardList({ projectId }: { projectId?: number }) {
     return () => { canceled = true; };
   }, [projectId]);
 
-  if (!projectId) return <RecordEmpty title="No project selected." />;
-  if (loading) return <div className="project-record-list"><div className="loading-hint">Loading blackboard…</div></div>;
-  if (!nodes.length) return <RecordEmpty title="No blackboard nodes yet." />;
+  if (!projectId) return <RecordEmpty title="未选择项目。" />;
+  if (loading) return <div className="project-record-list"><div className="loading-hint">加载黑板中…</div></div>;
+  if (!nodes.length) return <RecordEmpty title="暂无黑板节点。" />;
 
   return (
     <>
@@ -203,17 +263,17 @@ function BlackboardList({ projectId }: { projectId?: number }) {
           type="button"
           className={viewMode === "graph" ? "active" : ""}
           onClick={() => setViewMode("graph")}
-          aria-label="Graph view"
+          aria-label="图视图"
         >
-          <GitBranch size={14} /> Graph
+          <GitBranch size={14} /> 图
         </button>
         <button
           type="button"
           className={viewMode === "list" ? "active" : ""}
           onClick={() => setViewMode("list")}
-          aria-label="List view"
+          aria-label="列表视图"
         >
-          <List size={14} /> List
+          <List size={14} /> 列表
         </button>
       </div>
       {viewMode === "graph" ? (
@@ -230,10 +290,10 @@ function BlackboardList({ projectId }: { projectId?: number }) {
                 </div>
               </header>
               <RecordDetails items={[
-                ["Parent IDs", node.parent_ids !== "[]" ? node.parent_ids : undefined],
-                ["Creator", node.creator_agent_code || undefined],
-                ["Confidence", node.confidence < 1 ? `${Math.round(node.confidence * 100)}%` : undefined],
-                ["Updated", formatDateTime(node.updated_at)],
+                ["父节点 ID", node.parent_ids !== "[]" ? node.parent_ids : undefined],
+                ["创建者", node.creator_agent_code || undefined],
+                ["置信度", node.confidence < 1 ? `${Math.round(node.confidence * 100)}%` : undefined],
+                ["更新时间", formatDateTime(node.updated_at)],
               ]} />
             </article>
           ))}
@@ -248,7 +308,7 @@ function useAssetLabels(assets: WorkProjectAsset[]) {
 }
 
 function edgeLabel(edge: WorkProjectGraphEdge | undefined, assetLabels: Map<number, string>): string {
-  if (!edge) return "Unknown edge";
+  if (!edge) return "未知边";
   const source = assetLabels.get(edge.source_asset_id) ?? `#${edge.source_asset_id}`;
   const target = assetLabels.get(edge.target_asset_id) ?? `#${edge.target_asset_id}`;
   return `${source} → ${target}`;
@@ -268,11 +328,11 @@ function RecordDetails({ className, items }: { className?: string; items: Detail
 
 function assetBaseMeta(asset: WorkProjectAsset): DetailItem[] {
   if (asset.type === WORK_PROJECT_ASSET_TYPE.BINARY) {
-    return [["Path", asset.path]];
+    return [["路径", asset.path]];
   }
   return [
-    ["Host", asset.host],
-    ["Port", asset.port?.toString()],
+    ["主机", asset.host],
+    ["端口", asset.port?.toString()],
   ];
 }
 

@@ -19,5 +19,5 @@ export function showApiError(error: unknown) {
     return;
   }
 
-  Toast.error("Network request failed");
+  Toast.error("网络请求失败");
 }

@@ -20,6 +20,17 @@ class SandboxContainerEgressMode(StrEnum):
     TOR = "tor"
 
 
+class SandboxContainerSource(StrEnum):
+    """容器来源：管理员手工创建 vs 运行时按会话自动 provision。
+
+    运行时自建容器没有平台控制面（``control_proxy_host_port`` 恒为 0），
+    因此以该字段是否为 0 作为判定依据，而不是靠容器命名等易变特征。
+    """
+
+    MANUAL = "manual"
+    RUNTIME = "runtime"
+
+
 # sandbox container port mapping schema
 class SandboxContainerPortMapping(BaseModel):
     container_port: int = Field(ge=1, le=65535)
@@ -53,6 +64,7 @@ class SandboxContainerSchema(BaseModel):
     control_proxy_host_port: int = Field(title="Control Host Port")
     port_mappings: list[SandboxContainerPortMapping]
     status: SandboxContainerStatus
+    source: SandboxContainerSource = SandboxContainerSource.MANUAL
     owner_id: int
     owner_username: str
     created_at: datetime

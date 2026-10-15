@@ -11,7 +11,7 @@ from model.evidence.evidence import Evidence
 from service.evidence.diff import four_dim_diff
 
 
-def _dumps(value: Any) -> str:
+def dumps_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 
@@ -36,7 +36,7 @@ async def save_evidence(
     if isinstance(request, str):
         request_json = request
     else:
-        request_json = _dumps(request)
+        request_json = dumps_json(request)
 
     if diff is None:
         diff = four_dim_diff(baseline_status, baseline_body, probe_status, probe_body)
@@ -50,7 +50,7 @@ async def save_evidence(
         baseline_body=baseline_body or "",
         probe_status=probe_status,
         probe_body=probe_body or "",
-        diff_json=_dumps(diff),
+        diff_json=dumps_json(diff),
         created_at=datetime.now(),
     )
     async with get_async_session() as session:

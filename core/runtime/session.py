@@ -1,29 +1,29 @@
-"""Per-conversation Agent runtime: turn execution and pool lifecycle."""
+"""Per-conversation Agent runtime: turn execution and pool lifecycle.
+
+执行引擎只有 strix 单轨：回合由 :meth:`AgentSession.start_strix_turn` 直接驱动
+（root agent → ``create_agent`` 动态派生 agent 树 → 沙箱 SDK 能力）。原生 registry
+轨道的通知邮箱驱动链（``start_turn`` / ``_drive`` / 通知恢复 / 静态子代理图）已整体删除。
+"""
 
 import asyncio
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from agents import Runner
-
 from config import get_config
-from core.agent.registry import AgentRegistry, AgentToolSnapshot, SessionAgentGraph
-from core.conversation.context_budget import build_context_run_config
+from core.agent.registry import AgentRegistry
+from core.delegation.subagents import cancel_sandbox_subagent_runs, cancel_session_subagent_runs
+from core.policy.pending_gate import pending_gate
+from core.runtime.archive import archive_event
 from core.runtime.context import AgentRuntimeContext, main_agent_instance_id
-from core.runtime.input_items import build_user_message_item, display_text_from_content
+from core.runtime.input_items import display_text_from_content
 from core.runtime.live_projection import LiveEventProjection
 from core.runtime.timeline import TimelineLogWriter, is_persistable, timeline_item_key
-from core.runtime.notification_dispatch import signal_target_notifications
-from core.runtime.partial_context import DeltaBuffer, discard_partial_stream, incomplete_segment_events, track_delta
-from core.runtime.streaming import StreamIdleTimeout, next_segment_scope
-from core.task_runtime import InterruptSignal, TurnTrigger, iter_interruptible_events, replace_trigger, run_until_idle
-from core.conversation.store import XuanMuSession
-from core.delegation.subagents import cancel_sandbox_subagent_runs, cancel_session_subagent_runs
 from core.sandbox.command_jobs import cancel_sandbox_async_commands, cancel_session_async_sandbox_commands
-from database import get_engine
 from logger import get_logger
 from schema.agent.events import (
     AgentEventSchema,
@@ -31,30 +31,38 @@ from schema.agent.events import (
     DoneEvent,
     ErrorEvent,
     RunStateEvent,
-    TurnBoundaryEvent,
+    SandboxEvent,
+    SandboxPhaseSchema,
     UserMessageEvent,
 )
-from schema.agent.notifications import AgentNotificationSnapshot
 from service.agent import notifications as agent_notifications
 
 
 logger = get_logger(__name__)
 
 _SUBSCRIBER_REBASE_THRESHOLD = 512
-# Self-heal bound: how many times a driver may relaunch itself to drain
-# outstanding work after an abnormal loop exit before it gives up and cancels
-# the remaining work (prevents a hot relaunch loop on a persistent fault).
-_MAX_DRIVER_RELAUNCH = 5
-_DRIVER_RELAUNCH_BACKOFF_SECONDS = 0.5
-_SubscriberQueue = asyncio.Queue[AgentEventSchema | None]
+# Application-defined close code (4000-4999 is the app-specific range). The
+# frontend uses it to tell "server restarted the stream after a config update"
+# apart from a genuine network drop, so it can reconnect instead of reporting a
+# misleading "stream closed before the model produced output" error.
+SUBSCRIBER_CLOSED_CODE = 4001
+
+
+@dataclass(frozen=True)
+class SubscriberClosed:
+    """Sentinel queued to subscribers when a session tears down its event streams."""
+
+    code: int = SUBSCRIBER_CLOSED_CODE
+    reason: str = ""
+
+
+_SubscriberQueue = asyncio.Queue[AgentEventSchema | SubscriberClosed]
 
 
 class AgentSession:
-    def __init__(self, session_id: str, registry: AgentRegistry) -> None:
+    def __init__(self, session_id: str) -> None:
         self.session_id = session_id
-        self._registry = registry
         self._start_lock = asyncio.Lock()
-        self._turn_lock = asyncio.Lock()
         self._current_task: asyncio.Task | None = None
         self._subscribers: set[_SubscriberQueue] = set()
         self._live_projection = LiveEventProjection()
@@ -63,9 +71,6 @@ class AgentSession:
         self._item_seq: dict[str, int] = {}
         self._timeline_loaded = False
         self._log_writer = TimelineLogWriter(session_id)
-        self._main_agent_code: str = ""
-        self._tool_snapshot: AgentToolSnapshot | None = None
-        self._agent_graph: SessionAgentGraph | None = None
 
     def is_running(self) -> bool:
         task = self._current_task
@@ -92,94 +97,267 @@ class AgentSession:
     def unsubscribe(self, queue: _SubscriberQueue) -> None:
         self._subscribers.discard(queue)
 
-    async def start_turn(
+    async def start_strix_turn(
         self,
-        content: list[AgentInputPart],
-        agent_code: str,
+        task: str,
         context: AgentRuntimeContext,
+        *,
+        agent_code: str = "",
+        display_text: str = "",
+        content: list[AgentInputPart] | None = None,
     ) -> list[AgentEventSchema]:
+        """启动一次由 ravenholt 运行时驱动的回合（root → create_agent 动态派生 agent 树）。
+
+        复用会话语义：先落 run_state + user_message，再后台跑 ravenholt run loop；运行时的
+        子代理图状态与 SDK 流事件经 ``StrixEventProjector`` 投影进统一事件总线，因此
+        操作台能看到动态派生的 agent 树与每步工具调用。
+
+        ``content`` 只用于附件：沙箱由运行时按会话自动 provision，图片要在容器就绪后
+        才能落盘，因此这里把原始输入交给驱动器而不是提前合成任务文本。
+        """
+        from schema.agent.events import AgentTextInputPart
+
         async with self._start_lock:
             if self.is_running():
-                return await self._enqueue_user_message(content, agent_code, context)
+                raise RuntimeError("session is already running a turn")
+            code = agent_code or context.agent_code
             await _mark_session_running(
                 self.session_id,
-                agent_code=agent_code,
+                agent_code=code,
                 sandbox_container_id=context.sandbox_container_id,
                 sandbox_container_generation=context.sandbox_container_generation,
             )
             await self._ensure_timeline_loaded()
             events: list[AgentEventSchema] = [self._publish_run_state(True)]
+            # 气泡只放用户原话：纯图片输入时 task 与 display_text 都可能为空，
+            # 而 AgentTextInputPart 要求非空，需要一个占位文案。
+            bubble_text = display_text or task or "（图片附件）"
             events.append(await self._publish(UserMessageEvent(
                 created_at=datetime.now(),
-                content=content,
-                display_text=display_text_from_content(content),
-                target_agent_code=agent_code,
+                content=[AgentTextInputPart(text=bubble_text)],
+                display_text=bubble_text,
+                target_agent_code=code,
             )))
-            task = asyncio.create_task(
-                self._drive(content, agent_code, context, initial_user_event_published=True),
-                name=f"agent-turn-{self.session_id}",
+            self._current_task = asyncio.create_task(
+                self._drive_strix(task, context, code, content),
+                name=f"strix-turn-{self.session_id}",
             )
-            self._current_task = task
             return events
 
-    async def _enqueue_user_message(
+    async def _drive_strix(
         self,
-        content: list[AgentInputPart],
-        agent_code: str,
+        task: str,
         context: AgentRuntimeContext,
-    ) -> list[AgentEventSchema]:
-        # Queue a high-priority notification (instead of interrupting) so the
-        # running loop preempts at its next safe point without losing state.
-        target_instance = context.agent_instance_id or main_agent_instance_id(
-            context.session_id, context.user.id, agent_code,
+        agent_code: str,
+        content: list[AgentInputPart] | None = None,
+    ) -> None:
+        from config import WORKSPACE, get_config
+        from core.strix_runtime import build_configured_model, run_strix_session
+        from core.strix_runtime.findings import WorkProjectFindingMirror
+        from core.strix_runtime.prompts import (
+            RuntimeMode,
+            build_child_instructions,
+            build_root_instructions,
+            mode_for_project_type,
         )
-        display_text = display_text_from_content(content)
-        serialized_content = [part.model_dump() for part in content]
-        await agent_notifications.enqueue_user_message_notification(
-            session_id=self.session_id,
-            target_agent_code=agent_code,
-            target_agent_instance_id=target_instance,
-            user_content=serialized_content,
-            user_display_text=display_text,
-            user_requested_agent_code=agent_code,
-            sandbox_container_id=context.sandbox_container_id,
-            sandbox_container_generation=context.sandbox_container_generation,
-            sandbox_skill_metadata=context.sandbox_skill_metadata,
-        )
-        await signal_target_notifications(target_instance)
-        event = await self._publish(UserMessageEvent(
-            created_at=datetime.now(),
-            content=content,
-            display_text=display_text,
-            target_agent_code=agent_code,
-        ))
-        return [event]
+        from core.strix_runtime.projection import StrixEventProjector
+        from core.strix_runtime.sandbox_provision import SandboxProvisionError, provision_sandbox
+        from strix.report.state import ReportState, set_global_report_state
 
-    async def start_notification_recovery(self, context: AgentRuntimeContext, *, recovered: bool = True) -> bool:
-        # Launch a driver that drains pending main notifications with no initial
-        # turn. recovered=True (boot) surfaces queued user bubbles never shown in
-        # this process; recovered=False is the in-process resume kick.
-        async with self._start_lock:
-            if self.is_running():
-                return False
-            if not await agent_notifications.has_pending_main_agent_notification(
+        root_id = main_agent_instance_id(self.session_id, context.user.id, agent_code)
+        # 项目类型决定作战规程：渗透=黑盒 src-hunt（默认），源码审计=白盒 source-aware。
+        runtime_mode = mode_for_project_type(context.work_project_type)
+        # 源码审计：把项目声明的源码目录挂进沙箱，并把挂载点写进 root 规程。
+        local_sources: list[dict[str, Any]] = []
+        source_roots: list[str] = []
+        skipped_sources: list[str] = []
+        if runtime_mode == RuntimeMode.SOURCE_AUDIT and context.work_project_id is not None:
+            local_sources, source_roots, skipped_sources = await _collect_source_mounts(
+                context.work_project_id
+            )
+        logger.info(
+            "strix turn mode=%s project=%s work_project_type=%s source_roots=%s skipped=%s session=%s",
+            runtime_mode.value,
+            context.work_project_id,
+            context.work_project_type,
+            source_roots,
+            skipped_sources,
+            self.session_id,
+        )
+        projector = StrixEventProjector(publish=self.publish_external, root_id=root_id)
+        run_dir = WORKSPACE / "strix_runs"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        agent_cfg = get_config().agents.get(agent_code)
+        use_responses = bool(agent_cfg.use_responses) if agent_cfg is not None else False
+
+        # ravenholt 的 finding 汇聚在全局 ReportState；挂上 WorkProject 镜像（草稿态）。
+        report_state = ReportState(run_name=self.session_id)
+        mirror: WorkProjectFindingMirror | None = None
+        if context.work_project_id is not None:
+            mirror = WorkProjectFindingMirror(
+                project_id=context.work_project_id,
                 session_id=self.session_id,
-            ):
-                return False
-            await _mark_session_running(
-                self.session_id,
-                agent_code=context.agent_code,
-                sandbox_container_id=context.sandbox_container_id,
-                sandbox_container_generation=context.sandbox_container_generation,
+                agent_code=agent_code,
             )
-            await self._ensure_timeline_loaded()
-            self._publish_run_state(True)
-            task = asyncio.create_task(
-                self._drive(None, context.agent_code or "", context, recovered=recovered),
-                name=f"agent-recovery-{self.session_id}",
+            report_state.vulnerability_found_callback = mirror.on_report
+        set_global_report_state(report_state)
+
+        try:
+            # 沙箱是硬前提：建容器（含容器内 Caido）→ 过红线闸口 → 会话包闸口 → 回写平台记录。
+            # 拿不到沙箱就终止本回合，不降级跑无沙箱的空壳。
+            self._publish_sandbox_event(
+                SandboxPhaseSchema.PROVISIONING,
+                message="正在准备沙箱环境",
             )
-            self._current_task = task
-            return True
+            provision = await provision_sandbox(
+                session_id=self.session_id,
+                owner_id=context.user.id,
+                local_sources=local_sources,
+            )
+            await self._mark_sandbox_ready(provision)
+            # 容器就绪后才合成任务文本：图片附件需要落进这个容器（保真通道）。
+            runtime_task = await self._build_task_with_attachments(
+                task,
+                content,
+                provision.record_id,
+                agent_code,
+            )
+            if skipped_sources:
+                runtime_task = (
+                    "范围提示：以下声明的源码路径在服务器上不存在或不可挂载，本次未纳入："
+                    + "、".join(skipped_sources)
+                    + "\n\n"
+                    + runtime_task
+                )
+            await run_strix_session(
+                task=runtime_task,
+                model=build_configured_model(agent_code, session_id=self.session_id),
+                instructions=build_root_instructions(mode=runtime_mode, source_roots=source_roots),
+                child_instructions=build_child_instructions(mode=runtime_mode),
+                agents_db_path=run_dir / f"{self.session_id}.db",
+                sandbox_session=provision.session,
+                caido_client=provision.caido_client,
+                work_project_id=context.work_project_id,
+                session_id=self.session_id,
+                root_id=root_id,
+                # route_skills 据此选兜底技能（白盒回退 source-aware，而不是渗透短表）。
+                extra_context={"strix_mode": runtime_mode.value},
+                projector=projector,
+                # ravenholt 的模型走 OpenAI 兼容端点：自定义工具包成 function tool、
+                # 不启用 strict schema，避免端点拒收导致整轮失败。
+                chat_completions_tools=not use_responses,
+                strict_tool_schemas=use_responses,
+            )
+            if mirror is not None:
+                await mirror.flush()
+        except SandboxProvisionError as exc:
+            logger.warning("strix sandbox unavailable session=%s: %s", self.session_id, exc)
+            self.publish_external(ErrorEvent(
+                created_at=datetime.now(),
+                message="沙箱不可用，本次任务未启动。请确认沙箱镜像与容器运行时就绪后重试。",
+            ))
+        except Exception as exc:
+            logger.exception("strix run failed session=%s", self.session_id)
+            self.publish_external(ErrorEvent(
+                created_at=datetime.now(),
+                message=str(exc) or "strix run failed",
+            ))
+        finally:
+            set_global_report_state(None)
+            self.publish_external(DoneEvent(created_at=datetime.now()))
+            self._publish_run_state(False)
+            self._current_task = None
+            await _mark_session_stopped(self.session_id)
+
+    def _publish_sandbox_event(
+        self,
+        phase: SandboxPhaseSchema,
+        *,
+        container_id: int | None = None,
+        container_hash: str = "",
+        container_name: str = "",
+        image_name: str = "",
+        message: str = "",
+    ) -> None:
+        """把沙箱生命周期事件投进会话事件总线（同时进入时间线，刷新后可回放）。"""
+        self.publish_external(SandboxEvent(
+            created_at=datetime.now(),
+            phase=phase,
+            container_id=container_id,
+            container_hash=container_hash,
+            container_name=container_name,
+            image_name=image_name,
+            message=message,
+        ))
+
+    async def _mark_sandbox_ready(self, provision) -> None:
+        """沙箱就绪：回写会话当前沙箱，且只在容器**发生变化**时广播 ready 事件。
+
+        每轮回合都会经过 provision（strix 按会话复用容器），但事件只在首次绑定或换容器
+        时发出 —— 否则对话流里每轮都会多出一条重复的"沙箱已就绪"。回写失败只影响前端
+        展示（拿不到"当前沙箱"），不阻断本回合执行。
+        """
+        from service.agent import sessions as agent_sessions
+
+        changed = False
+        if provision.record_id is not None:
+            try:
+                changed = await agent_sessions.update_session_runtime_sandbox(
+                    self.session_id,
+                    sandbox_container_id=provision.record_id,
+                )
+            except Exception:
+                logger.warning(
+                    "sandbox runtime bind write-back failed session=%s",
+                    self.session_id,
+                    exc_info=True,
+                )
+        if not changed:
+            return
+        self._publish_sandbox_event(
+            SandboxPhaseSchema.READY,
+            container_id=provision.record_id,
+            container_hash=provision.container_hash,
+            container_name=provision.container_name,
+            image_name=provision.image_name,
+            message="沙箱已就绪",
+        )
+
+    async def _build_task_with_attachments(
+        self,
+        task: str,
+        content: list[AgentInputPart] | None,
+        container_id: int | None,
+        agent_code: str,
+    ) -> str:
+        """沙箱就绪后合成任务文本：附件图片落进容器（保真通道）+ 逐字转写（提示通道）。
+
+        任务文本口径：显式 ``task`` 优先，其次取 ``content`` 的文本块（前端富文本统一走
+        ``content``，不传 ``task``）。容器记录缺失（回写失败）或写入失败时，明确在任务里
+        说明附件未落盘，既不静默丢图，也不让整轮失败。
+        """
+        from service.agent.attachments import compose_strix_task, image_parts, text_of
+
+        if not image_parts(content):
+            # 前端富文本统一走 content：纯文本输入的正文只存在于 content 里，只回 task
+            # 会让智能体拿到空任务（表现为「我发了目标，它却说没有目标」）。取文本口径
+            # 与下面的图片分支保持一致：显式 task 优先，否则回退 content 的文本块。
+            return (task or "").strip() or text_of(content)
+        if container_id is None:
+            note = "【附件】本次会话的沙箱未能就绪，图片附件没有放进容器，请让用户重新上传。"
+            return f"{task}\n\n{note}" if task else note
+        try:
+            return await compose_strix_task(
+                task=task,
+                content=content,
+                container_id=container_id,
+                agent_code=agent_code,
+            )
+        except Exception:
+            logger.warning("attachment persist failed session=%s", self.session_id, exc_info=True)
+            note = "【附件】图片附件写入沙箱失败，请让用户重新上传。"
+            return f"{task}\n\n{note}" if task else note
 
     async def interrupt(self) -> list[AgentEventSchema]:
         task = self._current_task
@@ -190,13 +368,13 @@ class AgentSession:
             await task
         except asyncio.CancelledError:
             pass
-        # The cancelled task's ``_finalize_interrupted_turn`` has already
-        # published a boundary ``*Complete`` event for any in-flight segment
-        # plus a ``DoneEvent`` so the live projection ends in a finalised
-        # state. We only need to (a) drop main-agent notifications the user
-        # explicitly abandoned and (b) update session liveness; freshly
-        # enqueued USER_MESSAGE notifications are preserved so the next
-        # idle cycle still honours them.
+        # 挂起中的审批随之作废：摘掉等待记录，避免留下「永远等不到决策」的悬挂 future。
+        pending_gate.discard_session(self.session_id)
+        # The cancelled task's teardown already published a terminal ``DoneEvent``
+        # so the live projection ends in a finalised state. We only need to (a) drop
+        # main-agent notifications the user explicitly abandoned and (b) update
+        # session liveness; freshly enqueued USER_MESSAGE notifications are
+        # preserved so the next idle cycle still honours them.
         await agent_notifications.cancel_main_agent_interrupted_notifications(
             self.session_id,
             "Discarded by user interrupt.",
@@ -216,6 +394,7 @@ class AgentSession:
                 pass
             await _mark_session_stopped(self.session_id)
             events.append(await self._publish(DoneEvent(created_at=datetime.now())))
+        pending_gate.discard_session(self.session_id)
         await cancel_session_subagent_runs(self.session_id)
         await cancel_session_async_sandbox_commands(self.session_id)
         await agent_notifications.cancel_session_notifications(
@@ -226,19 +405,18 @@ class AgentSession:
         events.append(self._publish_run_state(False))
         return events
 
-    async def shutdown(self) -> None:
+    async def shutdown(self, *, code: int = SUBSCRIBER_CLOSED_CODE, reason: str = "") -> None:
         await self.cancel_all()
-        await self.close()
+        await self.close(code=code, reason=reason)
 
-    async def close(self) -> None:
-        self._close_subscribers()
+    async def close(self, *, code: int = SUBSCRIBER_CLOSED_CODE, reason: str = "") -> None:
+        self._close_subscribers(code=code, reason=reason)
         await self._log_writer.stop()
         self._timeline_loaded = False
-        await self._dispose_agent_graph()
 
-    def _close_subscribers(self) -> None:
+    def _close_subscribers(self, *, code: int = SUBSCRIBER_CLOSED_CODE, reason: str = "") -> None:
         for queue in tuple(self._subscribers):
-            queue.put_nowait(None)
+            queue.put_nowait(SubscriberClosed(code=code, reason=reason))
         self._subscribers.clear()
 
     async def flush_timeline(self) -> None:
@@ -246,296 +424,17 @@ class AgentSession:
             await self._log_writer.flush()
 
     def uses_sandbox_container(self, container_id: int) -> bool:
-        return self._tool_snapshot is not None and self._tool_snapshot.sandbox_container_id == container_id
+        # strix 单轨：沙箱按回合 provision，会话不长期绑定任何容器。
+        return False
 
     async def invalidate_tool_binding(self) -> None:
         await self.cancel_all()
-        self._tool_snapshot = None
-        await self._dispose_agent_graph()
-
-    async def _execute_turn(
-        self,
-        trigger: TurnTrigger,
-        agent_code: str,
-        context: AgentRuntimeContext,
-    ) -> Any:
-        """Run a single agent turn described by *trigger*.
-
-        Returns the SDK stream result on normal completion.
-        Raises ``InterruptSignal`` when preempted by a pending notification.
-
-        Context derivation, user-event emission, and nested-event tagging
-        are all governed by the ``TurnTrigger``; callers set those flags
-        via ``replace_trigger`` before passing the trigger in.
-        """
-        if trigger.has_notification:
-            turn_context = _context_for_notification(context, trigger.notification)
-            turn_agent_code = trigger.notification.target_agent_code
-        else:
-            turn_context = context
-            turn_agent_code = agent_code
-
-        def _tag(event: AgentEventSchema) -> AgentEventSchema:
-            return _tag_notification_event(event, turn_context) if trigger.has_notification else event
-
-        # Setup phase (graph bind, compaction, runner build) runs under the same
-        # exception protection as the stream: a failure here is surfaced as a
-        # finalized Error+Done turn instead of escaping and tearing down the
-        # session driver. Interrupt/cancel must still propagate.
-        try:
-            graph = await self._ensure_agent_graph(turn_agent_code, turn_context)
-            agent = graph.get(turn_agent_code)
-            turn_scope = _next_turn_scope(turn_context)
-
-            if trigger.emit_user_event:
-                await self._publish(UserMessageEvent(
-                    created_at=datetime.now(),
-                    content=trigger.content,
-                    display_text=display_text_from_content(trigger.content),
-                    target_agent_code=turn_agent_code,
-                ))
-            elif trigger.has_notification and not trigger.notification.is_user_message:
-                # A continuation driven by a hidden notification (e.g. a subagent
-                # completion fed back as a user-role context item) starts a new
-                # agent turn with no visible user bubble. Emit a turn boundary so
-                # the transcript separates it from the previous turn, matching the
-                # boundary a real user message would create.
-                await self._publish(_tag(
-                    TurnBoundaryEvent(created_at=datetime.now(), agent_name=agent.name),
-                ))
-
-            memory_session = XuanMuSession(
-                session_id=self.session_id,
-                engine=get_engine(),
-                viewing_agent_code=turn_agent_code,
-                agent_code_to_name=graph.code_to_name(),
-                nested_for_agent_code=turn_context.nested_for_agent_code,
-                nested_call_id=turn_context.nested_call_id,
-            )
-
-            user_input = [build_user_message_item(trigger.content)]
-            agent_config = get_config().agents.get(turn_agent_code)
-            if agent_config is not None:
-                await memory_session.compact_if_needed(
-                    agent_config=agent_config,
-                    incoming_items=user_input,
-                )
-
-            stream = Runner.run_streamed(
-                starting_agent=agent,
-                session=memory_session,
-                input=user_input,
-                context=turn_context,
-                max_turns=get_config().agent_runtime.main_max_turns,
-                run_config=build_context_run_config(agent_config) if agent_config is not None else None,
-            )
-        except (InterruptSignal, asyncio.CancelledError):
-            raise
-        except Exception as exc:
-            logger.exception("agent turn setup failed session=%s: %s", self.session_id, exc)
-            await self._publish(_tag(ErrorEvent(
-                created_at=datetime.now(),
-                agent_name=turn_agent_code,
-                message=str(exc) or "agent turn setup failed",
-            )))
-            await self._publish(_tag(DoneEvent(created_at=datetime.now(), agent_name=turn_agent_code)))
-            return None
-
-        buffers: dict[str, DeltaBuffer] = {}
-        stream_error: ErrorEvent | None = None
-        try:
-            async for event in iter_interruptible_events(
-                stream,
-                session_id=self.session_id,
-                agent_instance_id=turn_context.agent_instance_id,
-                current_agent_name=agent.name,
-                segment_scope=turn_scope,
-            ):
-                track_delta(buffers, event)
-                await self._publish(_tag(event))
-            # Finalize segments left open by providers without a text-done event
-            # (e.g. Chat Completions); otherwise the text is never persisted.
-            for finalize_event in incomplete_segment_events(buffers, agent_name=agent.name):
-                await self._publish(_tag(finalize_event))
-            buffers.clear()
-        except (InterruptSignal, asyncio.CancelledError):
-            # Both paths end the turn mid-flight; emit boundary + done so the
-            # live projection sees in-flight deltas as finalized and clients
-            # don't get a dangling stream on reconnect. Partial buffers are
-            # intentionally dropped (see ``discard_partial_stream``).
-            await self._finalize_interrupted_turn(
-                stream=stream,
-                buffers=buffers,
-                tag=_tag,
-                agent_name=agent.name,
-            )
-            raise
-        except StreamIdleTimeout as exc:
-            await discard_partial_stream(stream, buffers, log_label="agent")
-            logger.warning(
-                "agent stream idle timeout session=%s agent=%s phase=%s timeout=%d",
-                self.session_id, turn_agent_code, exc.phase, exc.timeout_seconds,
-            )
-            stream_error = ErrorEvent(created_at=datetime.now(), agent_name=agent.name, message=str(exc))
-        except Exception as exc:
-            await discard_partial_stream(stream, buffers, log_label="agent")
-            logger.exception("agent stream failed session=%s: %s", self.session_id, exc)
-            stream_error = ErrorEvent(created_at=datetime.now(), agent_name=agent.name, message=str(exc))
-
-        if stream_error is not None:
-            await self._publish(_tag(stream_error))
-        await self._publish(_tag(DoneEvent(created_at=datetime.now(), agent_name=agent.name)))
-        return stream
-
-    async def _finalize_interrupted_turn(
-        self,
-        *,
-        stream: Any,
-        buffers: dict[str, DeltaBuffer],
-        tag: Callable[[AgentEventSchema], AgentEventSchema],
-        agent_name: str,
-    ) -> None:
-        boundary_events = incomplete_segment_events(buffers, agent_name=agent_name)
-        await discard_partial_stream(stream, buffers, log_label="agent")
-        for evt in boundary_events:
-            await self._publish(tag(evt))
-        await self._publish(tag(DoneEvent(created_at=datetime.now(), agent_name=agent_name)))
-
-    async def _ensure_agent_graph(self, agent_code: str, context: AgentRuntimeContext) -> SessionAgentGraph:
-        tool_snapshot = AgentToolSnapshot.from_context(context)
-        if (
-            self._agent_graph is None
-            or self._main_agent_code != agent_code
-            or self._tool_snapshot != tool_snapshot
-        ):
-            await self._dispose_agent_graph()
-            self._main_agent_code = agent_code
-            self._tool_snapshot = tool_snapshot
-            self._agent_graph = self._registry.bind(tool_snapshot)
-            logger.debug(
-                "agent graph bound session=%s agent=%s knowledge_generation=%d sandbox=%s generation=%d",
-                self.session_id,
-                agent_code,
-                tool_snapshot.knowledge_generation,
-                tool_snapshot.sandbox_container_id,
-                tool_snapshot.sandbox_container_generation,
-            )
-        return self._agent_graph
-
-    async def _dispose_agent_graph(self) -> None:
-        if self._agent_graph is None:
-            return
-        await self._agent_graph.close()
-        self._agent_graph = None
-        self._main_agent_code = ""
-
-    async def _drive(
-        self,
-        content: list[AgentInputPart] | None,
-        agent_code: str,
-        context: AgentRuntimeContext,
-        *,
-        attempt: int = 0,
-        recovered: bool = False,
-        initial_user_event_published: bool = False,
-    ) -> None:
-        # The single main-session driver (true-async, non-blocking): run the
-        # optional initial turn, drain ready notifications, then end. On delegation
-        # it ends and goes idle while children run; a child's completion kicks
-        # resume_session. The finally only reconciles a post-drain claim race.
-        async with self._turn_lock:
-            task = asyncio.current_task()
-            self._current_task = task
-            canceled = False
-            try:
-                context.agent_code = agent_code
-                if not context.agent_instance_id:
-                    context.agent_instance_id = main_agent_instance_id(
-                        context.session_id, context.user.id, agent_code,
-                    )
-
-                is_initial = content is not None and not initial_user_event_published
-
-                async def _run_turn(trigger: TurnTrigger) -> Any:
-                    nonlocal is_initial
-                    if recovered and trigger.notification is not None and trigger.notification.is_user_message:
-                        # Boot recovery: the bubble was never published in this
-                        # process, so surface it as the turn is consumed.
-                        trigger = replace_trigger(trigger, emit_user_event=True)
-                    elif is_initial and not trigger.has_notification:
-                        trigger = replace_trigger(trigger, emit_user_event=True)
-                    is_initial = False
-                    return await self._execute_turn(trigger, agent_code, context)
-
-                await run_until_idle(
-                    session_id=self.session_id,
-                    agent_instance_id=context.agent_instance_id,
-                    initial_content=content,
-                    run_turn=_run_turn,
-                )
-            except asyncio.CancelledError:
-                canceled = True
-                raise
-            except Exception as exc:
-                logger.exception("agent driver failed session=%s", self.session_id)
-                await self._publish(ErrorEvent(created_at=datetime.now(), message=str(exc) or "agent turn failed"))
-                await self._publish(DoneEvent(created_at=datetime.now()))
-            finally:
-                relaunched = False
-                if not canceled:
-                    relaunched = await self._reconcile_driver(agent_code, context, attempt)
-                if self._current_task is task and not relaunched:
-                    self._current_task = None
-                if not canceled and not relaunched:
-                    await _mark_session_stopped(self.session_id)
-                    await self._publish_idle_if_inactive()
-
-    async def _reconcile_driver(
-        self,
-        agent_code: str,
-        context: AgentRuntimeContext,
-        attempt: int,
-    ) -> bool:
-        # Relaunch (under _start_lock) only if a claimable PENDING landed after the
-        # final drain; AWAITING obligations (running children) keep the session
-        # idle, not driving. Returns whether relaunched.
-        async with self._start_lock:
-            if not await agent_notifications.has_pending_notification(
-                session_id=self.session_id,
-                target_agent_instance_id=context.agent_instance_id,
-            ):
-                return False
-            if attempt >= _MAX_DRIVER_RELAUNCH:
-                logger.error(
-                    "agent driver relaunch budget exhausted session=%s target=%s; canceling outstanding work",
-                    self.session_id, context.agent_instance_id,
-                )
-                await agent_notifications.cancel_session_notifications(
-                    self.session_id, "Agent driver could not make progress.",
-                )
-                return False
-            new_task = asyncio.create_task(
-                self._relaunch_driver(
-                    _DRIVER_RELAUNCH_BACKOFF_SECONDS * attempt, agent_code, context, attempt + 1,
-                ),
-                name=f"agent-driver-relaunch-{self.session_id}",
-            )
-            self._current_task = new_task
-            return True
-
-    async def _relaunch_driver(
-        self,
-        delay: float,
-        agent_code: str,
-        context: AgentRuntimeContext,
-        attempt: int,
-    ) -> None:
-        if delay > 0:
-            await asyncio.sleep(delay)
-        await self._drive(None, agent_code, context, attempt=attempt)
 
     def _publish_run_state(self, running: bool) -> RunStateEvent:
         event = RunStateEvent(created_at=datetime.now(), running=running)
+        # 运行状态帧不经 publish_external（直接投递订阅者），旁路归档需单独挂一次，
+        # 否则监控器会缺失「回合开始 / 结束」这两个边界。
+        archive_event(self.session_id, event)
         if running:
             self._live_projection.reset(event)
         else:
@@ -614,6 +513,9 @@ class AgentSession:
         subscribers/projection.
         """
         persist_key = self._stamp_event(event)
+        # 旁路归档在「持久化过滤」之前：delta / 控制帧不进时间线，但必须进归档，
+        # 因此这里无条件写一条原始帧（含 seq 已就地写入 event.seq）。
+        archive_event(self.session_id, event)
         self._live_projection.apply(event)
         for queue in tuple(self._subscribers):
             self._enqueue_or_rebase(queue, event)
@@ -677,7 +579,7 @@ class AgentSessionPool:
             self._ttl, self._sweep_interval, self._max_size,
         )
 
-    async def stop(self) -> None:
+    async def stop(self, *, reason: str = "") -> None:
         task, self._sweeper_task = self._sweeper_task, None
         if task is not None and not task.done():
             task.cancel()
@@ -690,9 +592,15 @@ class AgentSessionPool:
             entries = list(self._pool.values())
             session_ids = list(self._pool.keys())
             self._pool.clear()
-        await asyncio.gather(*(entry.session.shutdown() for entry in entries), return_exceptions=True)
+        await asyncio.gather(
+            *(entry.session.shutdown(reason=reason) for entry in entries),
+            return_exceptions=True,
+        )
         await _mark_sessions_stopped(session_ids)
         logger.debug("agent pool stopped")
+
+    def has_running_sessions(self) -> bool:
+        return any(entry.session.is_running() for entry in self._pool.values())
 
     async def get_or_create(self, session_id: str) -> AgentSession:
         async with self._lock:
@@ -710,7 +618,7 @@ class AgentSessionPool:
     def _get_or_create_locked(self, session_id: str) -> AgentSession:
         entry = self._pool.get(session_id)
         if entry is None:
-            entry = _PooledSession(session=AgentSession(session_id, self._registry))
+            entry = _PooledSession(session=AgentSession(session_id))
             self._pool[session_id] = entry
             logger.debug("agent pool created session=%s", session_id)
         else:
@@ -770,31 +678,9 @@ class AgentSessionPool:
         return entry.session.publish_external(event)
 
     async def resume_session(self, session_id: str) -> None:
-        # Main-agent arm of resume_target_instance: rebuild the runtime context
-        # from persisted meta and start a non-blocking driver. With no pending
-        # main work (e.g. a canceled task) settle idle instead of starting a turn;
-        # no-op while a driver already runs.
-        from middleware.auth import AuthUser
-        from service.agent import sessions as agent_sessions
-        from service.agent.runtime import build_runtime_context
-        from service.system_user.users import query_system_user_by_id
-
-        if not await agent_notifications.has_pending_main_agent_notification(session_id=session_id):
-            await self._settle_session_idle(session_id)
-            return
-        meta = await agent_sessions.get_session_meta(session_id)
-        if meta is None:
-            return
-        user = await query_system_user_by_id(meta.owner_id)
-        if user is None:
-            return
-        auth_user = AuthUser(id=user.id, role=user.role, email=user.email, username=user.username)
-        agent_code = meta.runtime_agent_code or meta.agent_code
-        context = await build_runtime_context(
-            session_id, auth_user, meta.runtime_sandbox_container_id, agent_code,
-        )
-        session = await self.get_or_create(session_id)
-        await session.start_notification_recovery(context, recovered=False)
+        # strix 单轨：回合由进程内的 strix run loop 承载，没有通知邮箱驱动的待办回合，
+        # 因此恢复语义退化为把会话收敛为空闲（标记 DB 停止 + 广播 run_state=false）。
+        await self._settle_session_idle(session_id)
 
     async def _settle_session_idle(self, session_id: str) -> None:
         # Wind down a session with no pending main turn (e.g. a canceled task):
@@ -947,43 +833,6 @@ def get_agent_registry() -> AgentRegistry:
     return get_agent_pool().registry
 
 
-def _context_for_notification(
-    base: AgentRuntimeContext,
-    notification: AgentNotificationSnapshot,
-) -> AgentRuntimeContext:
-    return AgentRuntimeContext(
-        session_id=base.session_id,
-        user=base.user,
-        agent_code=notification.target_agent_code,
-        agent_instance_id=notification.target_agent_instance_id,
-        nested_for_agent_code=notification.nested_for_agent_code,
-        nested_call_id=notification.nested_call_id,
-        knowledge_generation=base.knowledge_generation,
-        sandbox_container_id=notification.sandbox_container_id,
-        sandbox_container_generation=notification.sandbox_container_generation,
-        sandbox_skill_metadata=notification.sandbox_skill_metadata,
-        work_project_id=base.work_project_id,
-    )
-
-
-def _tag_notification_event(event: AgentEventSchema, context: AgentRuntimeContext) -> AgentEventSchema:
-    if not context.nested_for_agent_code or not hasattr(event, "nested_for"):
-        return event
-    return event.model_copy(update={
-        "nested_for": context.nested_for_agent_code,
-        "nested_call_id": context.nested_call_id,
-    })
-
-
-def _next_turn_scope(context: AgentRuntimeContext) -> str:
-    owner = context.agent_instance_id or main_agent_instance_id(
-        context.session_id,
-        context.user.id,
-        context.agent_code,
-    )
-    return next_segment_scope(owner)
-
-
 async def _mark_session_running(
     session_id: str,
     *,
@@ -1017,3 +866,55 @@ async def _mark_sessions_stopped(session_ids: list[str], *, error: str = "") -> 
     from service.agent import sessions as agent_sessions
 
     await agent_sessions.mark_sessions_stopped(session_ids, error=error)
+
+
+async def _collect_source_mounts(
+    project_id: int,
+) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """项目的 binary 资产 → 沙箱挂载条目。
+
+    返回 ``(local_sources, workspace_subdirs, skipped_paths)``：只有**服务器上真实存在、
+    且不是系统/家目录/凭证目录**的路径才会挂载（校验复用 strix 的 ``check_mountable_dir``）；
+    其余收集进 ``skipped_paths`` 交给调用方提示，不阻断整轮。
+    """
+    from service.work_project.projects import work_project_source_paths
+    from strix.interface.utils import check_mountable_dir
+
+    local_sources: list[dict[str, Any]] = []
+    roots: list[str] = []
+    skipped: list[str] = []
+    used: set[str] = set()
+    for path in await work_project_source_paths(project_id):
+        try:
+            check_mountable_dir(Path(path))
+        except ValueError as exc:
+            logger.warning("source path is not mountable project=%s path=%s: %s", project_id, path, exc)
+            skipped.append(path)
+            continue
+        subdir = _unique_subdir(_mount_subdir(Path(path).name), used)
+        local_sources.append({
+            "source_path": path,
+            "workspace_subdir": subdir,
+            "protect_metadata": True,
+            "read_only": False,
+        })
+        roots.append(subdir)
+    if local_sources:
+        logger.info("source mounts ready project=%s roots=%s", project_id, roots)
+    return local_sources, roots, skipped
+
+
+def _mount_subdir(name: str) -> str:
+    """目录名 → 安全的沙箱挂载名（``/workspace/<subdir>``）。"""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", (name or "").strip()).strip(".-")
+    return cleaned[:64] or "source"
+
+
+def _unique_subdir(name: str, used: set[str]) -> str:
+    candidate = name
+    index = 2
+    while candidate in used:
+        candidate = f"{name}-{index}"
+        index += 1
+    used.add(candidate)
+    return candidate

@@ -33,8 +33,8 @@ export function EgressProxiesPage() {
   );
 
   useAdminResourceHeader({
-    createLabel: "Create Egress Proxy",
-    refreshLabel: "Refresh egress proxies",
+    createLabel: "创建出口代理",
+    refreshLabel: "刷新出口代理",
     loading,
     onCreate: () => setModal({ mode: "create" }),
     onRefresh: loadProxies,
@@ -73,7 +73,7 @@ export function EgressProxiesPage() {
 
   const columns: ResourceColumn<EgressProxy>[] = [
     {
-      key: "proxy", header: "Proxy", width: "minmax(0, 0.8fr)",
+      key: "proxy", header: "代理", width: "minmax(0, 0.8fr)",
       render: (proxy) => (
         <ResourceIdentity
           icon={<Network size={18} />}
@@ -83,37 +83,37 @@ export function EgressProxiesPage() {
       ),
     },
     {
-      key: "type", header: "Type", width: "96px",
+      key: "type", header: "类型", width: "96px",
       render: (proxy) => <Tag color={proxy.proxy_type === EGRESS_PROXY_TYPE.SOCKS5 ? "violet" : "blue"}>{proxy.proxy_type.toUpperCase()}</Tag>,
     },
     {
-      key: "account", header: "Account", width: "minmax(0, 0.5fr)",
+      key: "account", header: "账号", width: "minmax(0, 0.5fr)",
       render: (proxy) => <OwnerCell>{proxy.proxy_account || "-"}</OwnerCell>,
     },
     {
-      key: "password", header: "Password", width: "minmax(0, 0.55fr)",
+      key: "password", header: "密码", width: "minmax(0, 0.55fr)",
       render: (proxy) => (
         <SecretCell id={proxy.proxy_host} value={proxy.proxy_password} visible={secrets.isVisible(proxy.id)} onToggle={() => secrets.toggle(proxy.id)} />
       ),
     },
-    { key: "updated", header: "Updated", width: "minmax(0, 0.55fr)", render: (proxy) => formatDateTime(proxy.updated_at) },
+    { key: "updated", header: "更新时间", width: "minmax(0, 0.55fr)", render: (proxy) => formatDateTime(proxy.updated_at) },
     {
-      key: "actions", header: "Actions", width: "136px",
+      key: "actions", header: "操作", width: "136px",
       render: (proxy) => (
         <RowActions>
-          <Tooltip content="Test proxy">
+          <Tooltip content="测试代理">
             <Button icon={<Wifi size={15} />} theme="borderless" type="tertiary"
               loading={testingId === proxy.id}
-              aria-label={`Test ${proxy.proxy_host}`}
+              aria-label={`测试 ${proxy.proxy_host}`}
               onClick={() => void testProxy(proxy)}
             />
           </Tooltip>
           <Button icon={<Pencil size={15} />} theme="borderless" type="tertiary"
-            aria-label={`Edit ${proxy.proxy_host}`} onClick={() => setModal({ mode: "edit", proxy })}
+            aria-label={`编辑 ${proxy.proxy_host}`} onClick={() => setModal({ mode: "edit", proxy })}
           />
-          <Popconfirm title="Delete egress proxy" content={`Delete ${proxy.proxy_host}:${proxy.proxy_port}?`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void deleteProxy(proxy)}>
+          <Popconfirm title="删除出口代理" content={`删除 ${proxy.proxy_host}:${proxy.proxy_port}？`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void deleteProxy(proxy)}>
             <Button icon={<Trash2 size={15} />} theme="borderless" type="danger"
-              loading={deletingId === proxy.id} aria-label={`Delete ${proxy.proxy_host}`}
+              loading={deletingId === proxy.id} aria-label={`删除 ${proxy.proxy_host}`}
             />
           </Popconfirm>
         </RowActions>
@@ -124,16 +124,16 @@ export function EgressProxiesPage() {
   return (
     <>
       <ResourcePageShell
-        searchPlaceholder="Search host, account, type, or port"
+        searchPlaceholder="搜索主机、账号、类型或端口"
         keyword={keyword}
         loading={loading}
         metrics={[
-          { label: "Total", value: total },
+          { label: "总数", value: total },
           ...EGRESS_PROXY_TYPES.map((type) => ({ label: type.toUpperCase(), value: summary[type] ?? 0 })),
         ]}
         empty={proxies.length === 0}
         emptyIcon={<Network size={42} />}
-        emptyTitle="No egress proxies found"
+        emptyTitle="暂无出口代理"
         page={page}
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
@@ -146,7 +146,7 @@ export function EgressProxiesPage() {
         onNext={next}
       >
         <ResourceTable<EgressProxy>
-          ariaLabel="Egress proxies"
+          ariaLabel="出口代理"
           columns={columns}
           rows={proxies}
           rowKey={(proxy) => proxy.id}

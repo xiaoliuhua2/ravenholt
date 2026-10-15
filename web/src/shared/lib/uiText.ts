@@ -1,4 +1,4 @@
 export const UI_TEXT = {
-  cancel: "Cancel",
-  save: "Save",
+  cancel: "取消",
+  save: "保存",
 };

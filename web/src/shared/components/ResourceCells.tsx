@@ -51,12 +51,12 @@ export function SecretCell({
   visible: boolean;
 }) {
   const hasValue = Boolean(value);
-  const label = `${visible ? "Hide" : "Show"} secret for ${id}`;
+  const label = `${visible ? "隐藏" : "显示"}密钥：${id}`;
 
   return (
     <div className="resource-secret-cell">
       <code>{visible ? (value || "-") : hasValue || maskEmpty ? hiddenText : "-"}</code>
-      <Tooltip content={visible ? "Hide secret" : "Show secret"}>
+      <Tooltip content={visible ? "隐藏密钥" : "显示密钥"}>
         <Button
           icon={visible ? <EyeOff size={14} /> : <Eye size={14} />}
           theme="borderless"

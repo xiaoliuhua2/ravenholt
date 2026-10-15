@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
-# XuanMu 配置管理工具
+# Ravenholt 配置管理工具
 # 一键管理 LLM API Key：清除 / 查看 / 设置
 # ============================================================
 set -e
 
 cd "$(dirname "$0")"
-CONFIG_FILE=".xuanmu/config.json"
+CONFIG_FILE=".ravenholt/config.json"
 
 # ---------- 颜色 ----------
 RED='\033[0;31m'
@@ -88,7 +88,7 @@ PYEOF
         python3 <<-'PYEOF'
 import json
 
-with open("/root/Desktop/Z3r0-0.2.1/.xuanmu/config.json", "r") as f:
+with open(".ravenholt/config.json", "r") as f:
     cfg = json.load(f)
 
 agents = cfg.get("agents", {})

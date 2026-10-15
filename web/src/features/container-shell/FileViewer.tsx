@@ -72,7 +72,7 @@ export function FileViewer({ containerId, file, onClose }: Props) {
       const response = await readContainerFile(containerId, params);
       setContent(response.data?.content ?? "");
     } catch (err) {
-      setError("Failed to read file");
+      setError("读取文件失败");
       showApiError(err);
     } finally {
       setLoading(false);
@@ -102,7 +102,7 @@ export function FileViewer({ containerId, file, onClose }: Props) {
     setSaving(true);
     try {
       await writeContainerFile(containerId, { path: file.path, content: editContent });
-      Toast.success("File saved");
+      Toast.success("文件已保存");
       setContent(editContent);
       setEditing(false);
     } catch (err) {
@@ -136,22 +136,22 @@ export function FileViewer({ containerId, file, onClose }: Props) {
       <div className="fv-toolbar">
         <span className="fv-title">{file.name}</span>
         <span className="fv-meta">
-          {viewerType === "text" ? "Text" : viewerType === "image" ? "Image" : "Binary"}
-          {" · "}{file.size.toLocaleString()} bytes
-          {viewerType === "text" ? ` · ${lineCount} lines` : ""}
+          {viewerType === "text" ? "文本" : viewerType === "image" ? "图片" : "二进制"}
+          {" · "}{file.size.toLocaleString()} 字节
+          {viewerType === "text" ? ` · ${lineCount} 行` : ""}
         </span>
         <span className="fv-spacer" />
         {viewerType === "text" && !editing && (
-          <Button icon={<Edit3 size={14} />} theme="borderless" type="tertiary" size="small" onClick={handleEdit}>Edit</Button>
+          <Button icon={<Edit3 size={14} />} theme="borderless" type="tertiary" size="small" onClick={handleEdit}>编辑</Button>
         )}
         {!editing && (
-          <Button icon={<Download size={14} />} theme="borderless" type="tertiary" size="small" onClick={() => void handleDownload()}>Download</Button>
+          <Button icon={<Download size={14} />} theme="borderless" type="tertiary" size="small" onClick={() => void handleDownload()}>下载</Button>
         )}
-        <Button icon={<X size={14} />} theme="borderless" size="small" type="tertiary" onClick={onClose}>Close</Button>
+        <Button icon={<X size={14} />} theme="borderless" size="small" type="tertiary" onClick={onClose}>关闭</Button>
       </div>
 
       {loading ? (
-        <div className="fv-loading">Loading...</div>
+        <div className="fv-loading">加载中…</div>
       ) : error ? (
         <div className="fv-error">{error}</div>
       ) : viewerType === "image" ? (
@@ -159,14 +159,14 @@ export function FileViewer({ containerId, file, onClose }: Props) {
           {imageSrc ? (
             <img src={imageSrc} alt={file.name} className="fv-image" />
           ) : (
-            <div className="fv-error">Failed to render image</div>
+            <div className="fv-error">图片渲染失败</div>
           )}
         </div>
       ) : viewerType === "text" ? (
         editing ? (
           <div className="fv-editor">
             <div className="fv-editor-cm">
-              <Suspense fallback={<div className="fv-loading">Loading editor...</div>}>
+              <Suspense fallback={<div className="fv-loading">编辑器加载中…</div>}>
                 <CodeEditor
                   value={editContent}
                   onChange={setEditContent}
@@ -175,13 +175,13 @@ export function FileViewer({ containerId, file, onClose }: Props) {
               </Suspense>
             </div>
             <div className="fv-editor-actions">
-              <Button icon={<Save size={14} />} size="small" type="primary" loading={saving} onClick={() => void handleSave()}>Save</Button>
-              <Button icon={<X size={14} />} size="small" type="tertiary" disabled={saving} onClick={handleCancelEdit}>Cancel</Button>
+              <Button icon={<Save size={14} />} size="small" type="primary" loading={saving} onClick={() => void handleSave()}>保存</Button>
+              <Button icon={<X size={14} />} size="small" type="tertiary" disabled={saving} onClick={handleCancelEdit}>取消</Button>
             </div>
           </div>
         ) : (
           <div className="fv-preview">
-            <Suspense fallback={<div className="fv-loading">Loading preview...</div>}>
+            <Suspense fallback={<div className="fv-loading">预览加载中…</div>}>
               <CodeEditor
                 value={content}
                 readOnly
@@ -193,8 +193,8 @@ export function FileViewer({ containerId, file, onClose }: Props) {
       ) : (
         <div className="fv-binary">
           <div className="fv-binary-icon" />
-          <p>Binary file cannot be previewed</p>
-          <span>{file.size.toLocaleString()} bytes</span>
+          <p>无法预览二进制文件</p>
+          <span>{file.size.toLocaleString()} 字节</span>
         </div>
       )}
     </div>

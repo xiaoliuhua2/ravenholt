@@ -48,3 +48,35 @@ async def assert_finding_verifiable(evidence_id: int | None) -> tuple[bool, str]
     if verdict != "reproduced":
         return False, f"evidence {evidence_id} latest verdict is '{verdict}', not 'reproduced'"
     return True, ""
+
+
+def assert_report_complete(
+    *,
+    title: str,
+    description: str,
+    impact: str,
+    asset_id: int | None,
+) -> tuple[bool, str]:
+    """报告结构门：finding 离开 draft 前必须达到最小报告要素（阈值见 policy.report_gate）。
+
+    与证据门并列：**两个门都过**，finding 才允许离开 draft。只校验现有字段的完整性；
+    src-hunt 7 段里的「复现步骤 / 修复建议」尚未建模，属后续工作。
+    """
+    from core.policy import get_policy, policy_loaded
+
+    if not policy_loaded():
+        return True, ""
+
+    gate = get_policy().report_gate
+    if not gate.enabled:
+        return True, ""
+
+    if gate.require_asset and asset_id is None:
+        return False, "report missing impact asset: attach an asset before leaving draft"
+    if len(title.strip()) < gate.min_title_chars:
+        return False, f"report title too short (< {gate.min_title_chars} chars)"
+    if len(description.strip()) < gate.min_description_chars:
+        return False, f"report description too short (< {gate.min_description_chars} chars): not reviewable"
+    if gate.require_impact and not impact.strip():
+        return False, "report missing impact statement"
+    return True, ""

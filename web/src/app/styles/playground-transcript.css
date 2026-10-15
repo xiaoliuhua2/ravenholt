@@ -8,6 +8,119 @@
   line-height: 1.6;
 }
 
+/* 沙箱生命周期提示：对话流里的一条系统条，不占 agent 气泡。 */
+.chat-sandbox-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  color: var(--z-text-subtle);
+  font-size: 12px;
+  background: var(--z-surface-muted);
+  border: 1px solid var(--z-line);
+  border-radius: 2px;
+}
+
+.chat-sandbox-notice small {
+  color: var(--z-text-muted);
+  font-family: var(--z-font-mono);
+}
+
+/* 风险审批卡片：对话流里的可操作系统条（待确认时给按钮，终态只读）。
+   用危险色描边与沙箱提示区分，避免用户忽略。 */
+.chat-approval-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--z-surface);
+  border: 1px solid var(--z-danger-border);
+  border-left-width: 3px;
+  border-radius: 2px;
+}
+
+.chat-approval-card.is-approved {
+  border-color: var(--z-success-border);
+}
+
+.chat-approval-card.is-rejected,
+.chat-approval-card.is-timeout,
+.chat-approval-card.is-cancelled {
+  border-color: var(--z-line-strong);
+  opacity: 0.86;
+}
+
+.chat-approval-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--z-warning);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chat-approval-card.is-approved .chat-approval-head {
+  color: var(--z-success);
+}
+
+.chat-approval-card.is-rejected .chat-approval-head,
+.chat-approval-card.is-timeout .chat-approval-head,
+.chat-approval-card.is-cancelled .chat-approval-head {
+  color: var(--z-text-muted);
+}
+
+.chat-approval-tag {
+  padding: 1px 6px;
+  color: var(--z-text-subtle);
+  font-family: var(--z-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid var(--z-line);
+  border-radius: 2px;
+}
+
+.chat-approval-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--z-text-muted);
+  font-size: 12px;
+}
+
+.chat-approval-body code {
+  overflow: hidden;
+  color: var(--z-text);
+  font-family: var(--z-font-mono);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-approval-target {
+  overflow: hidden;
+  font-family: var(--z-font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-approval-message {
+  margin: 0;
+  color: var(--z-text-subtle);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.chat-approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .transcript-panel,
 .thinking-block {
   display: grid;
@@ -17,7 +130,7 @@
   padding: 8px;
   background: var(--z-surface);
   border: 1px solid var(--z-line);
-  border-radius: 8px;
+  border-radius: 2px;
   scrollbar-width: thin;
   transition:
     background var(--motion-normal) var(--ease-standard),
@@ -28,12 +141,12 @@
 .transcript-panel-live {
   border-color: var(--z-danger-border);
   background: var(--z-surface-strong);
-  box-shadow: 0 8px 24px rgba(217, 45, 58, 0.06);
+  box-shadow: none;
 }
 
+/* 高度上限只约束展开后的正文区，头部常驻可见；折叠态不占高。 */
 .thinking-block {
-  max-height: min(28vh, 260px);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .transcript-panel-tools .tool-list {
@@ -102,11 +215,59 @@
   justify-content: center;
   padding: 0 6px;
   background: var(--z-surface-muted);
-  border-radius: 999px;
+  border-radius: 2px;
   color: var(--z-text-subtle);
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
+}
+
+/* 头部右侧的元信息区：耗时 + 复制，都是等宽小字，不与标题抢视觉权重。 */
+.transcript-panel-meta-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+
+.transcript-panel-meta {
+  color: var(--z-text-subtle);
+  font-family: var(--z-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.transcript-panel-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: var(--z-text-subtle);
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+
+.transcript-panel-copy:hover {
+  color: var(--z-text-strong);
+}
+
+.transcript-panel-copy.is-copied {
+  color: var(--z-success);
+}
+
+/* 折叠态摘要：折叠时也能看出这段在想什么，展开后被正文取代。 */
+.thinking-summary {
+  margin: 0;
+  overflow: hidden;
+  color: var(--z-text-subtle);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-text {
@@ -144,8 +305,8 @@
 .agent-text code {
   padding: 1px 6px;
   background: var(--z-surface-muted);
-  border-radius: 6px;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-radius: 2px;
+  font-family: var(--z-font-mono);
   font-size: 12.5px;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -158,7 +319,7 @@
   padding: 12px 14px;
   overflow-x: hidden;
   background: var(--z-code-bg);
-  border-radius: 12px;
+  border-radius: 2px;
   color: var(--z-text);
   font-size: 12.5px;
   line-height: 1.55;
@@ -183,7 +344,7 @@
   overflow: auto;
   background: var(--z-surface-soft);
   border: 1px solid var(--z-line);
-  border-radius: 8px;
+  border-radius: 2px;
   color: var(--z-text);
 }
 
@@ -280,33 +441,34 @@
   gap: 8px;
   padding: 8px 12px;
   background: var(--z-danger-bg);
-  border-radius: 10px;
+  border-radius: 2px;
   color: var(--z-danger);
   font-size: 13px;
 }
 
 .thinking-block-active {
   border-color: var(--z-danger-border);
-  box-shadow: 0 0 0 3px rgba(217, 45, 58, 0.06);
+  box-shadow: none;
 }
 
 .thinking-body {
   position: relative;
   min-width: 0;
   max-width: 100%;
-  max-height: 132px;
+  /* 展开时给足高度，保证整段思考可读；超长仍在内层滚动。 */
+  max-height: min(60vh, 640px);
   overflow: hidden;
 }
 
 .thinking-text {
   margin: 0;
   max-width: 100%;
-  max-height: 132px;
+  max-height: min(60vh, 640px);
   box-sizing: border-box;
   padding: 6px 4px;
   overflow-y: auto;
   color: var(--z-text-muted);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--z-font-mono);
   font-size: 12.5px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -317,6 +479,18 @@
 
 .thinking-text::-webkit-scrollbar {
   display: none;
+}
+
+/* 思考块里的轻量内联标记：**粗体** 与 `行内代码`（其余文本保持原样） */
+.thinking-text .thinking-em {
+  font-weight: 600;
+  color: var(--z-text, inherit);
+}
+
+.thinking-text .thinking-code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(128, 128, 160, 0.14);
 }
 
 .thinking-fade {
@@ -352,7 +526,7 @@
   overflow: clip;
   background: var(--z-surface-soft);
   border: 1px solid var(--z-line);
-  border-radius: 6px;
+  border-radius: 2px;
   animation: rowFadeIn 180ms var(--ease-emphasized) both;
   transition:
     border-color var(--motion-normal) var(--ease-standard),
@@ -424,7 +598,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--z-text-strong);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--z-font-mono);
   font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -472,9 +646,9 @@
   padding: 8px 10px 12px;
   overflow-x: hidden;
   background: var(--z-code-bg);
-  border-radius: 8px;
+  border-radius: 2px;
   color: var(--z-text);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--z-font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -519,7 +693,7 @@
   background: var(--z-surface-soft);
   border: 1px solid var(--z-line);
   border-left: 3px solid var(--z-line-strong);
-  border-radius: 6px;
+  border-radius: 2px;
   animation: rowFadeIn 180ms var(--ease-emphasized) both;
   transition:
     background var(--motion-normal) var(--ease-standard),
@@ -535,15 +709,38 @@
 .nested-panel-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 34px;
   padding: 6px 8px;
-  background: transparent;
-  border: 0;
   color: var(--z-text-muted);
   font-size: 12px;
   font-weight: 700;
   text-align: left;
+}
+
+.nested-panel-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+.nested-panel-toggle:disabled {
+  cursor: default;
+}
+
+.nested-panel-body {
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--z-line);
 }
 
 .nested-panel-title {
@@ -558,9 +755,25 @@
   flex: 0 0 auto;
   padding: 1px 6px;
   background: var(--z-surface-muted);
-  border-radius: 999px;
+  border-radius: 2px;
   color: var(--z-text-subtle);
   font-size: 11px;
+}
+
+.execution-row-toggle-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  color: var(--z-text-subtle);
+  cursor: pointer;
+}
+
+.execution-row-toggle-button:hover {
+  color: var(--z-text-muted);
 }
 
 .transcript-empty {
@@ -568,7 +781,7 @@
   color: var(--z-text-subtle);
   background: var(--z-surface-muted);
   border: 1px dashed var(--z-line);
-  border-radius: 8px;
+  border-radius: 2px;
   font-size: 13px;
   text-align: center;
 }

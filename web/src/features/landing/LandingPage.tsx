@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import xuanmuLogo from "../../assets/xuanmu-logo.svg";
+import ravenholtLogo from "../../assets/ravenholt-logo.svg";
 import { useAuth } from "../../shared/auth/AuthProvider";
 import { LandingContent } from "./LandingContent";
 
@@ -8,5 +8,5 @@ export function LandingPage() {
   const navigate = useNavigate();
   const consolePath = isAuthenticated ? "/playground" : "/login";
 
-  return <LandingContent logoSrc={xuanmuLogo} primaryAction={{ label: "Open workbench", onSelect: () => navigate(consolePath) }} />;
+  return <LandingContent logoSrc={ravenholtLogo} primaryAction={{ label: "进入操作台", onSelect: () => navigate(consolePath) }} />;
 }

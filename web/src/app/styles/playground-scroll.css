@@ -1,3 +1,7 @@
+/* ══════════════════════════════════════════════════════════════
+   操作台 — 消息滚动区（方向 A）
+   ══════════════════════════════════════════════════════════════ */
+
 .message-scroll-shell {
   position: relative;
   display: flex;
@@ -33,7 +37,7 @@
 }
 
 .message-scroll-viewport:focus-visible {
-  outline: 1px solid var(--z-danger-border);
+  outline: 1px solid var(--z-line-strong);
   outline-offset: -2px;
 }
 
@@ -56,15 +60,23 @@
   display: grid;
   place-items: center;
   pointer-events: none;
-  background: rgba(9, 13, 22, 0.42);
+  background: rgba(255, 255, 255, 0.66);
 }
 
+/* 回到底部按钮：发丝线方形，不再用大阴影圆钮 */
 .message-scroll-tail-floating {
   position: absolute;
   z-index: 7;
-  width: 40px;
-  height: 40px;
-  box-shadow: 0 16px 36px rgba(31, 45, 61, 0.18);
+  width: 36px;
+  height: 36px;
+  background: var(--z-surface);
+  border: 1px solid var(--z-line-strong);
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+.message-scroll-tail-floating:hover {
+  border-color: var(--z-brand);
 }
 
 .playground-canvas {
@@ -73,16 +85,16 @@
   width: 100%;
   min-height: 100%;
   min-width: 0;
-  padding: 28px 36px 170px;
+  padding: 30px 40px 168px;
 }
 
 .chat-scroll-tail-floating {
-  right: max(57px, calc((100% - 1192px) / 2 + 57px));
-  bottom: 142px;
+  right: max(61px, calc((100% - 1192px) / 2 + 61px));
+  bottom: 146px;
 }
 
 .playground-canvas-shell .message-scroll-viewport {
-  scroll-padding-bottom: 170px;
+  scroll-padding-bottom: 168px;
 }
 
 .playground-conversation-frame {

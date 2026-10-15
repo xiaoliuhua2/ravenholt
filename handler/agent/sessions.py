@@ -5,18 +5,17 @@ from typing import Any
 from fastapi.websockets import WebSocketState
 from fastapi import WebSocket, WebSocketDisconnect, status as ws_status
 
-from core.runtime.session import get_agent_pool
+from core.runtime.session import SubscriberClosed, get_agent_pool
 from handler import authenticate_ws_token, cancel_ws_task as _cancel_task, close_ws_silently as _close_silently
 from logger import get_logger
 from middleware.auth import AuthUser
 from schema.agent.events import AgentEventSchema
 from schema.agent.sessions import (
     AgentSessionSummarySchema,
-    AgentTurnRequest,
     AgentTurnResponse,
     ListAgentEventsResponse,
     ListAgentSessionsResponse,
-    UpdateAgentSessionSandboxContainerRequest,
+    StrixTurnRequest,
     UpdateAgentSessionTitleRequest,
 )
 from schema.common.responses import CommonResponse
@@ -27,15 +26,17 @@ from service.agent import sessions as agent_sessions
 logger = get_logger(__name__)
 
 
-async def create_agent_session_turn_handler(
-    request: AgentTurnRequest,
+async def submit_agent_session_strix_turn_handler(
+    session_id: str,
+    request: StrixTurnRequest,
     user: AuthUser,
 ) -> CommonResponse[AgentTurnResponse]:
     try:
-        session_id, events = await agent_runtime.submit_new_chat_turn(
+        events = await agent_runtime.submit_strix_user_turn(
+            session_id=session_id,
+            task=request.task or "",
             content=request.content,
             user=user,
-            sandbox_container_id=request.sandbox_container_id,
             requested_agent_code=request.agent_code,
         )
     except Exception as exc:
@@ -46,17 +47,16 @@ async def create_agent_session_turn_handler(
     return await _turn_response(session_id, user, events)
 
 
-async def submit_agent_session_turn_handler(
-    session_id: str,
-    request: AgentTurnRequest,
+async def create_agent_session_strix_turn_handler(
+    request: StrixTurnRequest,
     user: AuthUser,
 ) -> CommonResponse[AgentTurnResponse]:
+    """建会话并立刻跑一次 strix 回合（主线入口，对应原生轨道的 /turns）。"""
     try:
-        events = await agent_runtime.submit_user_turn(
-            session_id=session_id,
+        session_id, events = await agent_runtime.submit_new_strix_turn(
+            task=request.task or "",
             content=request.content,
             user=user,
-            sandbox_container_id=request.sandbox_container_id,
             requested_agent_code=request.agent_code,
         )
     except Exception as exc:
@@ -116,25 +116,6 @@ async def update_agent_session_title_handler(
     return CommonResponse(message="agent session title updated", data=session)
 
 
-async def update_agent_session_sandbox_container_handler(
-    session_id: str,
-    request: UpdateAgentSessionSandboxContainerRequest,
-    user: AuthUser,
-) -> CommonResponse[AgentSessionSummarySchema]:
-    try:
-        session = await agent_runtime.update_selected_sandbox_container(
-            session_id=session_id,
-            sandbox_container_id=request.sandbox_container_id,
-            user=user,
-        )
-    except Exception as exc:
-        error = _runtime_error_response(exc)
-        if error is not None:
-            return error
-        raise
-    return CommonResponse(message="sandbox container updated", data=session)
-
-
 async def list_agent_sessions_handler(limit: int, user: AuthUser) -> CommonResponse[ListAgentSessionsResponse]:
     sessions = await agent_sessions.list_sessions(
         limit=limit,
@@ -179,7 +160,7 @@ async def handle_agent_stream(websocket: WebSocket, session_id: str, token: str)
 
     await websocket.accept()
     session = None
-    event_queue: asyncio.Queue[AgentEventSchema | None] | None = None
+    event_queue: asyncio.Queue[AgentEventSchema | SubscriberClosed] | None = None
     reader: asyncio.Task | None = None
     forwarder: asyncio.Task | None = None
 
@@ -240,7 +221,7 @@ _ACCESS_CHECK_INTERVAL = 50
 
 async def _forward_events(
     websocket: WebSocket,
-    queue: asyncio.Queue[AgentEventSchema | None],
+    queue: asyncio.Queue[AgentEventSchema | SubscriberClosed],
     session_id: str,
     user: AuthUser,
 ) -> None:
@@ -248,8 +229,10 @@ async def _forward_events(
         events_since_check = 0
         while True:
             event = await queue.get()
-            if event is None:
-                await _close_silently(websocket, code=ws_status.WS_1000_NORMAL_CLOSURE)
+            if isinstance(event, SubscriberClosed):
+                # 会话/连接池被服务端主动拆除（配置更新、空闲淘汰、删除会话）。
+                # 带上应用层关闭码与原因，前端据此重连而不是报「流意外关闭」。
+                await _close_silently(websocket, code=event.code, reason=event.reason)
                 return
             events_since_check += 1
             if events_since_check >= _ACCESS_CHECK_INTERVAL:
@@ -283,8 +266,6 @@ async def _turn_response(
 def _runtime_error_response(exc: Exception) -> CommonResponse[Any] | None:
     if isinstance(exc, agent_runtime.SessionNotRunnableError):
         return CommonResponse(code=HTTPStatus.BAD_REQUEST.value, message="work project is canceled")
-    if isinstance(exc, agent_runtime.SandboxContainerUnavailableError):
-        return CommonResponse(code=HTTPStatus.BAD_REQUEST.value, message=str(exc))
     if isinstance(exc, agent_runtime.AgentUnavailableError):
         return CommonResponse(code=HTTPStatus.BAD_REQUEST.value, message=str(exc))
     if isinstance(exc, agent_runtime.SessionBusyError):

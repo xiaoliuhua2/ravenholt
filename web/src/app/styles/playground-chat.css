@@ -1,44 +1,54 @@
+/* ══════════════════════════════════════════════════════════════
+   操作台 — 对话流（方向 A）
+   语言：用户消息不再是品牌渐变气泡，改为「右对齐文本 + 品牌色竖线」
+        智能体消息用等宽小字做角色行；空态取消色块与光晕
+   ══════════════════════════════════════════════════════════════ */
+
 .chat-empty {
   display: grid;
   flex: 1;
-  gap: 12px;
+  gap: 16px;
   place-content: center;
   justify-items: center;
   color: var(--z-text-muted);
   text-align: center;
-  animation: contentScaleIn 320ms var(--ease-emphasized) both;
+  animation: contentFadeUp 320ms var(--ease-emphasized) both;
 }
 
+/* 空态标记：方形发丝线框 + 墨色图标，不再用品牌色渐变块与光晕 */
 .chat-empty-mark {
   display: grid;
-  width: 64px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
   place-items: center;
-  color: var(--z-text-strong);
-  background: linear-gradient(135deg, var(--z-brand) 0%, var(--z-brand-dark) 100%);
-  border-radius: 18px;
-  box-shadow: 0 22px 50px rgba(217, 45, 58, 0.28);
+  color: var(--z-text-subtle);
+  background: transparent;
+  border: 1px solid var(--z-line-strong);
+  border-radius: 2px;
 }
 
 .chat-empty h2 {
   margin: 0;
   color: var(--z-text-strong);
-  font-size: 22px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .chat-empty p {
   margin: 0;
-  max-width: 420px;
-  font-size: 14px;
+  max-width: 440px;
+  font-size: 13.5px;
+  line-height: 1.8;
 }
 
 .chat-stream {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 22px;
+  gap: 26px;
   width: 100%;
-  max-width: min(1120px, 100%);
+  max-width: min(1040px, 100%);
   margin: 0 auto;
   padding-bottom: 12px;
   box-sizing: border-box;
@@ -70,36 +80,30 @@
 
 .chat-message-user {
   justify-items: end;
-  max-width: min(680px, 80%);
+  max-width: min(620px, 78%);
 }
 
 .message-timestamp {
   color: var(--z-text-subtle);
+  font-family: var(--z-font-mono);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.2;
-  text-transform: none;
-  letter-spacing: 0;
+  letter-spacing: 0.04em;
 }
 
+/* 用户消息：右对齐纯文本 + 右侧一条品牌色竖线 */
 .user-bubble {
-  padding: 12px 16px;
-  color: var(--z-text-strong);
-  background: linear-gradient(135deg, var(--z-brand) 0%, var(--z-brand-dark) 100%);
-  border-radius: 16px 16px 4px 16px;
+  padding: 0 14px 0 0;
+  color: var(--z-text);
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.75;
+  background: transparent;
+  border-right: 2px solid var(--z-brand);
+  border-radius: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
-  box-shadow: 0 16px 32px rgba(217, 45, 58, 0.22);
-  transition:
-    box-shadow var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
-}
-
-.chat-row-user:hover .user-bubble {
-  box-shadow: 0 18px 38px rgba(217, 45, 58, 0.26);
-  transform: translateY(-1px);
+  text-align: right;
 }
 
 .user-bubble-text {
@@ -127,34 +131,34 @@
   width: 100%;
   min-width: 0;
   padding: 0;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.26);
-  border-radius: 10px;
+  background: transparent;
+  border: 1px solid var(--z-line-strong);
+  border-radius: 2px;
   cursor: zoom-in;
   overflow: hidden;
-  transition:
-    border-color var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
+  transition: border-color var(--motion-fast) var(--ease-standard);
 }
 
 .user-bubble-image-button:hover {
-  border-color: rgba(255, 255, 255, 0.54);
-  transform: translateY(-1px);
+  border-color: var(--z-brand);
 }
 
+/* @ 某智能体：发丝线小标签，不再用半透明白药丸 */
 .user-bubble-mention {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  margin-right: 6px;
-  padding: 1px 7px 1px 5px;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 999px;
-  color: var(--z-text-strong);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.4;
+  gap: 4px;
+  margin-right: 8px;
+  padding: 1px 7px;
+  color: var(--z-brand);
+  font-family: var(--z-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
   vertical-align: 1px;
+  background: transparent;
+  border: 1px solid var(--z-line-strong);
+  border-radius: 2px;
 }
 
 .image-preview-overlay {
@@ -199,48 +203,47 @@
   height: 40px;
   place-items: center;
   padding: 0;
-  color: var(--z-text-strong);
+  color: var(--z-on-brand);
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 999px;
+  border-radius: 2px;
   cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
 .image-preview-close:hover {
   background: rgba(255, 255, 255, 0.2);
-  transform: scale(1.04);
 }
 
 .agent-block {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 
+/* 角色行：等宽小字 + 字距，像 A 方案里的元数据 */
 .agent-header {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--z-text-subtle);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--z-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .agent-header .message-timestamp {
   margin-left: 2px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .agent-pulse {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   background: var(--z-success);
   border-radius: 50%;
   animation: agentPulse 1.4s ease-in-out infinite;

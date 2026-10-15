@@ -33,7 +33,7 @@ class StoredItem:
     nested_call_id: str = ""
 
 
-class XuanMuSession(SQLAlchemySession):
+class RavenholtSession(SQLAlchemySession):
     def __init__(
         self,
         *,

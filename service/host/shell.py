@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import inspect
 import os
-import pty
 import signal
 import struct
-import termios
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+# fcntl / pty / termios 仅存在于 POSIX，本地宿主 shell 依赖它们。
+# 非 POSIX 平台置空，让应用仍能导入（调用本地宿主 shell 时再显式失败）。
+if os.name == "posix":
+    import fcntl
+    import pty
+    import termios
+else:  # pragma: no cover - 仅非 POSIX 平台
+    fcntl = None  # type: ignore[assignment]
+    pty = None  # type: ignore[assignment]
+    termios = None  # type: ignore[assignment]
 
 from model.host.hosts import ManagedHost
 from service.host.hosts import DEFAULT_LOCAL_HOST_ID, query_managed_host_by_id
@@ -119,6 +127,10 @@ async def open_host_shell(
 
 
 async def _open_local_shell(rows: int, cols: int) -> LocalShellSession:
+    if pty is None or fcntl is None or termios is None:
+        raise RuntimeError(
+            "local host shell requires a POSIX platform (pty/fcntl/termios unavailable)"
+        )
     master_fd, slave_fd = pty.openpty()
     _set_terminal_size(master_fd, rows, cols)
 

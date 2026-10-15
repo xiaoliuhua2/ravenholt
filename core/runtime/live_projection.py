@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from schema.agent.events import (
     AgentEventSchema,
+    ApprovalEvent,
     DoneEvent,
     ErrorEvent,
     RunStateEvent,
@@ -37,6 +38,7 @@ class LiveEventProjection:
         self._tool_indexes: dict[tuple[str, str, str], int] = {}
         self._tool_result_indexes: dict[tuple[str, str, str], int] = {}
         self._subagent_indexes: dict[str, int] = {}
+        self._approval_indexes: dict[int, int] = {}
 
     def reset(self, event: RunStateEvent) -> None:
         self._events = [event]
@@ -70,6 +72,9 @@ class LiveEventProjection:
         if isinstance(event, SubagentTaskEvent):
             self._apply_subagent(event)
             return
+        if isinstance(event, ApprovalEvent):
+            self._apply_approval(event)
+            return
         if isinstance(event, DoneEvent):
             if not event.nested_call_id:
                 self._events.append(event)
@@ -82,6 +87,7 @@ class LiveEventProjection:
         self._tool_indexes.clear()
         self._tool_result_indexes.clear()
         self._subagent_indexes.clear()
+        self._approval_indexes.clear()
 
     def _apply_segment(self, event: TextDeltaEvent | ThinkingDeltaEvent) -> None:
         key = _SegmentKey(
@@ -137,6 +143,18 @@ class LiveEventProjection:
             return
         self._events[index] = event
 
+    def _apply_approval(self, event: ApprovalEvent) -> None:
+        """按 confirmation_id 就地更新：一张卡片从 pending 走到终态只占一个位置。
+
+        不加这个分支的话，重连时的 snapshot 会漏掉审批卡片（未知类型被静默丢弃）。
+        """
+        index = self._approval_indexes.get(event.confirmation_id)
+        if index is None:
+            self._approval_indexes[event.confirmation_id] = len(self._events)
+            self._events.append(event)
+            return
+        self._events[index] = event
+
     def _rebuild_indexes(self) -> None:
         self._clear_indexes()
         for index, event in enumerate(self._events):
@@ -153,3 +171,5 @@ class LiveEventProjection:
                 self._tool_result_indexes[(event.call_id, event.nested_for, event.nested_call_id)] = index
             elif isinstance(event, SubagentTaskEvent):
                 self._subagent_indexes[event.run_id] = index
+            elif isinstance(event, ApprovalEvent):
+                self._approval_indexes[event.confirmation_id] = index

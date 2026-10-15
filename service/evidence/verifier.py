@@ -20,15 +20,12 @@ from typing import Any
 
 import httpx
 
+from core.policy.enforcer import PolicyDenied, enforce
 from database import get_async_session
 from model.evidence.evidence import Evidence
 from model.evidence.verifier_runs import VerifierRun
 from service.evidence.diff import four_dim_diff
-from service.evidence.store import get_evidence
-
-
-def _dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)
+from service.evidence.store import dumps_json, get_evidence
 
 
 def _load_request(evidence: Evidence) -> dict[str, Any]:
@@ -54,13 +51,18 @@ async def _replay(evidence: Evidence) -> tuple[int, str]:
     if not url:
         raise ValueError("evidence has no replayable url")
 
+    # 红线策略：平台侧出网复现必须先过判定（scope / denylist / 限速 / kill switch）
+    decision = await enforce("evidence.replay", str(url))
+    if not decision.allowed:
+        raise PolicyDenied(decision)
+
     headers = {str(k): str(v) for k, v in (spec.get("headers") or {}).items()}
     kwargs: dict[str, Any] = {}
     if spec.get("json") is not None:
         kwargs["json"] = spec["json"]
     elif spec.get("body") is not None:
         body = spec["body"]
-        kwargs["content"] = body if isinstance(body, (str, bytes)) else _dumps(body)
+        kwargs["content"] = body if isinstance(body, (str, bytes)) else dumps_json(body)
 
     async with httpx.AsyncClient(trust_env=False, timeout=15) as client:
         response = await client.request(method, url, headers=headers, **kwargs)
@@ -76,7 +78,7 @@ async def _record(
     run = VerifierRun(
         evidence_id=evidence_id,
         verdict=verdict,
-        diff_json=_dumps(diff),
+        diff_json=dumps_json(diff),
         note=note,
         created_at=datetime.now(),
     )

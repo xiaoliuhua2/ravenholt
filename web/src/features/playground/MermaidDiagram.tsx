@@ -7,14 +7,14 @@ mermaid.initialize({
   theme: "base",
   suppressErrorRendering: true,
   themeVariables: {
-    primaryColor: "#161f2e",
-    primaryTextColor: "#f8fafc",
-    primaryBorderColor: "#9cc7cb",
-    lineColor: "#9fb2c7",
-    secondaryColor: "#1d2838",
-    tertiaryColor: "#0b1018",
-    noteBkgColor: "#2a1720",
-    noteTextColor: "#f8fafc",
+    primaryColor: "#eef2f7",
+    primaryTextColor: "#10141d",
+    primaryBorderColor: "#cbd2dd",
+    lineColor: "#8b93a3",
+    secondaryColor: "#f3f5f8",
+    tertiaryColor: "#ffffff",
+    noteBkgColor: "#fff7e6",
+    noteTextColor: "#10141d",
   },
 });
 
@@ -44,7 +44,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ source }: { source:
   if (result && "error" in result) {
     return (
       <div className="mermaid-diagram mermaid-diagram-error" title={result.error}>
-        <div className="mermaid-error-label">Mermaid render failed</div>
+        <div className="mermaid-error-label">Mermaid 渲染失败</div>
         <pre>
           <code className="language-mermaid">{source}</code>
         </pre>
@@ -56,7 +56,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({ source }: { source:
     <div
       className="mermaid-diagram"
       aria-busy={!result}
-      aria-label="Mermaid diagram"
+      aria-label="Mermaid 图"
       dangerouslySetInnerHTML={result && "svg" in result ? { __html: result.svg } : undefined}
     />
   );

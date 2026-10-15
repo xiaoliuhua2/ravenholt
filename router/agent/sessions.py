@@ -2,25 +2,23 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 
 from handler.agent.sessions import (
     cancel_agent_session_tasks_handler,
-    create_agent_session_turn_handler,
+    create_agent_session_strix_turn_handler,
     delete_agent_session_handler,
     handle_agent_stream,
     interrupt_agent_session_handler,
     list_agent_events_handler,
     list_agent_sessions_handler,
-    submit_agent_session_turn_handler,
-    update_agent_session_sandbox_container_handler,
+    submit_agent_session_strix_turn_handler,
     update_agent_session_title_handler,
 )
+from schema.agent.sessions import StrixTurnRequest
 from middleware.auth import AuthUser, require_user
 from router.common.responses import COMMON_ERROR_RESPONSES, not_found_response
 from schema.agent.sessions import (
     AgentSessionSummarySchema,
-    AgentTurnRequest,
     AgentTurnResponse,
     ListAgentEventsResponse,
     ListAgentSessionsResponse,
-    UpdateAgentSessionSandboxContainerRequest,
     UpdateAgentSessionTitleRequest,
 )
 from schema.common.responses import CommonResponse
@@ -38,19 +36,19 @@ async def list_agent_sessions_route(
     return await list_agent_sessions_handler(limit=limit, user=user)
 
 
-async def create_agent_session_turn_route(
-    request: AgentTurnRequest,
+async def create_agent_session_strix_turn_route(
+    request: StrixTurnRequest,
     user: AuthUser = Depends(require_user),
 ) -> CommonResponse[AgentTurnResponse]:
-    return await create_agent_session_turn_handler(request=request, user=user)
+    return await create_agent_session_strix_turn_handler(request=request, user=user)
 
 
-async def submit_agent_session_turn_route(
+async def submit_agent_session_strix_turn_route(
     session_id: str,
-    request: AgentTurnRequest,
+    request: StrixTurnRequest,
     user: AuthUser = Depends(require_user),
 ) -> CommonResponse[AgentTurnResponse]:
-    return await submit_agent_session_turn_handler(
+    return await submit_agent_session_strix_turn_handler(
         session_id=session_id,
         request=request,
         user=user,
@@ -86,14 +84,6 @@ async def update_agent_session_title_route(
     return await update_agent_session_title_handler(session_id=session_id, request=request, user=user)
 
 
-async def update_agent_session_sandbox_container_route(
-    session_id: str,
-    request: UpdateAgentSessionSandboxContainerRequest,
-    user: AuthUser = Depends(require_user),
-) -> CommonResponse:
-    return await update_agent_session_sandbox_container_handler(session_id=session_id, request=request, user=user)
-
-
 async def list_agent_events_route(
     session_id: str,
     before_seq: int | None = Query(default=None, ge=1),
@@ -124,17 +114,19 @@ router.add_api_route(
     responses=COMMON_ERROR_RESPONSES,
 )
 
+# strix 轨道的主线入口：建会话 + 立刻跑一次 ravenholt 运行时回合（root 动态派生子代理）
 router.add_api_route(
-    "/turns",
-    create_agent_session_turn_route,
+    "/strix-turns",
+    create_agent_session_strix_turn_route,
     methods=["POST"],
     response_model=CommonResponse[AgentTurnResponse],
     responses=COMMON_ERROR_RESPONSES,
 )
 
+# ravenholt 运行时回合：root 在运行时经 create_agent 动态派生子代理（事件经事件总线投影）
 router.add_api_route(
-    "/{session_id}/turns",
-    submit_agent_session_turn_route,
+    "/{session_id}/strix-turn",
+    submit_agent_session_strix_turn_route,
     methods=["POST"],
     response_model=CommonResponse[AgentTurnResponse],
     responses={**COMMON_ERROR_RESPONSES, **not_found_response("Agent session")},
@@ -159,14 +151,6 @@ router.add_api_route(
 router.add_api_route(
     "/{session_id}/title",
     update_agent_session_title_route,
-    methods=["PATCH"],
-    response_model=CommonResponse[AgentSessionSummarySchema],
-    responses={**COMMON_ERROR_RESPONSES, **not_found_response("Agent session")},
-)
-
-router.add_api_route(
-    "/{session_id}/sandbox-container",
-    update_agent_session_sandbox_container_route,
     methods=["PATCH"],
     response_model=CommonResponse[AgentSessionSummarySchema],
     responses={**COMMON_ERROR_RESPONSES, **not_found_response("Agent session")},

@@ -1,0 +1,279 @@
+# Ravenholt 技能路由表（工厂默认）
+#
+# 作用：把「现场观察到的指纹 / 特征」确定性地映射到一组 src_hunt 技能，减少 agent
+# 随机 load_skill。agent 调用 `route_skills(observed=...)`，本表按 signals 做小写子串
+# 匹配，命中即返回对应 skills（最多 max_skills 个，与 strix 加载器上限一致）。
+#
+# 可配置：复制本文件为 .ravenholt/skill_routes.yaml 即可整体覆盖（该实例文件不提交）。
+# signals 与 skills 都是用户可改的；skills 必须写限定名 `src_hunt/<技能>`。
+# 只增强、不限制：未命中任何一条时回退 fallback_skills，agent 仍可自行 load_skill。
+
+version: 1
+max_skills: 5
+fallback_skills:
+  - src_hunt/打穿短表
+# 白盒（源码审计）会话的兜底：一条都没命中时用这套，而不是渗透短表。
+# 06 是本项目自己的白盒主流程（Phase 0～6），src_hunt 分类可被 load_skill 加载。
+audit_fallback_skills:
+  - src_hunt/06-researcher-blackbox-whitebox
+
+routes:
+  # —— 白盒 / 源码审计 ——
+  - id: whitebox-triage
+    note: 白盒主流程（Phase 0～6）+ 静态工具工作流
+    signals: [白盒, 白盒审计, 源码审计, 代码审计, 源码目录, 0day, 静态分析, 静态分诊, source map, sourcemap, sast, semgrep, ast-grep, astgrep, tree-sitter, treesitter]
+    skills: [src_hunt/06-researcher-blackbox-whitebox, custom/source_aware_sast]
+  - id: whitebox-secrets
+    note: 源码里的硬编码凭据 / 密钥泄露
+    signals: [硬编码, 密钥泄露, 凭据, 私钥, accesskey, 明文密钥, gitleaks, trufflehog, 密钥扫描]
+    skills: [custom/source_aware_sast]
+  - id: whitebox-deps
+    note: 依赖 / 供应链（SCA）已知漏洞
+    signals: [依赖, 供应链, sca, sbom, trivy, lockfile, 组件版本, cve 扫描, 第三方组件]
+    skills: [custom/dependency_cve_scanning]
+
+  # —— 侦察 / 指纹 ——
+  - id: recon
+    note: 进站侦察、建接口清单、JS 抽钥匙
+    signals: [侦察, 资产, 子域, 接口清单, 抽 js, 抽js, 爬虫, sitemap, 目录扫描]
+    skills: [src_hunt/recon-methodology, src_hunt/js-reverse-guide, src_hunt/osint-asset-intel]
+  - id: fingerprint-nday
+    note: 指纹识别与 n-day 三分类
+    signals: [指纹, n-day, nday, 版本识别, 组件识别, favicon, wappalyzer, 中间件识别]
+    skills: [src_hunt/scanner-fingerprint-n-day-triage]
+  - id: render-service-rce
+    note: 渲染/转换/文档生成类服务的 RCE 面
+    signals: [渲染服务, 文档转换, 在线预览, libreoffice, wkhtmltopdf, 图片处理服务, 判决书]
+    skills: [src_hunt/rendering-service-rce-triage]
+  - id: unauth-config-field
+    note: 未授权服务配置字段判读
+    signals: [配置读取, queryconfig, getconfigvalue, 未登录返回配置, 前端配置]
+    skills: [src_hunt/unauth-service-config-field-triage]
+
+  # —— 防护层 ——
+  - id: dynamic-js-protection
+    note: 瑞数类动态 JS 防护（412 + _ts + 动态 cookie）
+    signals: ["412", 瑞数, river, 动态cookie, 动态 js 防护, _$$q, $_ts, 三件套]
+    skills: [src_hunt/river-security-bypass, src_hunt/waf-bypass-parser-layer]
+  - id: waf-bypass
+    note: 静态检查型 WAF 绕过
+    signals: [waf, 403 拦截, 自定义拦截页, 关键词拦截, 云waf, aws waf, cloud armor]
+    skills: [src_hunt/waf-bypass, src_hunt/waf-bypass-strategy-selection, src_hunt/waf-bypass-parser-layer]
+  - id: sentinel-probe
+    note: 全站挑战/全局拦截下的哨兵判定
+    signals: [哨兵, 全站挑战, 全局拦截, 所有路径同一状态码, 全站 429]
+    skills: [src_hunt/waf-bypass-strategy-selection]
+
+  # —— 越权 / 认证 ——
+  - id: idor
+    note: 越权、换 id、未授权敏感读
+    signals: [越权, idor, 换 id, 换id, 未授权, 密文 id, 租户, 横向, 未授权读, 邻号]
+    skills: [src_hunt/idor-test, src_hunt/401-403-bypass]
+  - id: 401-403
+    note: 401/403 绕过
+    signals: ["401", "403", 鉴权绕过, 网关鉴权头, 不需要鉴权]
+    skills: [src_hunt/401-403-bypass, src_hunt/idor-test]
+  - id: authbypass
+    note: 登录/会话/发签口绕过
+    signals: [登录绕过, 发签, 会话托管, sso, 免密, 未登录登录态, 换票, 联合登录, signkey, appsecret]
+    skills: [src_hunt/authbypass-test, src_hunt/oauth-jwt-test]
+  - id: oauth-jwt
+    note: OAuth / JWT / 票据类
+    signals: [jwt, oauth, 票据, token 无效, kid, 硬编码密钥, 签名校验]
+    skills: [src_hunt/oauth-jwt-test, src_hunt/authbypass-test]
+  - id: verification-oracle
+    note: 核验类接口当枚举 oracle（实名/密保/账号）
+    signals: [实名核验, 身份证, 核验接口, 密保, oracle, 枚举, 账号枚举, 报错差分]
+    skills: [src_hunt/verification-oracle-enum]
+  - id: sms-login
+    note: 短信/验证码登录
+    signals: [短信登录, 验证码, 短信轰炸, 发短信, sms]
+    skills: [src_hunt/sms-login-test]
+
+  # —— 注入 / 执行 ——
+  - id: injection
+    note: SQL / 命令注入
+    signals: [sql 注入, sql注入, sqli, 注入, 命令注入, rce, 报错注入, es 查询, 搜选项]
+    skills: [src_hunt/injection-test]
+  - id: xss
+    note: XSS 与客户端代码执行
+    signals: [xss, 跨站脚本, 存储 xss, 客户端 rce, electron, cef, 自定义协议]
+    skills: [src_hunt/xss-test, src_hunt/csp-bypass-test]
+  - id: ssrf
+    note: SSRF 与云元数据
+    signals: [ssrf, 元数据, imds, 回环, goproxy, 代理白名单, 内网探测]
+    skills: [src_hunt/ssrf-test]
+  - id: xxe
+    note: XXE
+    signals: [xxe, 外部实体, xml 解析]
+    skills: [src_hunt/xxe-test]
+  - id: template-injection
+    note: 表达式/模板注入
+    signals: [模板注入, ssti, el 注入, spel, ognl, 表达式注入]
+    skills: [src_hunt/el-injection-test]
+  - id: deserialization
+    note: 反序列化
+    signals: [反序列化, deserial, 序列化, gadget, ysoserial]
+    skills: [src_hunt/deserialization-test]
+  - id: jndi
+    note: JNDI / Log4j 类
+    signals: [jndi, log4j, log4shell, ldap 注入]
+    skills: [src_hunt/jndi-injection-test]
+  - id: path-traversal
+    note: 路径穿越 / 任意文件读
+    signals: [路径穿越, 任意文件读, lfi, 目录穿越, 静态目录, ../../]
+    skills: [src_hunt/path-traversal-lfi-test]
+  - id: file-upload
+    note: 上传链 / 对象存储领签 / 存储覆盖
+    signals: [上传, 领签, sts, 预签名, presign, 对象存储, policy, 桶策略, filekey, 覆盖对象]
+    skills: [src_hunt/file-upload-test, src_hunt/idor-test]
+  - id: prototype-pollution
+    note: 原型链污染
+    signals: [原型链, prototype pollution, __proto__, constructor.prototype]
+    skills: [src_hunt/prototype-pollution-test]
+
+  # —— 协议 / 缓存 ——
+  - id: cache-poisoning
+    note: 缓存投毒 / 缓存欺骗
+    signals: [缓存投毒, 缓存欺骗, cache poison, x-cache, 缓存键]
+    skills: [src_hunt/cache-poisoning-test, src_hunt/http-host-header-test]
+  - id: host-header
+    note: Host 头注入
+    signals: [host 头, host注入, x-forwarded-host, 重置密码毒, 密码重置毒]
+    skills: [src_hunt/http-host-header-test]
+  - id: smuggling
+    note: HTTP 请求走私
+    signals: [请求走私, smuggling, te cl, content-length 冲突]
+    skills: [src_hunt/http-smuggling-test]
+  - id: http2
+    note: HTTP/2 攻击面
+    signals: [http/2, http2, h2c, 伪头, 流复用]
+    skills: [src_hunt/http2-attacks-test]
+  - id: crlf
+    note: CRLF 注入
+    signals: [crlf, 响应拆分, 头注入]
+    skills: [src_hunt/crlf-injection-test]
+  - id: hpp
+    note: HTTP 参数污染
+    signals: [hpp, 参数污染, 重复参数]
+    skills: [src_hunt/hpp-test]
+
+  # —— 业务 / 逻辑 ——
+  - id: logic
+    note: 业务逻辑缺陷
+    signals: [业务逻辑, 逻辑漏洞, 越权支付, 优惠券, 价格篡改, 竞态, 并发, race]
+    skills: [src_hunt/logic-test, src_hunt/race-condition-test]
+  - id: race-condition
+    note: 竞态条件
+    signals: [竞态, 条件竞争, race condition, 并发重放]
+    skills: [src_hunt/race-condition-test, src_hunt/logic-test]
+  - id: mass-assignment
+    note: 批量赋值 / 隐藏可写字段
+    signals: [mass assignment, 批量赋值, 隐藏字段, 多塞字段, swagger]
+    skills: [src_hunt/idor-test]
+  - id: info-leak
+    note: 信息泄露（源码/凭证/样例）
+    signals: [信息泄露, 源码泄露, 硬编码, 凭证泄露, pat, accesskey, 明文密钥, 样例报文]
+    skills: [src_hunt/info-leak-test, src_hunt/js-reverse-guide]
+  - id: graphql
+    note: GraphQL
+    signals: [graphql, introspection, 查询深度, 别名爆破]
+    skills: [src_hunt/graphql-test]
+  - id: api-gateway
+    note: API 网关 / 未登录前缀
+    signals: [api 网关, 网关, 白名单前缀, 反代前缀, 双胞胎, 前缀对撞, openapi]
+    skills: [src_hunt/api-gateway-test, src_hunt/api-gateway-oracle]
+  - id: websocket
+    note: WebSocket
+    signals: [websocket, ws 协议, 实时推送]
+    skills: [src_hunt/websocket-test]
+  - id: open-redirect
+    note: 开放重定向
+    signals: [开放重定向, open redirect, 跳转绕过, redirect_uri]
+    skills: [src_hunt/open-redirect-test]
+  - id: clickjacking
+    note: 点击劫持
+    signals: [点击劫持, clickjacking, x-frame-options]
+    skills: [src_hunt/clickjacking-test]
+  - id: csrf
+    note: CSRF
+    signals: [csrf, 跨站请求伪造, 匿名 csrf 头]
+    skills: [src_hunt/csrf-test]
+  - id: cors
+    note: CORS（红线默认不挖，仅在用户点名时使用）
+    signals: [cors, 跨域配置, origin 反射]
+    skills: [src_hunt/cors-test, src_hunt/10-cors-vuln-report-priority]
+
+  # —— 特色 / 客户端 / 其他 ——
+  - id: miniprogram
+    note: 小程序抓包 / 票据接管 / 埋点凭证
+    signals: [小程序, 抓包, lxcode, ticket, 票据, 埋点, 采集域, session_id, 换台客户端]
+    skills: [src_hunt/miniprogram-capture-token]
+  - id: mobile-gateway
+    note: 移动端 DCP 网关
+    signals: [移动端, dcp, app 网关, 加固, 手游]
+    skills: [src_hunt/mobile-dcp-gateway]
+  - id: android-whitebox
+    note: 安卓白盒审计
+    signals: [安卓, apk, android, 反编译, jadx]
+    skills: [src_hunt/android-app-whitebox-audit]
+  - id: agent-tool-exec
+    note: 智能体/工具执行越权
+    signals: [智能体, agent, 对话口, 工具执行, bash, python 执行, mcp]
+    skills: [src_hunt/agent-tool-exec-test, src_hunt/llm-security-test]
+  - id: llm-security
+    note: LLM 安全
+    signals: [llm, 大模型, prompt 注入, 越狱, 提示注入]
+    skills: [src_hunt/llm-security-test]
+  - id: cloud-ide
+    note: 云 IDE / 编程台 RCE 链
+    signals: [云 ide, 编程台, codex, vscode, jupyter, 容器逃逸]
+    skills: [src_hunt/cloud-ide-codex-rce-chain, src_hunt/path-traversal-lfi-test]
+  - id: subdomain-takeover
+    note: 子域接管
+    signals: [子域接管, subdomain takeover, 悬空解析, cname 悬空]
+    skills: [src_hunt/subdomain-takeover-test]
+  - id: insecure-scm
+    note: 不安全 SCM / 仓库泄露
+    signals: [git 泄露, .git, svn, scm, 仓库泄露, ci 钥]
+    skills: [src_hunt/insecure-scm-test, src_hunt/info-leak-test]
+  - id: dependency-confusion
+    note: 依赖混淆
+    signals: [依赖混淆, dependency confusion, 私有包, npm 投毒]
+    skills: [src_hunt/dependency-confusion-test]
+  - id: type-juggling
+    note: 类型混淆
+    signals: [类型混淆, type juggling, 弱比较, 0e 绕过]
+    skills: [src_hunt/type-juggling-test]
+  - id: xslt
+    note: XSLT 注入
+    signals: [xslt, 样式表注入, xsl]
+    skills: [src_hunt/xslt-injection-test]
+  - id: email-header-injection
+    note: 邮件头注入
+    signals: [邮件头注入, email header, 垃圾邮件]
+    skills: [src_hunt/email-header-injection-test]
+  - id: csv-formula
+    note: CSV 公式注入
+    signals: [csv 注入, 公式注入, csv formula, 导出 excel]
+    skills: [src_hunt/csv-formula-injection-test]
+  - id: dns-rebinding
+    note: DNS 重绑定
+    signals: [dns 重绑定, rebinding, dns rebinding]
+    skills: [src_hunt/dns-rebinding-test]
+  - id: dangling-markup
+    note: 悬空标记注入
+    signals: [悬空标记, dangling markup]
+    skills: [src_hunt/dangling-markup-test]
+  - id: ghost-bits
+    note: Ghost Bits 类型转换攻击
+    signals: [ghost bits, 类型转换, 截断, 幽灵位]
+    skills: [src_hunt/ghost-bits-cast-test]
+  - id: chromium-policy
+    note: Chromium 浏览器策略分层
+    signals: [chromium, 浏览器策略, 策略分层, chrome 沙箱]
+    skills: [src_hunt/chromium-browser-policy-layering]
+  - id: yakit-forensics
+    note: Yakit MCP 取证
+    signals: [yakit, 取证, 流量取证]
+    skills: [src_hunt/yakit-mcp-forensics]

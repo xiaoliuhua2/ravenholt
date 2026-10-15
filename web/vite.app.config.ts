@@ -13,7 +13,7 @@ const VENDOR_CHUNKS: Record<string, RegExp> = {
 
 function semiEnglishOnlyPlugin(): Plugin {
   return {
-    name: "z3r0-semi-english-only",
+    name: "ravenholt-semi-english-only",
     transform(code, id) {
       if (!id.includes("@douyinfe/semi-ui") || !id.endsWith("_utils/reactRender.js")) {
         return null;

@@ -19,8 +19,28 @@ class AgentEventTypeSchema(StrEnum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     SUBAGENT_TASK = "subagent_task"
+    SANDBOX = "sandbox"
+    APPROVAL = "approval"
     DONE = "done"
     ERROR = "error"
+
+
+class SandboxPhaseSchema(StrEnum):
+    """会话沙箱的生命周期阶段（由运行时自动 provisioning 驱动）。"""
+
+    PROVISIONING = "provisioning"
+    READY = "ready"
+    CLEANUP = "cleanup"
+
+
+class ApprovalPhaseSchema(StrEnum):
+    """一次风险审批的生命周期阶段（命中未放行的审批项时挂起等待用户决策）。"""
+
+    PENDING = "pending"      # 已挂起，等待用户在对话流里决策
+    APPROVED = "approved"    # 用户批准，本次被拦的动作继续执行
+    REJECTED = "rejected"    # 用户拒绝，动作被拦下
+    TIMEOUT = "timeout"      # 等待超时，按拒绝处理（fail-closed）
+    CANCELLED = "cancelled"  # 回合被中断，挂起随之作废
 
 
 class AgentInputPartTypeSchema(StrEnum):
@@ -172,6 +192,39 @@ class SubagentTaskEvent(_AgentScopedEvent):
     progress: str = ""
 
 
+class SandboxEvent(_AgentScopedEvent):
+    """会话沙箱的生命周期事件（由运行时自动 provisioning 驱动）。
+
+    前端据此展示"本会话正在用哪个沙箱"、沙箱准备进度与回收状态。
+    """
+
+    type: Literal[AgentEventTypeSchema.SANDBOX] = AgentEventTypeSchema.SANDBOX
+    phase: SandboxPhaseSchema
+    container_id: int | None = None
+    container_hash: str = ""
+    container_name: str = ""
+    image_name: str = ""
+    message: str = ""
+
+
+class ApprovalEvent(_AgentScopedEvent):
+    """风险审批事件：命中未放行的审批项时在对话流里落一条可操作的卡片。
+
+    ``confirmation_id`` 是 ``policy_confirmations`` 的主键，同时用作时间线的确定性
+    key（``approval:<id>``），使 pending → approved / rejected 在同一位置原地更新，
+    而不是每次阶段变化都新增一条。
+    """
+
+    type: Literal[AgentEventTypeSchema.APPROVAL] = AgentEventTypeSchema.APPROVAL
+    confirmation_id: int
+    approval_key: str = ""
+    label: str = ""
+    action: str = ""
+    target: str = ""
+    phase: ApprovalPhaseSchema
+    message: str = ""
+
+
 class DoneEvent(_AgentScopedEvent):
     type: Literal[AgentEventTypeSchema.DONE] = AgentEventTypeSchema.DONE
 
@@ -193,6 +246,8 @@ AgentContentEventSchema = Annotated[
     | ToolCallEvent
     | ToolResultEvent
     | SubagentTaskEvent
+    | SandboxEvent
+    | ApprovalEvent
     | ErrorEvent,
     Field(discriminator="type"),
 ]
@@ -208,6 +263,8 @@ AgentEventSchema = Annotated[
     | ToolCallEvent
     | ToolResultEvent
     | SubagentTaskEvent
+    | SandboxEvent
+    | ApprovalEvent
     | DoneEvent
     | ErrorEvent,
     Field(discriminator="type"),

@@ -133,18 +133,6 @@ async def invalidate_agent_tool_bindings(container_id: int) -> None:
         logger.exception("agent tool binding invalidation failed: %s", container_id)
 
 
-async def _invalidate_all_agent_tool_bindings() -> None:
-    _clear_tool_binding_state_cache()
-    if _tool_invalidation_tasks:
-        await asyncio.gather(*tuple(_tool_invalidation_tasks), return_exceptions=True)
-    try:
-        from core.runtime.session import get_agent_pool
-
-        await get_agent_pool().invalidate_tool_bindings()
-    except Exception:
-        logger.exception("agent tool binding invalidation failed")
-
-
 async def _load_container_status_snapshots() -> list[ContainerStatusSnapshot]:
     statement = select(SandboxContainer.id, SandboxContainer.host_id, SandboxContainer.container_hash, SandboxContainer.status).where(
         SandboxContainer.container_hash != ""
@@ -221,10 +209,6 @@ async def stop_sandbox_container_status_monitor() -> None:
         pass
     await _drain_tool_invalidation_tasks()
     logger.info("sandbox container status monitor stopped")
-
-
-async def invalidate_all_agent_tool_bindings() -> None:
-    await _invalidate_all_agent_tool_bindings()
 
 
 async def _drain_tool_invalidation_tasks() -> None:

@@ -1,4 +1,6 @@
 @import "./styles/base.css";
+@import "./styles/themes.css";
+@import "./styles/theme-switcher.css";
 @import "./styles/login.css";
 @import "./styles/landing.css";
 @import "./styles/admin.css";

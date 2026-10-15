@@ -5,7 +5,7 @@ editLink: true
 
 # Join Community
 
-Z3r0 is a stylized form of “Zero”. In security research and technical work, Zero refers both to exploration from the ground up and to the process of discovering unknown vulnerabilities, unknown boundaries, and unknown system behavior.
+Ravenholt is built on the upstream open-source project strix, and its name combines raven with holt (a wooded hill, or a small keep). In security research and technical work, exploring from the ground up and discovering unknown vulnerabilities, unknown boundaries, and unknown system behavior remain the core focus of this project.
 
 Through this project, I hope to build a small but focused community that connects people who are genuinely committed to technology and consistently driven by curiosity.
 
@@ -25,14 +25,14 @@ This community values deep technical discussion and rigorous verification practi
 2. People who are excessively hostile, disrespectful, or prone to venting emotions without restraint.
 3. People who use tools illegally to launch malicious attacks.
 
-Z3r0 is evolving rapidly. Developers with shared interests are sincerely invited to join the project development work and discuss technical topics together.
+Ravenholt is evolving rapidly. Developers with shared interests are sincerely invited to join the project development work and discuss technical topics together.
 
 ## Contact
 
-At the early stage, interested developers can contact me by email. A brief self-introduction in the email is welcome.
+At the early stage, interested developers can contact me on GitHub. A brief self-introduction in an issue or discussion is welcome.
 
-My email address is: me@yvling.cn
+My GitHub profile: https://github.com/xiaoliuhua2
 
 ## About the Author
 
-I am yv1ing, a cybersecurity engineer and full-stack developer. I was once a CTF player, or more precisely, I entered the field of cybersecurity because of CTF competitions. I have always maintained a strong passion for technology and enjoy exploring anything novel, unusual, and technically interesting.
+I am 六花, the author and maintainer of Ravenholt.

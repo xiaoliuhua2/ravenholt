@@ -13,6 +13,7 @@ from core.sandbox.command_jobs import cancel_session_async_sandbox_commands
 from database import get_async_session
 from logger import get_logger
 from model.agent.sessions import AgentSessionMeta
+from model.sandbox.containers import SandboxContainer
 from model.work_project.projects import WorkProject, WorkProjectOwner
 from schema.agent.events import AgentContentEventSchema
 from schema.agent.sessions import AgentSessionSummarySchema, SessionType
@@ -260,23 +261,27 @@ async def mark_session_running(
         await session.commit()
 
 
-async def update_session_sandbox_container(
+async def update_session_runtime_sandbox(
     session_id: str,
     *,
     sandbox_container_id: int | None,
-    sandbox_container_generation: int,
-    user_id: int,
-    user_role: SystemUserRole,
-) -> AgentSessionSummarySchema | None:
+    sandbox_container_generation: int = 0,
+) -> bool:
+    """回写会话当前实际使用的沙箱容器，返回容器是否发生变化。
+
+    容器归属完全由运行时的 provision 结果决定（前端不再参与）。只在**首次绑定或换容器**
+    时返回 True，避免每轮重复向事件总线广播"沙箱就绪"。
+    """
     async with get_async_session() as session:
         meta = await session.get(AgentSessionMeta, session_id)
-        if meta is None or not await _can_access_meta(session, meta, user_id, user_role):
-            return None
-        meta.selected_sandbox_container_id = sandbox_container_id
-        meta.selected_sandbox_container_generation = sandbox_container_generation
+        if meta is None:
+            return False
+        changed = meta.runtime_sandbox_container_id != sandbox_container_id
+        meta.runtime_sandbox_container_id = sandbox_container_id
+        meta.runtime_sandbox_container_generation = sandbox_container_generation
         session.add(meta)
         await session.commit()
-    return await session_summary(session_id, user_id=user_id, user_role=user_role)
+        return changed
 
 
 async def mark_session_stopped(session_id: str, *, error: str = "") -> None:
@@ -418,13 +423,20 @@ async def delete_session(
             return False
         if meta.project_id is not None and not allow_project_session:
             return False
+        # 会话删除会连带 CASCADE 掉 agent_session_meta，需在此之前取出容器引用
+        runtime_container_id = meta.runtime_sandbox_container_id
 
     await cancel_session_subagent_runs(session_id)
     await cancel_session_async_sandbox_commands(session_id)
+    # 回收该会话由 strix 运行时自建的沙箱容器（该会话没提供过沙箱时是 no-op）。
+    # 本地导入避免 core ↔ service 的导入环。
+    from core.strix_runtime.sandbox_provision import cleanup_sandbox
+
+    await cleanup_sandbox(session_id)
     await get_agent_pool().discard(session_id)
 
     async with get_async_session() as session:
-        records_deleted = await _delete_session_records_in_tx(session, session_id)
+        records_deleted = await _delete_session_records_in_tx(session, session_id, runtime_container_id)
         await session.commit()
 
     if records_deleted:
@@ -438,7 +450,21 @@ async def cancel_sessions(session_ids: list[str], reason: str) -> None:
     await mark_sessions_stopped(session_ids, error=reason)
 
 
-async def _delete_session_records_in_tx(session: AsyncSession, session_id: str) -> bool:
+async def _delete_session_records_in_tx(
+    session: AsyncSession,
+    session_id: str,
+    runtime_container_id: int | None = None,
+) -> bool:
+    # 该会话运行时自建的沙箱容器记录随会话一并销账；容器本身已由 cleanup_sandbox
+    # 销毁，若只改状态不删记录会残留成「容器不存在、记录还在」的失效条目。
+    # control_proxy_host_port == 0 表示运行时自动创建；手工创建的容器（>0）需保留。
+    if runtime_container_id is not None:
+        await session.execute(
+            delete(SandboxContainer).where(
+                SandboxContainer.id == runtime_container_id,
+                SandboxContainer.control_proxy_host_port == 0,
+            )
+        )
     # one DELETE drops the SDK session row and the FK CASCADE chain takes
     # care of agent_messages, agent_message_meta, and agent_session_meta
     result = await session.execute(

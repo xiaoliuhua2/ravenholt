@@ -8,10 +8,14 @@ from typing import Any
 from agents.items import ToolCallItem, ToolCallOutputItem
 from agents.stream_events import RawResponsesStreamEvent, RunItemStreamEvent
 from openai.types.responses.response_completed_event import ResponseCompletedEvent
+from openai.types.responses.response_content_part_done_event import ResponseContentPartDoneEvent
 from openai.types.responses.response_created_event import ResponseCreatedEvent
 from openai.types.responses.response_error_event import ResponseErrorEvent
 from openai.types.responses.response_failed_event import ResponseFailedEvent
 from openai.types.responses.response_incomplete_event import ResponseIncompleteEvent
+from openai.types.responses.response_reasoning_summary_part_done_event import (
+    ResponseReasoningSummaryPartDoneEvent,
+)
 from openai.types.responses.response_reasoning_summary_text_delta_event import (
     ResponseReasoningSummaryTextDeltaEvent,
 )
@@ -39,21 +43,6 @@ from schema.agent.events import (
 # `incomplete` is a partial output, not an error
 _TOOL_ERROR_STATUSES = {"failed", "error"}
 
-_RUN_ITEM_RESPONSE_BOUNDARIES = {
-    "message_output_created",
-    "reasoning_item_created",
-    "tool_called",
-    "tool_output",
-    "tool_search_called",
-    "tool_search_output_created",
-    "handoff_requested",
-    "handoff_occured",
-    "mcp_approval_requested",
-    "mcp_approval_response",
-    "mcp_list_tools",
-}
-
-
 @dataclass(frozen=True, slots=True)
 class _StreamSegmentKey:
     kind: str
@@ -77,7 +66,6 @@ class SdkStreamEventNormalizer:
         self._segments: dict[_StreamSegmentKey, _StreamSegment] = {}
         self._next_segment_index = 1
         self._response_index = 0
-        self._response_open = False
         self._segment_scope = segment_scope.strip()
 
     def event_from_sdk_stream(self, sdk_event: Any, current_agent: str) -> AgentEventSchema | None:
@@ -87,16 +75,15 @@ class SdkStreamEventNormalizer:
                 return None
             return _from_raw_response(sdk_event.data, current_agent, created_at, self)
         if isinstance(sdk_event, RunItemStreamEvent):
-            event = _from_run_item(sdk_event, current_agent, created_at)
-            if sdk_event.name in _RUN_ITEM_RESPONSE_BOUNDARIES:
-                self._response_open = False
-            return event
+            return _from_run_item(sdk_event, current_agent, created_at)
         return None
 
     @property
     def response_index(self) -> int:
-        if not self._response_open:
-            return self._begin_response()
+        # 只随 ResponseCreatedEvent 递增。此前在 `_response_open=False` 时隐式开始新 response，
+        # 会让 RunItem 边界（如 message_output_created）之后的正文终态拿到下一个序号，
+        # 使同一段正文的 delta 与终态落到两个 segment_id——前端按 segment 建块就会把
+        # 一段正文渲染成两条（思考链因中间无边界而未受影响）。
         return self._response_index
 
     def segment_id(self, key: _StreamSegmentKey, *, complete: bool) -> str:
@@ -132,14 +119,10 @@ class SdkStreamEventNormalizer:
         if isinstance(data, ResponseCreatedEvent):
             self._begin_response()
             return True
-        if isinstance(data, (ResponseCompletedEvent, ResponseFailedEvent, ResponseIncompleteEvent)):
-            self._response_open = False
-            return True
-        return False
+        return isinstance(data, (ResponseCompletedEvent, ResponseFailedEvent, ResponseIncompleteEvent))
 
     def _begin_response(self) -> int:
         self._response_index += 1
-        self._response_open = True
         return self._response_index
 
 
@@ -164,6 +147,23 @@ def _from_raw_response(
             agent_name=current_agent,
             segment_id=normalizer.complete_text(_text_segment_key(data, normalizer.response_index), data.text),
             text=data.text,
+        )
+    if isinstance(data, ResponseContentPartDoneEvent):
+        # 与思考链完全对称的坑：chat-completions 通道只发 content_part.done，
+        # 不发 response.output_text.done。而 text_delta 属于不落库的 delta 类型，
+        # 正文终态只能靠这里产出——否则模型「思考完的正文」只在实时流可见，
+        # 刷新/重开历史后就只剩思考链和工具调用，看起来像没有任何内容产出。
+        part = getattr(data, "part", None)
+        if getattr(part, "type", "") != "output_text":
+            return None
+        text = str(getattr(part, "text", "") or "")
+        if not text:
+            return None
+        return TextCompleteEvent(
+            created_at=created_at,
+            agent_name=current_agent,
+            segment_id=normalizer.complete_text(_text_segment_key(data, normalizer.response_index), text),
+            text=text,
         )
     if isinstance(data, ResponseReasoningTextDeltaEvent):
         segment_id, text = normalizer.append_delta(
@@ -202,6 +202,24 @@ def _from_raw_response(
             agent_name=current_agent,
             segment_id=normalizer.complete_text(_thinking_summary_segment_key(data, normalizer.response_index), data.text),
             text=data.text,
+        )
+    if isinstance(data, ResponseReasoningSummaryPartDoneEvent):
+        # chat-completions 通道（DeepSeek 等）只发 reasoning summary 的 part.done，
+        # 不发 reasoning_summary_text.done。而 thinking_delta 属于不落库的 delta 类型
+        # （见 core/runtime/timeline.py 的 _DELTA_TYPES），终态事件只能靠这里产出——
+        # 不处理它，思考链就只活在实时流里，一旦刷新/重开历史就全部消失。
+        part = getattr(data, "part", None)
+        text = str(getattr(part, "text", "") or "")
+        if not text:
+            return None
+        return ThinkingCompleteEvent(
+            created_at=created_at,
+            agent_name=current_agent,
+            segment_id=normalizer.complete_text(
+                _thinking_summary_segment_key(data, normalizer.response_index),
+                text,
+            ),
+            text=text,
         )
     if isinstance(data, ResponseErrorEvent):
         return ErrorEvent(created_at=created_at, agent_name=current_agent, message=data.message, code=data.code or "")

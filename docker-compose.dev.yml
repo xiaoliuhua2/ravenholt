@@ -6,13 +6,13 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: z3r0
+      POSTGRES_DB: ravenholt
     ports:
       - 5432:5432
     # volumes:
     #   - ./.postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d z3r0"]
+      test: ["CMD-SHELL", "pg_isready -U root -d ravenholt"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -22,7 +22,7 @@ services:
     container_name: pgadmin
     restart: always
     environment:
-      PGADMIN_DEFAULT_EMAIL: me@yvling.cn
+      PGADMIN_DEFAULT_EMAIL: xiaoliuhua2@users.noreply.github.com
       PGADMIN_DEFAULT_PASSWORD: 123456
       PGADMIN_LISTEN_PORT: 5433
     ports:

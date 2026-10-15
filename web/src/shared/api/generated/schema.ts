@@ -21,7 +21,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent-sessions/turns": {
+    "/api/agent-sessions/strix-turns": {
         parameters: {
             query?: never;
             header?: never;
@@ -30,8 +30,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Agent Session Turn Route */
-        post: operations["create_agent_session_turn_route_api_agent_sessions_turns_post"];
+        /** Create Agent Session Strix Turn Route */
+        post: operations["create_agent_session_strix_turn_route_api_agent_sessions_strix_turns_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -106,7 +106,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent-sessions/{session_id}/sandbox-container": {
+    "/api/agent-sessions/{session_id}/strix-turn": {
         parameters: {
             query?: never;
             header?: never;
@@ -115,12 +115,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /** Submit Agent Session Strix Turn Route */
+        post: operations["submit_agent_session_strix_turn_route_api_agent_sessions__session_id__strix_turn_post"];
         delete?: never;
         options?: never;
         head?: never;
-        /** Update Agent Session Sandbox Container Route */
-        patch: operations["update_agent_session_sandbox_container_route_api_agent_sessions__session_id__sandbox_container_patch"];
+        patch?: never;
         trace?: never;
     };
     "/api/agent-sessions/{session_id}/title": {
@@ -140,23 +140,6 @@ export interface paths {
         patch: operations["update_agent_session_title_route_api_agent_sessions__session_id__title_patch"];
         trace?: never;
     };
-    "/api/agent-sessions/{session_id}/turns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Submit Agent Session Turn Route */
-        post: operations["submit_agent_session_turn_route_api_agent_sessions__session_id__turns_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agents": {
         parameters: {
             query?: never;
@@ -169,6 +152,109 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Audit Events Route */
+        get: operations["query_audit_events_route_api_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit-events/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Audit Events Route */
+        post: operations["delete_audit_events_route_api_audit_events_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit-events/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Purge Audit Events Route */
+        post: operations["purge_audit_events_route_api_audit_events_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/blackboard/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read full blackboard graph for a project */
+        get: operations["get_blackboard_route_api_blackboard__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/blackboard/{project_id}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a new blackboard node (fact / intent / hint) */
+        post: operations["create_blackboard_node_route_api_blackboard__project_id__nodes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/blackboard/{project_id}/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a blackboard node (status / description / etc) */
+        put: operations["update_blackboard_node_route_api_blackboard__project_id__nodes__node_id__put"];
+        post?: never;
+        /** Delete a blackboard node */
+        delete: operations["delete_blackboard_node_route_api_blackboard__project_id__nodes__node_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -308,6 +394,144 @@ export interface paths {
         put?: never;
         /** Delete Managed Host Image Handler */
         post: operations["delete_managed_host_image_handler_api_hosts__id__images_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Policy Route */
+        get: operations["read_policy_route_api_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Policy Config Route */
+        patch: operations["update_policy_config_route_api_policy_patch"];
+        trace?: never;
+    };
+    "/api/policy/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Policy Actions Route */
+        get: operations["read_policy_actions_route_api_policy_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Policy Actions Route */
+        patch: operations["update_policy_actions_route_api_policy_actions_patch"];
+        trace?: never;
+    };
+    "/api/policy/confirmations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Policy Confirmations Route */
+        get: operations["query_policy_confirmations_route_api_policy_confirmations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy/confirmations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Policy Confirmation Route */
+        delete: operations["delete_policy_confirmation_route_api_policy_confirmations__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy/confirmations/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Policy Confirmation Route */
+        post: operations["approve_policy_confirmation_route_api_policy_confirmations__id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy/confirmations/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Policy Confirmation Route */
+        post: operations["reject_policy_confirmation_route_api_policy_confirmations__id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy/confirmations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Policy Confirmation Route */
+        post: operations["revoke_policy_confirmation_route_api_policy_confirmations__id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/policy/kill-switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Kill Switch Route */
+        post: operations["set_kill_switch_route_api_policy_kill_switch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -623,6 +847,23 @@ export interface paths {
         patch: operations["update_instance_config_handler_api_system_config_instance_patch"];
         trace?: never;
     };
+    "/api/system-config/upstream-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch Upstream Models Handler */
+        post: operations["fetch_upstream_models_handler_api_system_config_upstream_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system-users": {
         parameters: {
             query?: never;
@@ -694,6 +935,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-projects/source-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Work Project Source Route */
+        post: operations["upload_work_project_source_route_api_work_projects_source_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-projects/{id}": {
         parameters: {
             query?: never;
@@ -722,6 +980,23 @@ export interface paths {
         put?: never;
         /** Cancel Work Project Handler */
         post: operations["cancel_work_project_handler_api_work_projects__id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-projects/{id}/findings/{finding_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Work Project Finding Evidence Route */
+        get: operations["get_work_project_finding_evidence_route_api_work_projects__id__findings__finding_id__evidence_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -861,7 +1136,7 @@ export interface components {
              */
             use_responses: boolean;
         };
-        AgentEventSchema: components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["RunStateEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["DoneEvent"] | components["schemas"]["ErrorEvent"];
+        AgentEventSchema: components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["RunStateEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["SandboxEvent"] | components["schemas"]["ApprovalEvent"] | components["schemas"]["DoneEvent"] | components["schemas"]["ErrorEvent"];
         /**
          * AgentImageDetailSchema
          * @enum {string}
@@ -969,7 +1244,7 @@ export interface components {
             main_max_turns: number;
             /**
              * Model Stream Idle Timeout Seconds
-             * @default 300
+             * @default 600
              */
             model_stream_idle_timeout_seconds: number;
             /**
@@ -1120,22 +1395,308 @@ export interface components {
              */
             type: "text";
         };
-        /** AgentTurnRequest */
-        AgentTurnRequest: {
-            /** Agent Code */
-            agent_code: string | null;
-            /** Content */
-            content: (components["schemas"]["AgentTextInputPart"] | components["schemas"]["AgentImageInputPart"])[];
-            /** Sandbox Container Id */
-            sandbox_container_id: number | null;
-        };
         /** AgentTurnResponse */
         AgentTurnResponse: {
             /** Events */
-            events: (components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["RunStateEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["DoneEvent"] | components["schemas"]["ErrorEvent"])[];
+            events: (components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["RunStateEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["SandboxEvent"] | components["schemas"]["ApprovalEvent"] | components["schemas"]["DoneEvent"] | components["schemas"]["ErrorEvent"])[];
             session: components["schemas"]["AgentSessionSummarySchema"];
             /** Session Id */
             session_id: string;
+        };
+        /**
+         * ApprovalEvent
+         * @description 风险审批事件：命中未放行的审批项时在对话流里落一条可操作的卡片。
+         *
+         *     ``confirmation_id`` 是 ``policy_confirmations`` 的主键，同时用作时间线的确定性
+         *     key（``approval:<id>``），使 pending → approved / rejected 在同一位置原地更新，
+         *     而不是每次阶段变化都新增一条。
+         */
+        ApprovalEvent: {
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /**
+             * Agent Name
+             * @default
+             */
+            agent_name: string;
+            /**
+             * Approval Key
+             * @default
+             */
+            approval_key: string;
+            /** Confirmation Id */
+            confirmation_id: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Nested Call Id
+             * @default
+             */
+            nested_call_id: string;
+            /**
+             * Nested For
+             * @default
+             */
+            nested_for: string;
+            phase: components["schemas"]["ApprovalPhaseSchema"];
+            /**
+             * Seq
+             * @default 0
+             */
+            seq: number;
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "approval";
+        };
+        /**
+         * ApprovalGateSchema
+         * @description 单个风险审批项的状态（src-hunt §2 的一条例）。
+         *
+         *     ``allow=True`` → 已获用户放行，不再逐条确认；``allow=False`` → 命中即进人工确认队列。
+         *     ``signals`` 是该项的命令文本命中特征，随条目一起读写，供面板自定义。
+         */
+        ApprovalGateSchema: {
+            /** Allow */
+            allow: boolean;
+            /** Description */
+            description: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Signals */
+            signals: string[];
+        };
+        /**
+         * ApprovalItem
+         * @description 一条风险审批项 —— 与 ``src-hunt`` 的 ``SKILL.md`` §2「安全红线与授权」逐条对应。
+         *
+         *     语义（照 §2 总纲）：**唯一绝对红线是 DoS**（见 :class:`RedlineConfig`）；
+         *     其余动作**默认不做**，用户点头后才发。这里的 ``allow`` 就是"用户是否已点头"：
+         *
+         *     - ``allow=False``（默认）→ 命中即进入人工确认队列，逐条批准后才执行；提示词里也会要求
+         *       agent 先说明载荷与影响、等你点头；
+         *     - ``allow=True`` → 该项已获用户放行：闸门不再拦停，提示词改为「**执行前用一句话声明即可，
+         *       不必再等用户确认**」（仍受 scope / denylist / 限速约束）。
+         *
+         *     ``signals`` 是**命令文本命中特征**（用户可自定义，大小写不敏感）：裸词按两侧词边界
+         *     匹配、多词特征按左侧词边界匹配；含 ``+`` 的项表示各段须**同时**命中（复合 AND），
+         *     用于表达上下文，例如 ``-x post +/logout`` 只在真的发起登出请求时命中。命中即把该
+         *     命令归入本审批项。空列表 = 不按命令文本判定，只由智能体纪律约束（如「越权写」要看
+         *     业务语义，命令文本判不出来）。
+         */
+        ApprovalItem: {
+            /**
+             * Allow
+             * @default false
+             */
+            allow: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Signals */
+            signals?: string[];
+        };
+        /**
+         * ApprovalPatchSchema
+         * @description 单个审批项的部分更新：只传需要改的字段，未传的保持不变。
+         */
+        ApprovalPatchSchema: {
+            /** Allow */
+            allow?: boolean | null;
+            /** Key */
+            key: string;
+            /** Signals */
+            signals?: string[] | null;
+        };
+        /**
+         * ApprovalPhaseSchema
+         * @description 一次风险审批的生命周期阶段（命中未放行的审批项时挂起等待用户决策）。
+         * @enum {string}
+         */
+        ApprovalPhaseSchema: "pending" | "approved" | "rejected" | "timeout" | "cancelled";
+        /**
+         * AuditConfig
+         * @description Tier-1：审计日志，不可关闭。
+         */
+        AuditConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Retention Days
+             * @default 90
+             */
+            retention_days: number;
+        };
+        /** AuditEventSchema */
+        AuditEventSchema: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Category */
+            category: string;
+            /** Code */
+            code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decision */
+            decision: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: number;
+            /** Policy Revision */
+            policy_revision: number;
+            /** Reason */
+            reason: string;
+            /** Target */
+            target: string;
+        };
+        /** BlackboardCreateNodeRequest */
+        BlackboardCreateNodeRequest: {
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /**
+             * Creator Agent Code
+             * @default
+             */
+            creator_agent_code: string;
+            /** Description */
+            description: string;
+            /**
+             * Extra
+             * @default {}
+             */
+            extra: string;
+            node_type: components["schemas"]["BlackboardNodeType"];
+            /** Parent Ids */
+            parent_ids?: number[];
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
+        };
+        /** BlackboardNodeSchema */
+        BlackboardNodeSchema: {
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Creator Agent Code
+             * @default
+             */
+            creator_agent_code: string;
+            /** Description */
+            description: string;
+            /**
+             * Extra
+             * @default {}
+             */
+            extra: string;
+            /** Id */
+            id: number;
+            node_type: components["schemas"]["BlackboardNodeType"];
+            /**
+             * Parent Ids
+             * @default []
+             */
+            parent_ids: string;
+            /** Project Id */
+            project_id: number;
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
+            status: components["schemas"]["BlackboardNodeStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * BlackboardNodeStatus
+         * @enum {string}
+         */
+        BlackboardNodeStatus: "proposed" | "in_progress" | "confirmed" | "rejected" | "superseded";
+        /**
+         * BlackboardNodeType
+         * @enum {string}
+         */
+        BlackboardNodeType: "fact" | "intent" | "hint";
+        /**
+         * BlackboardSnapshotSchema
+         * @description Full blackboard graph for a project — all nodes + metadata.
+         */
+        BlackboardSnapshotSchema: {
+            /** Nodes */
+            nodes: components["schemas"]["BlackboardNodeSchema"][];
+            /** Project Id */
+            project_id: number;
+            /** Total Count */
+            total_count: number;
+        };
+        /** BlackboardUpdateNodeRequest */
+        BlackboardUpdateNodeRequest: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Extra */
+            extra?: string | null;
+            /** Parent Ids */
+            parent_ids?: number[] | null;
+            status?: components["schemas"]["BlackboardNodeStatus"] | null;
         };
         /** Body_upload_container_files_route_api_sandbox_containers__id__files_upload_post */
         Body_upload_container_files_route_api_sandbox_containers__id__files_upload_post: {
@@ -1151,6 +1712,11 @@ export interface components {
              * @default /
              */
             path: string;
+        };
+        /** Body_upload_work_project_source_route_api_work_projects_source_uploads_post */
+        Body_upload_work_project_source_route_api_work_projects_source_uploads_post: {
+            /** Files */
+            files: string[];
         };
         /** CommonResponse */
         CommonResponse: {
@@ -1210,6 +1776,20 @@ export interface components {
              */
             message: string;
         };
+        /** CommonResponse[BlackboardSnapshotSchema] */
+        CommonResponse_BlackboardSnapshotSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["BlackboardSnapshotSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
         /** CommonResponse[ContainerFileReadResponse] */
         CommonResponse_ContainerFileReadResponse_: {
             /**
@@ -1246,6 +1826,20 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["CreateWorkProjectSessionResponse"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[DeleteAuditEventsResponse] */
+        CommonResponse_DeleteAuditEventsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["DeleteAuditEventsResponse"] | null;
             /**
              * Message
              * @default success
@@ -1344,6 +1938,20 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["EgressProxySchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[FetchUpstreamModelsResponse] */
+        CommonResponse_FetchUpstreamModelsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["FetchUpstreamModelsResponse"] | null;
             /**
              * Message
              * @default success
@@ -1462,6 +2070,48 @@ export interface components {
              */
             message: string;
         };
+        /** CommonResponse[PolicyApprovalsSnapshotSchema] */
+        CommonResponse_PolicyApprovalsSnapshotSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["PolicyApprovalsSnapshotSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[PolicyConfirmationSchema] */
+        CommonResponse_PolicyConfirmationSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["PolicyConfirmationSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[PolicySnapshotSchema] */
+        CommonResponse_PolicySnapshotSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["PolicySnapshotSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
         /** CommonResponse[PullManagedHostImagesResponse] */
         CommonResponse_PullManagedHostImagesResponse_: {
             /**
@@ -1470,6 +2120,34 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["PullManagedHostImagesResponse"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[PurgeAuditEventsResponse] */
+        CommonResponse_PurgeAuditEventsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["PurgeAuditEventsResponse"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[QueryAuditEventsResponse] */
+        CommonResponse_QueryAuditEventsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["QueryAuditEventsResponse"] | null;
             /**
              * Message
              * @default success
@@ -1498,6 +2176,20 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["QueryManagedHostsResponse"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[QueryPolicyConfirmationsResponse] */
+        CommonResponse_QueryPolicyConfirmationsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["QueryPolicyConfirmationsResponse"] | null;
             /**
              * Message
              * @default success
@@ -1644,6 +2336,20 @@ export interface components {
              */
             message: string;
         };
+        /** CommonResponse[WorkProjectFindingEvidenceSchema] */
+        CommonResponse_WorkProjectFindingEvidenceSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["WorkProjectFindingEvidenceSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
         /** CommonResponse[WorkProjectRecordSnapshotSchema] */
         CommonResponse_WorkProjectRecordSnapshotSchema_: {
             /**
@@ -1672,6 +2378,31 @@ export interface components {
              */
             message: string;
         };
+        /** CommonResponse[WorkProjectSourceUploadSchema] */
+        CommonResponse_WorkProjectSourceUploadSchema_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["WorkProjectSourceUploadSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /**
+         * ConfirmationMode
+         * @description 批准后的放行方式。
+         * @enum {string}
+         */
+        ConfirmationMode: "once" | "always";
+        /**
+         * ConfirmationStatus
+         * @enum {string}
+         */
+        ConfirmationStatus: "pending" | "approved" | "rejected";
         /** ContainerFileCopyRequest */
         ContainerFileCopyRequest: {
             /** Destination */
@@ -1879,6 +2610,32 @@ export interface components {
             /** Session Id */
             session_id: string;
         };
+        /** DecidePolicyConfirmationRequest */
+        DecidePolicyConfirmationRequest: {
+            /** @default once */
+            mode: components["schemas"]["ConfirmationMode"];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * DeleteAuditEventsRequest
+         * @description 按 id 批量删除审计事件（单条删除即只传一个 id）。
+         */
+        DeleteAuditEventsRequest: {
+            /**
+             * Ids
+             * @description 要删除的审计事件 id 列表。
+             */
+            ids: number[];
+        };
+        /** DeleteAuditEventsResponse */
+        DeleteAuditEventsResponse: {
+            /** Deleted */
+            deleted: number;
+        };
         /** DeleteEgressProxyResponse */
         DeleteEgressProxyResponse: {
             /** Id */
@@ -1919,6 +2676,18 @@ export interface components {
             /** Id */
             id: number;
         };
+        /**
+         * DenylistConfig
+         * @description 明确禁止的动作 / 路径 / 载荷关键词。命中即拒绝并记审计。
+         */
+        DenylistConfig: {
+            /** Actions */
+            actions?: string[];
+            /** Paths */
+            paths?: string[];
+            /** Payload Keywords */
+            payload_keywords?: string[];
+        };
         /** DoneEvent */
         DoneEvent: {
             /**
@@ -1951,6 +2720,32 @@ export interface components {
              * @enum {string}
              */
             type: "done";
+        };
+        /**
+         * DosConfig
+         * @description DoS 判定阈值：命中即拒绝，避免把目标打挂。
+         */
+        DosConfig: {
+            /**
+             * Max Concurrency Per Target
+             * @default 8
+             */
+            max_concurrency_per_target: number;
+            /**
+             * Max Payload Bytes
+             * @default 1048576
+             */
+            max_payload_bytes: number;
+            /**
+             * Max Requests Per Minute Per Target
+             * @default 120
+             */
+            max_requests_per_minute_per_target: number;
+            /**
+             * Max Requests Total
+             * @default 0
+             */
+            max_requests_total: number;
         };
         /** EgressProxySchema */
         EgressProxySchema: {
@@ -2021,6 +2816,23 @@ export interface components {
              */
             type: "error";
         };
+        /** FetchUpstreamModelsRequest */
+        FetchUpstreamModelsRequest: {
+            /** Api Key */
+            api_key: string;
+            /** Base Url */
+            base_url: string;
+        };
+        /** FetchUpstreamModelsResponse */
+        FetchUpstreamModelsResponse: {
+            /** Models */
+            models: string[];
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** InstanceConfigSchema */
         InstanceConfigSchema: {
             agent_pool?: components["schemas"]["AgentPoolConfig"];
@@ -2029,6 +2841,65 @@ export interface components {
             agents?: {
                 [key: string]: components["schemas"]["AgentConfig"];
             };
+            integrations?: components["schemas"]["IntegrationsConfig"];
+        };
+        /** IntegrationsConfig */
+        IntegrationsConfig: {
+            /**
+             * Exa Api Key
+             * @default
+             */
+            exa_api_key: string;
+            /**
+             * Perplexity Api Key
+             * @default
+             */
+            perplexity_api_key: string;
+            /**
+             * Searxng Auto Provision
+             * @default true
+             */
+            searxng_auto_provision: boolean;
+            /**
+             * Searxng Base Url
+             * @default http://127.0.0.1:8888
+             */
+            searxng_base_url: string;
+            /**
+             * Web Search Provider
+             * @default auto
+             * @enum {string}
+             */
+            web_search_provider: "auto" | "exa" | "perplexity" | "searxng";
+        };
+        /**
+         * KillSwitchConfig
+         * @description Tier-1：急停开关，不可关闭。``engaged`` 置位后所有出网动作立即被拒。
+         */
+        KillSwitchConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Engaged
+             * @default false
+             */
+            engaged: boolean;
+            /**
+             * Max Audit Denials Before Engage
+             * @default 0
+             */
+            max_audit_denials_before_engage: number;
+        };
+        /**
+         * KillSwitchRequest
+         * @description 急停开关的置位 / 解除。置位后所有出网动作立即被拒。
+         */
+        KillSwitchRequest: {
+            /** Engaged */
+            engaged: boolean;
         };
         /** ListAgentEventsResponse */
         ListAgentEventsResponse: {
@@ -2038,7 +2909,7 @@ export interface components {
              */
             has_more: boolean;
             /** Items */
-            items: (components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["ErrorEvent"])[];
+            items: (components["schemas"]["UserMessageEvent"] | components["schemas"]["TurnBoundaryEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextCompleteEvent"] | components["schemas"]["ThinkingDeltaEvent"] | components["schemas"]["ThinkingCompleteEvent"] | components["schemas"]["ToolCallEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["SubagentTaskEvent"] | components["schemas"]["SandboxEvent"] | components["schemas"]["ApprovalEvent"] | components["schemas"]["ErrorEvent"])[];
             /** Next Before Seq */
             next_before_seq?: number | null;
             /** Session Id */
@@ -2129,6 +3000,89 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * PolicyApprovalsSnapshotSchema
+         * @description ``GET`` / ``PATCH /api/policy/actions`` 的返回体：全部审批项 + 版本。
+         */
+        PolicyApprovalsSnapshotSchema: {
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalGateSchema"][];
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * PolicyConfig
+         * @description 红线策略根节点。
+         */
+        PolicyConfig: {
+            /**
+             * Approval Wait Seconds
+             * @default 600
+             */
+            approval_wait_seconds: number;
+            /** Approvals */
+            approvals?: components["schemas"]["ApprovalItem"][];
+            audit?: components["schemas"]["AuditConfig"];
+            denylist?: components["schemas"]["DenylistConfig"];
+            dos?: components["schemas"]["DosConfig"];
+            kill_switch?: components["schemas"]["KillSwitchConfig"];
+            rate_limit?: components["schemas"]["RateLimitConfig"];
+            redline?: components["schemas"]["RedlineConfig"];
+            report_gate?: components["schemas"]["ReportGateConfig"];
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
+            sandbox?: components["schemas"]["SandboxLimitsConfig"];
+            scope?: components["schemas"]["ScopeConfig"];
+        };
+        /** PolicyConfirmationSchema */
+        PolicyConfirmationSchema: {
+            /** Action */
+            action: string;
+            /** Category */
+            category: string;
+            /** Consumed At */
+            consumed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decided By */
+            decided_by: string;
+            /** Id */
+            id: number;
+            mode: components["schemas"]["ConfirmationMode"] | null;
+            /** Note */
+            note: string;
+            /** Reason */
+            reason: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            status: components["schemas"]["ConfirmationStatus"];
+            /** Target */
+            target: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * PolicySnapshotSchema
+         * @description ``GET /api/policy`` 返回体：当前生效策略 + 版本 + 文件路径。
+         */
+        PolicySnapshotSchema: {
+            policy: components["schemas"]["PolicyConfig"];
+            /** Policy Path */
+            policy_path: string;
+            /** Revision */
+            revision: number;
+        };
         /** PullManagedHostImageResultSchema */
         PullManagedHostImageResultSchema: {
             /** Image Name */
@@ -2151,6 +3105,45 @@ export interface components {
             /** Items */
             items: components["schemas"]["PullManagedHostImageResultSchema"][];
         };
+        /**
+         * PurgeAuditEventsRequest
+         * @description 按筛选条件批量删除审计事件；三个条件都为空即清空全部。
+         *
+         *     审计链属敏感数据：调用方（管理端页面）必须先做二次确认。
+         */
+        PurgeAuditEventsRequest: {
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /**
+             * Decision
+             * @default
+             */
+            decision: string;
+            /**
+             * Keyword
+             * @default
+             */
+            keyword: string;
+        };
+        /** PurgeAuditEventsResponse */
+        PurgeAuditEventsResponse: {
+            /** Deleted */
+            deleted: number;
+        };
+        /** QueryAuditEventsResponse */
+        QueryAuditEventsResponse: {
+            /** Items */
+            items: components["schemas"]["AuditEventSchema"][];
+            /** Page */
+            page: number;
+            /** Size */
+            size: number;
+            /** Total */
+            total: number;
+        };
         /** QueryEgressProxiesResponse */
         QueryEgressProxiesResponse: {
             /** Items */
@@ -2166,6 +3159,17 @@ export interface components {
         QueryManagedHostsResponse: {
             /** Items */
             items: components["schemas"]["ManagedHostSchema"][];
+            /** Page */
+            page: number;
+            /** Size */
+            size: number;
+            /** Total */
+            total: number;
+        };
+        /** QueryPolicyConfirmationsResponse */
+        QueryPolicyConfirmationsResponse: {
+            /** Items */
+            items: components["schemas"]["PolicyConfirmationSchema"][];
             /** Page */
             page: number;
             /** Size */
@@ -2216,6 +3220,81 @@ export interface components {
             size: number;
             /** Total */
             total: number;
+        };
+        /**
+         * RateLimitConfig
+         * @description Tier-1：限速，不可关闭。
+         */
+        RateLimitConfig: {
+            /**
+             * Burst
+             * @default 20
+             */
+            burst: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Global Per Minute
+             * @default 600
+             */
+            global_per_minute: number;
+            /**
+             * Per Target Per Minute
+             * @default 120
+             */
+            per_target_per_minute: number;
+        };
+        /**
+         * RedlineConfig
+         * @description 绝对红线（``src-hunt`` §2.2）：**DoS 同意也不做**。
+         *
+         *     命中即硬拒并记审计，**不在控制台提供放行开关**（面板不显示、接口也改不了），
+         *     属 Tier-1 性质；只有命中特征可自定义。
+         *
+         *     匹配语义见 :func:`core.policy.action_signals.classify_sandbox_command`：裸词按词边界、
+         *     多词按左侧词边界；且**只对可执行命令生效**，文件正文 / 报告 / 笔记（``scope=content``）
+         *     豁免，避免文档里正当提及工具名被误拒。
+         */
+        RedlineConfig: {
+            /** Dos Signals */
+            dos_signals?: string[];
+        };
+        /**
+         * ReportGateConfig
+         * @description 报告结构门（**可配置**）：finding 离开 draft 前必须达到的最小报告要素。
+         *
+         *     src-hunt 的报告口径要求「不能只有一句结论」。这里只校验**现有字段**的完整性；
+         *     src-hunt 7 段里的「复现步骤 / 修复建议」尚未建模，属后续工作。
+         */
+        ReportGateConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Min Description Chars
+             * @default 80
+             */
+            min_description_chars: number;
+            /**
+             * Min Title Chars
+             * @default 8
+             */
+            min_title_chars: number;
+            /**
+             * Require Asset
+             * @default true
+             */
+            require_asset: boolean;
+            /**
+             * Require Impact
+             * @default true
+             */
+            require_impact: boolean;
         };
         /** RunStateEvent */
         RunStateEvent: {
@@ -2344,6 +3423,8 @@ export interface components {
             owner_username: string;
             /** Port Mappings */
             port_mappings: components["schemas"]["SandboxContainerPortMapping"][];
+            /** @default manual */
+            source: components["schemas"]["SandboxContainerSource"];
             status: components["schemas"]["SandboxContainerStatus"];
             /** Supports Tor */
             supports_tor: boolean;
@@ -2354,10 +3435,80 @@ export interface components {
             updated_at: string;
         };
         /**
+         * SandboxContainerSource
+         * @description 容器来源：管理员手工创建 vs 运行时按会话自动 provision。
+         *
+         *     运行时自建容器没有平台控制面（``control_proxy_host_port`` 恒为 0），
+         *     因此以该字段是否为 0 作为判定依据，而不是靠容器命名等易变特征。
+         * @enum {string}
+         */
+        SandboxContainerSource: "manual" | "runtime";
+        /**
          * SandboxContainerStatus
          * @enum {string}
          */
         SandboxContainerStatus: "created" | "running" | "stopped" | "error";
+        /**
+         * SandboxEvent
+         * @description 会话沙箱的生命周期事件（由运行时自动 provisioning 驱动）。
+         *
+         *     前端据此展示"本会话正在用哪个沙箱"、沙箱准备进度与回收状态。
+         */
+        SandboxEvent: {
+            /**
+             * Agent Name
+             * @default
+             */
+            agent_name: string;
+            /**
+             * Container Hash
+             * @default
+             */
+            container_hash: string;
+            /** Container Id */
+            container_id?: number | null;
+            /**
+             * Container Name
+             * @default
+             */
+            container_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Image Name
+             * @default
+             */
+            image_name: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Nested Call Id
+             * @default
+             */
+            nested_call_id: string;
+            /**
+             * Nested For
+             * @default
+             */
+            nested_for: string;
+            phase: components["schemas"]["SandboxPhaseSchema"];
+            /**
+             * Seq
+             * @default 0
+             */
+            seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sandbox";
+        };
         /** SandboxImageSchema */
         SandboxImageSchema: {
             /** Control Port */
@@ -2380,10 +3531,66 @@ export interface components {
             updated_at: string;
         };
         /**
+         * SandboxLimitsConfig
+         * @description Tier-1：沙箱容器资源上限，不可关闭。
+         */
+        SandboxLimitsConfig: {
+            /**
+             * Cpu Cores
+             * @default 2
+             */
+            cpu_cores: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Memory Mb
+             * @default 2048
+             */
+            memory_mb: number;
+            /**
+             * Pids Limit
+             * @default 512
+             */
+            pids_limit: number;
+        };
+        /**
+         * SandboxPhaseSchema
+         * @description 会话沙箱的生命周期阶段（由运行时自动 provisioning 驱动）。
+         * @enum {string}
+         */
+        SandboxPhaseSchema: "provisioning" | "ready" | "cleanup";
+        /**
+         * ScopeConfig
+         * @description 允许的目标范围。列表为空表示不按范围限制（建议仅在受控环境使用）。
+         */
+        ScopeConfig: {
+            /** Allowed Hosts */
+            allowed_hosts?: string[];
+            /** Allowed Ports */
+            allowed_ports?: number[];
+            /**
+             * Deny Private Ranges
+             * @default false
+             */
+            deny_private_ranges: boolean;
+        };
+        /**
          * SessionType
          * @enum {string}
          */
         SessionType: "chat" | "project";
+        /** StrixTurnRequest */
+        StrixTurnRequest: {
+            /** Agent Code */
+            agent_code?: string | null;
+            /** Content */
+            content?: (components["schemas"]["AgentTextInputPart"] | components["schemas"]["AgentImageInputPart"])[] | null;
+            /** Task */
+            task?: string | null;
+        };
         /** SubagentTaskEvent */
         SubagentTaskEvent: {
             /** Agent Code */
@@ -2820,11 +4027,6 @@ export interface components {
             /** Use Responses */
             use_responses: boolean;
         };
-        /** UpdateAgentSessionSandboxContainerRequest */
-        UpdateAgentSessionSandboxContainerRequest: {
-            /** Sandbox Container Id */
-            sandbox_container_id: number | null;
-        };
         /** UpdateAgentSessionTitleRequest */
         UpdateAgentSessionTitleRequest: {
             /** Title */
@@ -2850,12 +4052,35 @@ export interface components {
             agents: {
                 [key: string]: components["schemas"]["UpdateAgentConfigRequest"];
             };
+            integrations: components["schemas"]["UpdateIntegrationsRequest"];
         };
         /** UpdateInstanceConfigResponse */
         UpdateInstanceConfigResponse: {
             config: components["schemas"]["InstanceConfigSchema"];
             /** Restarted */
             restarted: boolean;
+        };
+        /** UpdateIntegrationsRequest */
+        UpdateIntegrationsRequest: {
+            /** Exa Api Key */
+            exa_api_key: string;
+            /** Perplexity Api Key */
+            perplexity_api_key: string;
+            /**
+             * Searxng Auto Provision
+             * @default true
+             */
+            searxng_auto_provision: boolean;
+            /**
+             * Searxng Base Url
+             * @default
+             */
+            searxng_base_url: string;
+            /**
+             * Web Search Provider
+             * @enum {string}
+             */
+            web_search_provider: "auto" | "exa" | "perplexity" | "searxng";
         };
         /** UpdateManagedHostRequest */
         UpdateManagedHostRequest: {
@@ -2877,6 +4102,33 @@ export interface components {
             ip_address?: string | null;
             /** Ssh Port */
             ssh_port?: number | null;
+        };
+        /**
+         * UpdatePolicyApprovalsRequest
+         * @description ``PATCH /api/policy/actions`` 请求体；``revision`` 用于乐观并发校验。
+         */
+        UpdatePolicyApprovalsRequest: {
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalPatchSchema"][];
+            /** Revision */
+            revision?: number | null;
+        };
+        /**
+         * UpdatePolicyConfigRequest
+         * @description ``PATCH /api/policy`` 请求体：整份策略的分组部分更新。
+         *
+         *     只传需要改动的分组，未传的分组保持不变；``revision`` 用于乐观并发校验。
+         *     ``approvals`` 走独立接口（它按审批项逐条改，不与这里的整组替换混在一起）。
+         */
+        UpdatePolicyConfigRequest: {
+            denylist?: components["schemas"]["DenylistConfig"] | null;
+            dos?: components["schemas"]["DosConfig"] | null;
+            rate_limit?: components["schemas"]["RateLimitConfig"] | null;
+            redline?: components["schemas"]["RedlineConfig"] | null;
+            report_gate?: components["schemas"]["ReportGateConfig"] | null;
+            /** Revision */
+            revision?: number | null;
+            scope?: components["schemas"]["ScopeConfig"] | null;
         };
         /** UpdateSandboxContainerEgressRequest */
         UpdateSandboxContainerEgressRequest: {
@@ -2942,6 +4194,19 @@ export interface components {
              * @enum {string}
              */
             type: "user_message";
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
         /** WorkProjectAgentSummaryContentSchema */
         WorkProjectAgentSummaryContentSchema: {
@@ -3159,6 +4424,89 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * WorkProjectFindingEvidenceSchema
+         * @description 一条发现所关联的可重放证据包。
+         *
+         *     证据包里是「唯一事实来源」：完整探测请求（method / url / headers / body）、
+         *     baseline 与 probe 两个响应，以及验证器的重放结论。报告视图据此渲染
+         *     src-hunt 规范版「复现过程」，使报告可被第三方按原包复现。
+         */
+        WorkProjectFindingEvidenceSchema: {
+            /**
+             * Baseline Body
+             * @default
+             */
+            baseline_body: string;
+            /**
+             * Baseline Status
+             * @default 0
+             */
+            baseline_status: number;
+            /**
+             * Captured At
+             * @default
+             */
+            captured_at: string;
+            /**
+             * Diff
+             * @default {}
+             */
+            diff: {
+                [key: string]: unknown;
+            };
+            /** Evidence Id */
+            evidence_id: number;
+            /** Finding Id */
+            finding_id: number;
+            /**
+             * Method
+             * @default GET
+             */
+            method: string;
+            /**
+             * Probe Body
+             * @default
+             */
+            probe_body: string;
+            /**
+             * Probe Status
+             * @default 0
+             */
+            probe_status: number;
+            /**
+             * Request Body
+             * @default
+             */
+            request_body: string;
+            /**
+             * Request Headers
+             * @default {}
+             */
+            request_headers: {
+                [key: string]: string;
+            };
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+            /**
+             * Verdict
+             * @default
+             */
+            verdict: string;
+            /**
+             * Verifier Note
+             * @default
+             */
+            verifier_note: string;
+        };
         /** WorkProjectFindingSchema */
         WorkProjectFindingSchema: {
             /** Asset Id */
@@ -3185,6 +4533,8 @@ export interface components {
             description: string;
             /** Edge Id */
             edge_id?: number | null;
+            /** Evidence Id */
+            evidence_id?: number | null;
             /** Id */
             id: number;
             /**
@@ -3349,6 +4699,45 @@ export interface components {
             updated_at: string;
         };
         /**
+         * WorkProjectSourceUploadSchema
+         * @description 一次源码包上传的结果；``server_path`` 可直接作为 binary 资产的 path 使用。
+         */
+        WorkProjectSourceUploadSchema: {
+            /**
+             * File Count
+             * @description 解压出的文件数。
+             * @default 0
+             */
+            file_count: number;
+            /**
+             * Server Path
+             * @description 解压后的服务器绝对路径（binary 资产的 path）。
+             */
+            server_path: string;
+            /**
+             * Skipped Entries
+             * @description 被跳过的条目数（依赖目录、符号链接等）。
+             * @default 0
+             */
+            skipped_entries: number;
+            /**
+             * Slug
+             * @description 解压后的顶层目录名，也是沙箱内的挂载目录名。
+             */
+            slug: string;
+            /**
+             * Token
+             * @description 本次上传的存储令牌（工作区内的目录名）。
+             */
+            token: string;
+            /**
+             * Total Bytes
+             * @description 解压出的总字节数。
+             * @default 0
+             */
+            total_bytes: number;
+        };
+        /**
          * WorkProjectStatus
          * @enum {string}
          */
@@ -3393,7 +4782,7 @@ export interface components {
          * WorkProjectTaskStatus
          * @enum {string}
          */
-        WorkProjectTaskStatus: "todo" | "in_progress" | "blocked" | "done";
+        WorkProjectTaskStatus: "todo" | "in_progress" | "blocked" | "done" | "canceled";
         /**
          * WorkProjectType
          * @enum {string}
@@ -3448,7 +4837,7 @@ export interface operations {
             };
         };
     };
-    create_agent_session_turn_route_api_agent_sessions_turns_post: {
+    create_agent_session_strix_turn_route_api_agent_sessions_strix_turns_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3457,7 +4846,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AgentTurnRequest"];
+                "application/json": components["schemas"]["StrixTurnRequest"];
             };
         };
         responses: {
@@ -3680,7 +5069,7 @@ export interface operations {
             };
         };
     };
-    update_agent_session_sandbox_container_route_api_agent_sessions__session_id__sandbox_container_patch: {
+    submit_agent_session_strix_turn_route_api_agent_sessions__session_id__strix_turn_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3691,7 +5080,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateAgentSessionSandboxContainerRequest"];
+                "application/json": components["schemas"]["StrixTurnRequest"];
             };
         };
         responses: {
@@ -3701,7 +5090,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommonResponse_AgentSessionSummarySchema_"];
+                    "application/json": components["schemas"]["CommonResponse_AgentTurnResponse_"];
                 };
             };
             /** @description Unauthorized */
@@ -3786,20 +5175,14 @@ export interface operations {
             };
         };
     };
-    submit_agent_session_turn_route_api_agent_sessions__session_id__turns_post: {
+    list_agents_handler_api_agents_get: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                session_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentTurnRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3807,20 +5190,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommonResponse_AgentTurnResponse_"];
+                    "application/json": components["schemas"]["CommonResponse_ListAgentsResponse_"];
                 };
             };
             /** @description Unauthorized */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommonResponse_Any_"];
-                };
-            };
-            /** @description Agent session not found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3839,9 +5213,15 @@ export interface operations {
             };
         };
     };
-    list_agents_handler_api_agents_get: {
+    query_audit_events_route_api_audit_events_get: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                size?: number;
+                action?: string;
+                decision?: string;
+                keyword?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3854,7 +5234,306 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CommonResponse_ListAgentsResponse_"];
+                    "application/json": components["schemas"]["CommonResponse_QueryAuditEventsResponse_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    delete_audit_events_route_api_audit_events_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteAuditEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_DeleteAuditEventsResponse_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    purge_audit_events_route_api_audit_events_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeAuditEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PurgeAuditEventsResponse_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    get_blackboard_route_api_blackboard__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_BlackboardSnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    create_blackboard_node_route_api_blackboard__project_id__nodes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlackboardCreateNodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    update_blackboard_node_route_api_blackboard__project_id__nodes__node_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+                node_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlackboardUpdateNodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    delete_blackboard_node_route_api_blackboard__project_id__nodes__node_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+                node_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -4602,6 +6281,553 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    read_policy_route_api_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicySnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    update_policy_config_route_api_policy_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePolicyConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicySnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    read_policy_actions_route_api_policy_actions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicyApprovalsSnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    update_policy_actions_route_api_policy_actions_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePolicyApprovalsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicyApprovalsSnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    query_policy_confirmations_route_api_policy_confirmations_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                status?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_QueryPolicyConfirmationsResponse_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    delete_policy_confirmation_route_api_policy_confirmations__id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Policy confirmation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    approve_policy_confirmation_route_api_policy_confirmations__id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecidePolicyConfirmationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicyConfirmationSchema_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Policy confirmation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    reject_policy_confirmation_route_api_policy_confirmations__id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecidePolicyConfirmationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicyConfirmationSchema_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Policy confirmation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    revoke_policy_confirmation_route_api_policy_confirmations__id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicyConfirmationSchema_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Policy confirmation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    set_kill_switch_route_api_policy_kill_switch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KillSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_PolicySnapshotSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse"];
                 };
             };
             /** @description Validation Error */
@@ -5960,6 +8186,66 @@ export interface operations {
             };
         };
     };
+    fetch_upstream_models_handler_api_system_config_upstream_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FetchUpstreamModelsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_FetchUpstreamModelsResponse_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
     query_system_users_route_api_system_users_get: {
         parameters: {
             query?: {
@@ -6335,6 +8621,66 @@ export interface operations {
             };
         };
     };
+    upload_work_project_source_route_api_work_projects_source_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_work_project_source_route_api_work_projects_source_uploads_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_WorkProjectSourceUploadSchema_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
     delete_work_project_handler_api_work_projects__id__delete: {
         parameters: {
             query?: never;
@@ -6433,6 +8779,56 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Work project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    get_work_project_finding_evidence_route_api_work_projects__id__findings__finding_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_WorkProjectFindingEvidenceSchema_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

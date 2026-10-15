@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitepress'
 
-const base = '/Z3r0/'
+const base = '/ravenholt/'
 
 const enNav = [
   { text: 'Home', link: '/en/' },
@@ -44,13 +44,13 @@ const zhSidebar = {
 
 export default defineConfig({
   base,
-  title: 'Z3r0 Documents',
-  description: 'AI-native red-team workbench for authorized penetration testing and vulnerability research, with specialist agents, sandboxed tooling, evidence records, and replayable timelines.',
+  title: 'Ravenholt 文档',
+  description: '面向授权渗透测试与漏洞挖掘的多智能体协作平台，提供专家智能体、沙箱工具链、证据记录与可回放时间线。',
   appearance: 'force-dark',
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: `${base}z3r0-logo.png` }],
-    ['link', { rel: 'apple-touch-icon', href: `${base}z3r0-logo.png` }]
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}ravenholt-logo-light.svg` }],
+    ['link', { rel: 'apple-touch-icon', href: `${base}ravenholt-logo.png` }]
   ],
   markdown: {
     config(md) {
@@ -66,9 +66,9 @@ export default defineConfig({
     }
   },
   themeConfig: {
-    logo: '/z3r0-logo.png',
+    logo: '/ravenholt-logo-light.svg',
     outline: { level: [2, 3], label: 'On this page' },
-    socialLinks: [{ icon: 'github', link: 'https://github.com/yv1ing/Z3r0' }]
+    socialLinks: [{ icon: 'github', link: 'https://github.com/xiaoliuhua2/ravenholt' }]
   },
   locales: {
     en: {

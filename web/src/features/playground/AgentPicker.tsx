@@ -30,14 +30,14 @@ export function AgentPicker({
     return (
       <div className="agent-picker agent-picker-empty">
         <Bot size={14} />
-        <span>No agents available</span>
+        <span>暂无可用智能体</span>
       </div>
     );
   }
 
   return (
-    <div className="agent-picker" role="listbox" aria-label="Pick an agent">
-      <div className="agent-picker-hint">Pick an agent · ↑↓ to navigate · Enter or Tab to confirm</div>
+    <div className="agent-picker" role="listbox" aria-label="选择智能体">
+      <div className="agent-picker-hint">选择智能体 · ↑↓ 导航 · Enter 或 Tab 确认</div>
       {agents.map((agent, index) => {
         const active = index === highlightedIndex;
         const description = disabled ? disabledReason : agent.description;

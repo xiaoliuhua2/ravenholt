@@ -35,8 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleAuthExpired = () => signOut();
-    window.addEventListener("xuanmu:auth-expired", handleAuthExpired);
-    return () => window.removeEventListener("xuanmu:auth-expired", handleAuthExpired);
+    window.addEventListener("ravenholt:auth-expired", handleAuthExpired);
+    return () => window.removeEventListener("ravenholt:auth-expired", handleAuthExpired);
   }, [signOut]);
 
   const value = useMemo<AuthContextValue>(

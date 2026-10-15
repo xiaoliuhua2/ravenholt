@@ -5,9 +5,9 @@ editLink: true
 
 # Overview
 
-Z3r0 is an open-source red team collaboration workbench built around multi-expert agent collaboration for authorized penetration testing, vulnerability discovery, code auditing, and security research.
+Ravenholt is an open-source **red team agent collaboration platform** that uses [strix](https://github.com/usestrix/strix) as its penetration execution engine (vendored into the repository, see `.strix-vendor.json`) and layers a control plane, a policy governance layer, and an evidence surface on top of it, targeting authorized penetration testing, vulnerability discovery, code auditing, and security research.
 
-The platform mirrors the operating model of a real red team. A lead agent coordinates expert agents for intelligence gathering, penetration testing, code auditing, reverse analysis, and cryptanalysis. As work progresses, assets, relationships, vulnerability findings, and attack paths are continuously captured as structured evidence, making the security workflow observable, auditable, and reproducible.
+During task execution, the system continuously accumulates assets, relationships, vulnerability findings, and attack paths into structured evidence that can be retained long-term; high-risk actions are intercepted by the **red-line policy** and enter approval, while key actions are written to the **audit log**, giving security work better observability, auditability, and reproducibility.
 
 > :warning: Security Notice
 >
@@ -21,14 +21,17 @@ The platform mirrors the operating model of a real red team. A lead agent coordi
 
 | Capability | Description |
 | --- | --- |
-| Multi-agent red team orchestration | The lead agent coordinates expert agents to break down intelligence, vulnerabilities, analysis, and path planning into tasks that can be carried out in parallel. |
-| Session-level runtime architecture | Each session binds an independent agent graph and tool snapshot, supporting interruption, cancellation, recovery, and continuous execution. |
-| Background subagent tasks | Subagents can run as persistent background tasks and wake the parent agent for result integration and follow-up planning. |
+| Multi-agent red team orchestration | The lead agent **dynamically spawns** expert agents per task, breaking intelligence, vulnerabilities, analysis, and path planning into subtasks that can be carried out in parallel. |
+| Session-level runtime | Each session runs independently, supporting interruption, cancellation, recovery, and continuous execution. |
+| Background subagent tasks | Subagents can run persistently as background tasks and wake the parent agent on completion for result integration and follow-up planning. |
 | Asynchronous sandbox task system | Long-running commands execute as asynchronous tasks with persisted state, preventing tool execution from blocking the main workflow. |
-| Controlled sandbox execution environment | Skill loading, command execution, and output reading are wrapped in the sandbox toolchain for isolated execution and traceable results. |
-| Distributed test management | Multiple hosts, images, and containers are managed to support parallel testing, environment isolation, and resource scheduling. |
-| Proxy egress environment isolation | Sandbox containers can bind HTTP, HTTPS, and SOCKS5 proxy egress to reduce exposure of the operator environment. |
-| Project-oriented red team workflow | WorkProject centralizes assets, vulnerability findings, relationship graphs, and attack paths so the process remains traceable and reviewable. |
+| Controlled sandbox execution environment | Docker-based custom sandbox containers provide command execution, file access, a web terminal, noVNC remote view, and Caido capture/replay; containers are provisioned automatically per session. |
+| Proxy egress isolation | Sandbox containers can bind HTTP/HTTPS/SOCKS5 proxy egress (including Tor) to reduce exposure of the operator environment. |
+| Project-oriented red team workflow | WorkProject centrally manages project scope, assets, vulnerability findings, relationship graphs, and attack paths so the process remains easier to trace and review. |
+| Red-line policy and approvals | The policy makes **fail-closed** decisions on high-risk actions; actions requiring human confirmation enter the approval queue, where an administrator approves or rejects them. |
+| Audit log | Records key actions and events (action, decision, block reason, raw command) to support after-the-fact review. |
+| Source code auditing channel (white-box) | After uploading a source package you can switch to the white-box track, and skill routing and runtime conventions switch accordingly. |
+| Evidence chain and independent validation | A finding must carry reproducible evidence before it can be set to confirmed; an independent validator rules via "replay + four-dimensional diff". |
 | Replayable event timeline | Conversations, tool calls, subtasks, errors, and result events are continuously recorded for real-time display and historical replay. |
 
 ## Architecture
@@ -37,76 +40,68 @@ The platform mirrors the operating model of a real red team. A lead agent coordi
 flowchart TB
   Operator["Authorized Security Operator"]
   API["FastAPI Control Plane"]
-  Runtime["Agent Session Runtime"]
-  Graph["Session Agent Graph"]
-  Agents["Lead and Expert Agents"]
-  Tools["Tool Orchestration Layer"]
-  Sandbox["Distributed Sandbox Resources"]
-  Hosts["Hosts / Containers / Proxy Egress"]
-  Project["WorkProject Records"]
-  Evidence["Assets / Vulnerability Findings / Attack Paths"]
-  Async["Async Task Notifications"]
+  Runtime["Session Runtime (strix engine)"]
+  Agents["Lead Agent + Dynamically Spawned Experts"]
+  Tools["Tool and Skill Orchestration"]
+  Sandbox["Docker Sandbox Execution Surface"]
+  Policy["Red-line Policy / Approval Queue"]
+  Audit["Audit Log"]
+  Project["Work Project Records"]
+  Evidence["Assets / Findings / Attack Paths"]
   Timeline["Event Timeline"]
   Store[("PostgreSQL Persistence")]
 
-  Operator --> API --> Runtime --> Graph --> Agents --> Tools
+  Operator --> API --> Runtime --> Agents --> Tools
 
-  Tools --> Sandbox --> Hosts --> Store
+  Tools --> Sandbox --> Store
+  Tools --> Policy --> Audit --> Store
   Tools --> Project --> Evidence --> Store
-  Tools --> Async --> Store
   Runtime --> Timeline --> Store
 ```
 
-The architecture uses FastAPI as the control plane for sessions, projects, and execution resources. The core runtime is driven by agent sessions, which organize the lead agent and expert agents through the session agent graph. The tool orchestration layer connects sandbox execution, project records, asynchronous tasks, and the event timeline. Distributed sandbox resources provide isolated execution environments for authorized security testing, while WorkProject persists assets, vulnerability findings, and attack paths as traceable and reviewable project evidence. PostgreSQL stores session state, task progress, vulnerability findings, asset relationships, attack paths, and replayable events so the full workflow remains traceable and reviewable.
+The architecture uses FastAPI as the control plane to centrally manage sessions, projects, policies, and execution resources. The core runtime is session-driven, organizing the lead agent and expert agents through **dynamic spawning**, while the tool and skill orchestration layer connects sandbox execution, project records, and the event timeline. The Docker sandbox provides an isolated execution environment for authorized security testing; the red-line policy decides at the tool execution boundary whether to allow or route to approval, the audit log records key actions, and WorkProject precipitates assets, vulnerability findings, and attack paths into traceable and reviewable project evidence. PostgreSQL persists session state, task progress, vulnerability findings, asset relationships, attack paths, and replayable events underneath.
 
-## Expert Team
+## Agents
 
-| Code | Name | Role | Responsibilities |
-| --- | --- | --- | --- |
-| `cso` | Z3r0 | Chief Security Lead | Task decomposition, team coordination, result integration |
-| `cae` | V3ra | Code Audit Engineer | Source code auditing, dependency review, remediation verification |
-| `cie` | L1ly | Intelligence Gathering Engineer | Intelligence gathering, asset discovery, relationship mapping |
-| `cpe` | Fr4nk | Penetration Testing Engineer | Penetration testing, vulnerability validation, impact confirmation |
-| `cre` | J4m3 | Reverse Analysis Engineer | Reverse analysis, firmware disassembly, binary unpacking |
-| `cce` | Nu1L | Cryptography Engineer | Cryptographic analysis, key review, security assessment |
+Agents are **not** a fixed, static roster: the list is determined by the project configuration (the `agents` section of `.ravenholt/config.json`) and contains only a lead preset (`cso`) by default; during execution the runtime **dynamically spawns** expert agents per task and no longer depends on a hard-coded expert roster.
 
 ## Runtime Sequence
 
 ```mermaid
 sequenceDiagram
   participant UI as Playground UI
-  participant API as Agent REST Handler
-  participant WS as Agent Event Stream
-  participant Pool as AgentSessionPool
-  participant Sess as AgentSession
-  participant SDK as Runner + Z3r0Session
+  participant API as Session REST API
+  participant WS as Session Event Stream
+  participant Pool as Session Pool
+  participant Sess as Agent Session Driver
+  participant SDK as strix Engine
   participant Tool as Mounted Tools
   participant DB as PostgreSQL
 
-  UI->>API: POST turn / interrupt / cancel-all
-  API->>Pool: submit_turn(session_id)
-  Pool->>Sess: start_turn()
-  Sess->>DB: mark running + load timeline
-  UI->>WS: subscribe(session_id)
-  Sess->>SDK: Runner.run_streamed()
+  UI->>API: submit turn / interrupt / cancel
+  API->>Pool: submit session input
+  Pool->>Sess: start or resume turn
+  Sess->>DB: mark running + load event history
+  UI->>WS: subscribe to session events
+  Sess->>SDK: run agent as a stream
 
-  SDK->>Tool: tool_call
+  SDK->>Tool: invoke tool
 
-  alt WorkProject / Knowledge
+  alt Project records / Skills
     Tool->>DB: read/write structured state
-    DB-->>Tool: result
-  else Sandbox sync command
-    Tool->>Tool: docker exec in selected sandbox
-    Tool-->>SDK: output metadata
-  else Sandbox async / Subagent
-    Tool->>DB: create job/task + AWAITING notification
-    Tool-->>SDK: RUNNING / started
-    DB-->>Pool: completion notification becomes PENDING
-    Pool->>Sess: resume_session()
+    DB-->>Tool: return result
+  else Sandbox sync command (passes the policy gate)
+    Tool->>Tool: execute the command in the sandbox after the decision passes
+    Tool-->>SDK: return output metadata
+  else Sandbox async command / Subagent
+    Tool->>DB: create task + await notification
+    Tool-->>SDK: return running
+    DB-->>Pool: on completion, notification becomes pending
+    Pool->>Sess: automatically resume session
   end
 
   SDK-->>Sess: stream events
   Sess->>DB: persist timeline
   Sess-->>WS: normalized events
-  WS-->>UI: live transcript
+  WS-->>UI: live display
 ```

@@ -1,5 +1,5 @@
 export const landingPrimaryAction = {
-  label: "Read documentation",
-  href: "https://github.com/yv1ing/Z3r0/blob/main/docs/en/guide/overview.md",
+  label: "阅读使用文档",
+  href: "https://github.com/xiaoliuhua2/ravenholt/blob/main/docs/en/guide/overview.md",
   external: true,
 } as const;

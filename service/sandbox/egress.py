@@ -8,7 +8,7 @@ from service.egress_proxy.proxies import egress_proxy_upstream
 
 
 NO_PROXY_VALUE = "localhost,127.0.0.1,::1"
-# XuanMu 的运行时出网代理（容器内 127.0.0.1:8118）由镜像内置的 Go 控制面提供；Strix 官方
+# Ravenholt 的运行时出网代理（容器内 127.0.0.1:8118）由镜像内置的 Go 控制面提供；ravenholt 官方
 # 沙箱镜像没有该控制面。默认不再注入指向 8118 的代理环境，否则会把沙箱全部出网请求指向
 # 一个不存在的代理、直接弄坏出网。如需容器内运行时代理，显式设置该环境变量。
 RUNTIME_PROXY_URL_ENV = "SANDBOX_EGRESS_RUNTIME_PROXY_URL"

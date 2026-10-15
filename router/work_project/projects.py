@@ -7,6 +7,7 @@ from handler.work_project.projects import (
     delete_work_project_handler,
     delete_work_project_session_handler,
     get_work_project_record_snapshot_handler,
+    get_work_project_finding_evidence_handler,
     list_work_project_sessions_handler,
     query_work_projects_handler,
     retry_work_project_handler,
@@ -24,6 +25,7 @@ from schema.work_project.projects import (
     UpdateWorkProjectMetadataRequest,
     WorkProjectSchema,
 )
+from schema.work_project.evidence import WorkProjectFindingEvidenceSchema
 from schema.work_project.records import WorkProjectRecordSnapshotSchema
 
 
@@ -57,6 +59,14 @@ async def get_work_project_record_snapshot_route(
     user: AuthUser = Depends(require_user),
 ) -> CommonResponse[WorkProjectRecordSnapshotSchema]:
     return await get_work_project_record_snapshot_handler(id=id, user=user)
+
+
+async def get_work_project_finding_evidence_route(
+    id: int,
+    finding_id: int,
+    user: AuthUser = Depends(require_user),
+) -> CommonResponse[WorkProjectFindingEvidenceSchema]:
+    return await get_work_project_finding_evidence_handler(id=id, finding_id=finding_id, user=user)
 
 
 async def update_work_project_metadata_route(
@@ -110,6 +120,14 @@ router.add_api_route(
     get_work_project_record_snapshot_route,
     methods=["GET"],
     response_model=CommonResponse[WorkProjectRecordSnapshotSchema],
+    responses={**COMMON_ERROR_RESPONSES, **NOT_FOUND_RESPONSE},
+)
+
+router.add_api_route(
+    "/{id}/findings/{finding_id}/evidence",
+    get_work_project_finding_evidence_route,
+    methods=["GET"],
+    response_model=CommonResponse[WorkProjectFindingEvidenceSchema],
     responses={**COMMON_ERROR_RESPONSES, **NOT_FOUND_RESPONSE},
 )
 

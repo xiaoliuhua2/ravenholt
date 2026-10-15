@@ -191,18 +191,18 @@ export function ProjectGraphCanvas({ assets, edges }: { assets: WorkProjectAsset
 
   return (
     <div className="project-graph" ref={containerRef}>
-      <div ref={graphRef} className="project-graph-canvas" role="img" aria-label="Work project relationship graph" />
+      <div ref={graphRef} className="project-graph-canvas" role="img" aria-label="工作项目关系图" />
 
       <GraphLegend />
 
       <div className="project-graph-controls">
-        <button type="button" aria-label="Zoom in" onClick={() => zoomFromCenter(CONTROL_ZOOM_FACTOR)}>
+        <button type="button" aria-label="放大" onClick={() => zoomFromCenter(CONTROL_ZOOM_FACTOR)}>
           <Plus size={15} />
         </button>
-        <button type="button" aria-label="Zoom out" onClick={() => zoomFromCenter(1 / CONTROL_ZOOM_FACTOR)}>
+        <button type="button" aria-label="缩小" onClick={() => zoomFromCenter(1 / CONTROL_ZOOM_FACTOR)}>
           <Minus size={15} />
         </button>
-        <button type="button" aria-label="Reset view" onClick={resetView}>
+        <button type="button" aria-label="重置视图" onClick={resetView}>
           <Maximize2 size={14} />
         </button>
       </div>
@@ -318,14 +318,14 @@ function graphStyles(): cytoscape.StylesheetJson {
       selector: "core",
       style: {
         "selection-box-color": "#7ddbd3",
-        "selection-box-border-color": "#d6fff9",
+        "selection-box-border-color": "#0f766e",
         "selection-box-opacity": 0.16,
         "active-bg-color": "#7ddbd3",
         "active-bg-size": 18,
         "active-bg-opacity": 0.12,
         "selection-box-border-width": 1,
-        "outside-texture-bg-color": "#08111c",
-        "outside-texture-bg-opacity": 0.9,
+        "outside-texture-bg-color": "#f7f8fa",
+        "outside-texture-bg-opacity": 1,
       },
     },
     {
@@ -348,8 +348,8 @@ function graphStyles(): cytoscape.StylesheetJson {
         "text-halign": "center",
         "text-margin-y": 6,
         "min-zoomed-font-size": 7.5,
-        "color": "#c7d2df",
-        "text-outline-color": "#08111c",
+        "color": "#232935",
+        "text-outline-color": "#ffffff",
         "text-outline-width": 2.5,
         "overlay-opacity": 0,
         "underlay-color": "data(accent)",
@@ -387,8 +387,8 @@ function graphStyles(): cytoscape.StylesheetJson {
         "text-rotation": "autorotate",
         "text-margin-y": -10,
         "min-zoomed-font-size": 8,
-        "color": "#aebdca",
-        "text-outline-color": "#08111c",
+        "color": "#5a6473",
+        "text-outline-color": "#ffffff",
         "text-outline-width": 3,
         "overlay-opacity": 0,
         "transition-property": "width, opacity",
@@ -419,7 +419,7 @@ function GraphLegend() {
   return (
     <div className="project-graph-legend">
       <div className="project-graph-legend-group">
-        <span className="project-graph-legend-title">Nodes</span>
+        <span className="project-graph-legend-title">节点</span>
         {WORK_PROJECT_ASSET_TYPES.map((type) => (
           <span key={type} className="project-graph-legend-item">
             <i className="project-graph-legend-dot" style={graphColorStyle(ASSET_TYPE_COLOR[type])} />
@@ -428,7 +428,7 @@ function GraphLegend() {
         ))}
       </div>
       <div className="project-graph-legend-group">
-        <span className="project-graph-legend-title">Edges</span>
+        <span className="project-graph-legend-title">边</span>
         {WORK_PROJECT_GRAPH_EDGE_CATEGORIES.map((category) => (
           <span key={category} className="project-graph-legend-item">
             <i
@@ -510,11 +510,11 @@ function tooltipStyle(hover: HoverState, size: { width: number; height: number }
 
 function nodeRows(asset: WorkProjectAsset): TooltipRows {
   const items: DetailItem[] = [
-    ["Type", WORK_PROJECT_ASSET_TYPE_LABEL[asset.type]],
-    ["Origin", WORK_PROJECT_ASSET_ORIGIN_LABEL[asset.origin]],
-    asset.type === WORK_PROJECT_ASSET_TYPE.BINARY ? ["Path", asset.path] : ["Host", asset.host],
-    ["Port", asset.port ? String(asset.port) : undefined],
-    ["Banner", asset.extra?.banner],
+    ["类型", WORK_PROJECT_ASSET_TYPE_LABEL[asset.type]],
+    ["来源", WORK_PROJECT_ASSET_ORIGIN_LABEL[asset.origin]],
+    asset.type === WORK_PROJECT_ASSET_TYPE.BINARY ? ["路径", asset.path] : ["主机", asset.host],
+    ["端口", asset.port ? String(asset.port) : undefined],
+    ["横幅", asset.extra?.banner],
   ];
   return { title: formatWorkProjectAsset(asset), items: filledDetailItems(items) };
 }
@@ -523,10 +523,10 @@ function edgeRows(edge: WorkProjectGraphEdge, assetById: Map<number, WorkProject
   const source = assetById.get(edge.source_asset_id);
   const target = assetById.get(edge.target_asset_id);
   const items: DetailItem[] = [
-    ["Category", WORK_PROJECT_GRAPH_EDGE_CATEGORY_LABEL[workProjectEdgeCategory(edge.type)]],
-    ["From", source ? formatWorkProjectAsset(source) : `#${edge.source_asset_id}`],
-    ["To", target ? formatWorkProjectAsset(target) : `#${edge.target_asset_id}`],
-    ["Label", edge.label],
+    ["类别", WORK_PROJECT_GRAPH_EDGE_CATEGORY_LABEL[workProjectEdgeCategory(edge.type)]],
+    ["起始", source ? formatWorkProjectAsset(source) : `#${edge.source_asset_id}`],
+    ["目标", target ? formatWorkProjectAsset(target) : `#${edge.target_asset_id}`],
+    ["标签", edge.label],
   ];
   return { title: WORK_PROJECT_GRAPH_EDGE_TYPE_LABEL[edge.type], items: filledDetailItems(items) };
 }

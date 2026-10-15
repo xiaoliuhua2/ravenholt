@@ -1,9 +1,7 @@
-from core.runtime.session import get_agent_pool
 from logger import get_logger
 from middleware.auth import AuthUser
 from service.agent import sessions as agent_sessions
 from service.system_user.users import query_system_user_by_id
-from service.agent.runtime import build_runtime_context
 from service.work_project.projects import can_run_work_project_session
 
 
@@ -11,6 +9,11 @@ logger = get_logger(__name__)
 
 
 async def recover_pending_sessions() -> None:
+    """启动恢复：把上个进程中断的会话收敛到确定状态。
+
+    strix 单轨的回合由进程内的 run loop 承载，进程重启后无法续跑；这里只负责把
+    没有任何在途工作的会话标记为停止，仍在途的会话保持原状交由后续清理。
+    """
     pending = await agent_sessions.list_running_sessions()
     if not pending:
         return
@@ -35,12 +38,3 @@ async def recover_pending_sessions() -> None:
                 error="WorkProject is canceled.",
             )
             continue
-        agent_code = session.runtime_agent_code or session.agent_code
-        runtime = await get_agent_pool().get_or_create(session.session_id)
-        context = await build_runtime_context(
-            session.session_id,
-            auth_user,
-            session.runtime_sandbox_container_id,
-            agent_code,
-        )
-        await runtime.start_notification_recovery(context)

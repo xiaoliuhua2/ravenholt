@@ -7,7 +7,7 @@ from model.sandbox.containers import SandboxContainer
 from model.sandbox.images import SandboxImage
 from model.host.hosts import ManagedHost
 from model.system_user.users import SystemUser
-from schema.sandbox.containers import SandboxContainerSchema, SandboxContainerStatus
+from schema.sandbox.containers import SandboxContainerSchema, SandboxContainerSource, SandboxContainerStatus
 from schema.system_user.users import SystemUserRole
 from service.common.pagination import Page, paginate_statement
 from service.sandbox.egress import sandbox_egress_label
@@ -84,6 +84,13 @@ async def load_sandbox_container_record(id: int) -> SandboxContainerRecord | Non
         return _to_record(row) if row is not None else None
 
 
+def _container_source(container: SandboxContainer) -> SandboxContainerSource:
+    """判定容器来源：运行时按会话自建的容器没有平台控制面，控制端口恒为 0。"""
+    if container.control_proxy_host_port <= 0:
+        return SandboxContainerSource.RUNTIME
+    return SandboxContainerSource.MANUAL
+
+
 def sandbox_container_schema(record: SandboxContainerRecord) -> SandboxContainerSchema:
     container = record.container
     return SandboxContainerSchema(
@@ -102,6 +109,7 @@ def sandbox_container_schema(record: SandboxContainerRecord) -> SandboxContainer
         control_proxy_host_port=container.control_proxy_host_port,
         port_mappings=container.port_mappings,
         status=container.status,
+        source=_container_source(container),
         owner_id=container.owner_id,
         owner_username=record.owner_username,
         created_at=container.created_at,

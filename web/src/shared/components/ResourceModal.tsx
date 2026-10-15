@@ -10,6 +10,8 @@ type ResourceModalProps = {
   submitDisabled?: boolean;
   width?: number;
   className?: string;
+  /** 可选「次要动作」（如审批弹窗里的「拒绝」），排在取消与主按钮之间。 */
+  secondaryAction?: { label: string; disabled?: boolean; onClick: () => void | Promise<void> };
   onCancel: () => void;
   onSubmit: () => void | Promise<void>;
   children: ReactNode;
@@ -23,6 +25,7 @@ export function ResourceModal({
   submitDisabled = false,
   width = 520,
   className,
+  secondaryAction,
   onCancel,
   onSubmit,
   children,
@@ -46,6 +49,16 @@ export function ResourceModal({
         {children}
         <div className="modal-actions">
           <Button type="tertiary" onClick={onCancel} disabled={saving}>{UI_TEXT.cancel}</Button>
+          {secondaryAction ? (
+            <Button
+              type="tertiary"
+              theme="borderless"
+              disabled={saving || secondaryAction.disabled}
+              onClick={() => void secondaryAction.onClick()}
+            >
+              {secondaryAction.label}
+            </Button>
+          ) : null}
           <Button htmlType="submit" theme="solid" type="primary" loading={saving} disabled={submitDisabled}>{submitLabel}</Button>
         </div>
       </form>

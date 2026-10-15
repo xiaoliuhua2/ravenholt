@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Ravenholt">
+  <title>Ravenholt</title>
+  <!-- 浅色变体：用于强制深色的文档站（appearance: force-dark）与深色底 -->
+  <path
+    d="M32 4.5 55.9 18.25 55.9 45.75 32 59.5 8.1 45.75 8.1 18.25Z"
+    fill="none"
+    stroke="#ffffff"
+    stroke-opacity="0.34"
+    stroke-width="2.2"
+    stroke-linejoin="round"
+  />
+  <g fill="#ffffff">
+    <path d="M28.8 30.5 10.5 17 13.4 26 28.8 39.5Z" />
+    <path d="M35.2 30.5 53.5 17 50.6 26 35.2 39.5Z" />
+    <path d="M28.9 30h6.2l0.9 13.5L32 48.5 28 43.5Z" />
+    <path d="M28.3 42.5 32 53.5 35.7 42.5Z" />
+    <path d="M32 20.5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" />
+  </g>
+  <path d="M32 23.7a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Z" fill="#d92d3a" />
+</svg>

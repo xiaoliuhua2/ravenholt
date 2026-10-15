@@ -30,6 +30,7 @@ class WorkProjectTaskStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     DONE = "done"
+    CANCELED = "canceled"
 
 
 def _new_client_id() -> str:

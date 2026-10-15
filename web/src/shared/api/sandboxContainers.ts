@@ -1,4 +1,4 @@
-import { apiBlob, apiDelete, apiForm, apiGet, apiPatch, apiPost, buildAuthenticatedWebSocketUrl } from "./client";
+import { apiBlob, apiForm, apiGet, apiPost } from "./client";
 import { SANDBOX_CONTAINER_STATUS } from "./generated/constants";
 import { getStoredAccessToken } from "../auth/session";
 import { buildQuery } from "./query";
@@ -15,87 +15,53 @@ import type {
   ContainerFileUploadResponse,
   ContainerFileWriteRequest,
   ContainerFileWriteResponse,
-  CreateSandboxContainerRequest,
-  CreateSandboxContainerResponse,
-  DeleteSandboxContainerResponse,
   ListContainerFilesParams,
   ListContainerFilesResponse,
   DownloadContainerFilesParams,
   QueryAvailableSandboxContainersParams,
   QueryAvailableSandboxContainersResponse,
-  QuerySandboxContainersParams,
-  QuerySandboxContainersResponse,
   ReadContainerFileParams,
   ReadContainerFileResponse,
   SandboxContainer,
-  SandboxContainerPathParams,
-  StartSandboxContainerPathParams,
-  StartSandboxContainerResponse,
-  StopSandboxContainerPathParams,
-  StopSandboxContainerResponse,
-  UpdateSandboxContainerEgressPathParams,
-  UpdateSandboxContainerEgressRequest,
-  UpdateSandboxContainerEgressResponse,
 } from "./types";
 
 const SANDBOX_CONTAINERS_PATH = "/api/sandbox-containers";
-
-export function querySandboxContainers(params: QuerySandboxContainersParams) {
-  return apiGet<QuerySandboxContainersResponse>(`${SANDBOX_CONTAINERS_PATH}${buildQuery(params)}`);
-}
 
 export function queryAvailableSandboxContainers(params: QueryAvailableSandboxContainersParams) {
   return apiGet<QueryAvailableSandboxContainersResponse>(`${SANDBOX_CONTAINERS_PATH}/available${buildQuery(params)}`);
 }
 
-export function createSandboxContainer(payload: CreateSandboxContainerRequest) {
-  return apiPost<CreateSandboxContainerResponse>(SANDBOX_CONTAINERS_PATH, payload);
+// ── Caido 抓包入口 ─────────────────────────────────────────────────────────
+
+// 沙箱容器内 Caido 侧车端口，与后端 service/sandbox/caido.py 的 CAIDO_CONTAINER_PORT 对齐
+const SANDBOX_CAIDO_CONTAINER_PORT = 48080;
+
+export function containerCaidoHostPort(container: SandboxContainer) {
+  const mapping = container.port_mappings.find(
+    (item) => item.container_port === SANDBOX_CAIDO_CONTAINER_PORT && item.protocol === "tcp",
+  );
+  return mapping?.host_port ?? 0;
 }
 
-export function startSandboxContainer(id: StartSandboxContainerPathParams["id"]) {
-  return apiPost<StartSandboxContainerResponse>(`${SANDBOX_CONTAINERS_PATH}/${id}/start`);
+export function canOpenContainerCaido(container: SandboxContainer) {
+  return Boolean(container.status === SANDBOX_CONTAINER_STATUS.RUNNING && containerCaidoHostPort(container) > 0);
 }
 
-export function stopSandboxContainer(id: StopSandboxContainerPathParams["id"]) {
-  return apiPost<StopSandboxContainerResponse>(`${SANDBOX_CONTAINERS_PATH}/${id}/stop`);
-}
-
-export function updateSandboxContainerEgress(
-  id: UpdateSandboxContainerEgressPathParams["id"],
-  payload: UpdateSandboxContainerEgressRequest,
-) {
-  return apiPatch<UpdateSandboxContainerEgressResponse>(`${SANDBOX_CONTAINERS_PATH}/${id}/egress`, payload);
-}
-
-export function deleteSandboxContainer(id: SandboxContainerPathParams["id"]) {
-  return apiDelete<DeleteSandboxContainerResponse>(`${SANDBOX_CONTAINERS_PATH}/${id}`);
-}
-
-export function buildContainerShellUrl(containerId: number) {
-  return buildAuthenticatedWebSocketUrl(`${SANDBOX_CONTAINERS_PATH}/${containerId}/shell`);
-}
-
-export function canOpenContainerNoVNC(container: SandboxContainer) {
-  return Boolean(container.control_proxy_host_port > 0 && container.status === SANDBOX_CONTAINER_STATUS.RUNNING);
-}
-
-export function buildContainerNoVNCUrl(container: SandboxContainer) {
-  if (!canOpenContainerNoVNC(container)) {
-    throw new Error("container control port is not ready");
+/**
+ * Caido 由后端按路径前缀反代（侧车端口只发布在宿主回环地址上）。
+ * 首屏用 ?token= 换成 HttpOnly Cookie，之后由 Caido 前端自行用相对路径发起请求。
+ * 入口必须带结尾斜杠，否则相对路径会退化到上一层前缀。
+ */
+export function buildContainerCaidoUrl(container: SandboxContainer) {
+  if (!canOpenContainerCaido(container)) {
+    throw new Error("container caido port is not ready");
   }
 
   const token = getStoredAccessToken();
   if (!token) throw new Error("missing access token");
 
-  const wsPath = `../novnc-ws?token=${encodeURIComponent(token)}`;
-  const base = `${window.location.origin}/api/sandbox-containers/${container.id}/novnc/vnc.html`;
-
-  const url = new URL(base);
-  url.searchParams.set("autoconnect", "true");
-  url.searchParams.set("resize", "remote");
-  url.searchParams.set("path", wsPath);
-  url.searchParams.set("token", token);
-  return url.toString();
+  const path = `${SANDBOX_CONTAINERS_PATH}/${container.id}/caido/?token=${encodeURIComponent(token)}`;
+  return `${window.location.origin}${path}`;
 }
 
 

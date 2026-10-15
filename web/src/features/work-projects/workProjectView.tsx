@@ -17,7 +17,7 @@ import {
 type WorkProjectViewMode = "expanded" | "info";
 
 export function workProjectOwnerNames(project: WorkProject): string {
-  return project.owners.map((owner) => owner.username).join(", ") || "No owners";
+  return project.owners.map((owner) => owner.username).join(", ") || "暂无负责人";
 }
 
 export function WorkProjectTypeTag({ project }: { project: WorkProject }) {
@@ -99,12 +99,12 @@ export function WorkProjectSummaries({
               <Progress percent={summary.summary.progress ?? 0} size="small" showInfo />
             </div>
           ) : null}
-          <SummaryBlock className={blockClassName} label="Status" value={summary.summary?.status} />
-          <SummaryList className={blockClassName} label="Findings" values={summary.summary?.findings ?? []} />
-          <SummaryList className={blockClassName} label="Decisions" values={summary.summary?.decisions ?? []} />
-          <SummaryList className={blockClassName} label="Blockers" values={summary.summary?.blockers ?? []} />
-          <SummaryList className={blockClassName} label="Next Steps" values={summary.summary?.next_steps ?? []} />
-          <SummaryBlock className={blockClassName} label="Notes" value={summary.summary?.notes} />
+          <SummaryBlock className={blockClassName} label="状态" value={summary.summary?.status} />
+          <SummaryList className={blockClassName} label="发现" values={summary.summary?.findings ?? []} />
+          <SummaryList className={blockClassName} label="决策" values={summary.summary?.decisions ?? []} />
+          <SummaryList className={blockClassName} label="阻碍" values={summary.summary?.blockers ?? []} />
+          <SummaryList className={blockClassName} label="下一步" values={summary.summary?.next_steps ?? []} />
+          <SummaryBlock className={blockClassName} label="备注" value={summary.summary?.notes} />
         </article>
       ))}
     </div>

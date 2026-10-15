@@ -1,6 +1,6 @@
 """Self-test for evidence storage + the independent verifier.
 
-Run from the project root (so ``init_engine()`` can read ``.xuanmu/config.json``):
+Run from the project root (so ``init_engine()`` can read ``.ravenholt/config.json``):
 
     .venv/bin/python scripts/verify_evidence_selftest.py      # POSIX
     .venv\\Scripts\\python.exe scripts\\verify_evidence_selftest.py   # Windows
@@ -29,6 +29,7 @@ if str(ROOT_PATH) not in sys.path:
 import httpx  # noqa: E402
 
 from config import load_config  # noqa: E402
+from core.policy import load_policy  # noqa: E402
 from database import create_all_tables, init_engine  # noqa: E402
 from service.evidence.store import save_evidence  # noqa: E402
 from service.evidence.verifier import verify_evidence  # noqa: E402
@@ -60,9 +61,11 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[int, str]:
 
 
 async def main() -> int:
-    # get_config() 返回的是模块级默认实例，必须先显式加载 .xuanmu/config.json；
+    # get_config() 返回的是模块级默认实例，必须先显式加载 .ravenholt/config.json；
     # 否则数据库用户名/密码为空，asyncpg 会回退成 OS 用户（root）导致认证失败。
     load_config()
+    # 与应用启动流程保持一致：红线策略未加载时出网判定会 fail-closed 拒绝
+    load_policy()
     init_engine()
     await create_all_tables()
 

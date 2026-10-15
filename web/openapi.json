@@ -52,9 +52,11 @@
       "AgentEventSchema": {
         "discriminator": {
           "mapping": {
+            "approval": "#/components/schemas/ApprovalEvent",
             "done": "#/components/schemas/DoneEvent",
             "error": "#/components/schemas/ErrorEvent",
             "run_state": "#/components/schemas/RunStateEvent",
+            "sandbox": "#/components/schemas/SandboxEvent",
             "subagent_task": "#/components/schemas/SubagentTaskEvent",
             "text_complete": "#/components/schemas/TextCompleteEvent",
             "text_delta": "#/components/schemas/TextDeltaEvent",
@@ -97,6 +99,12 @@
           },
           {
             "$ref": "#/components/schemas/SubagentTaskEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SandboxEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovalEvent"
           },
           {
             "$ref": "#/components/schemas/DoneEvent"
@@ -269,7 +277,7 @@
             "type": "integer"
           },
           "model_stream_idle_timeout_seconds": {
-            "default": 300,
+            "default": 600,
             "minimum": 30.0,
             "title": "Model Stream Idle Timeout Seconds",
             "type": "integer"
@@ -539,74 +547,17 @@
         "title": "AgentTextInputPart",
         "type": "object"
       },
-      "AgentTurnRequest": {
-        "properties": {
-          "agent_code": {
-            "anyOf": [
-              {
-                "maxLength": 32,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Code"
-          },
-          "content": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "image": "#/components/schemas/AgentImageInputPart",
-                  "text": "#/components/schemas/AgentTextInputPart"
-                },
-                "propertyName": "type"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/AgentTextInputPart"
-                },
-                {
-                  "$ref": "#/components/schemas/AgentImageInputPart"
-                }
-              ]
-            },
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Content",
-            "type": "array"
-          },
-          "sandbox_container_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sandbox Container Id"
-          }
-        },
-        "required": [
-          "content",
-          "agent_code",
-          "sandbox_container_id"
-        ],
-        "title": "AgentTurnRequest",
-        "type": "object"
-      },
       "AgentTurnResponse": {
         "properties": {
           "events": {
             "items": {
               "discriminator": {
                 "mapping": {
+                  "approval": "#/components/schemas/ApprovalEvent",
                   "done": "#/components/schemas/DoneEvent",
                   "error": "#/components/schemas/ErrorEvent",
                   "run_state": "#/components/schemas/RunStateEvent",
+                  "sandbox": "#/components/schemas/SandboxEvent",
                   "subagent_task": "#/components/schemas/SubagentTaskEvent",
                   "text_complete": "#/components/schemas/TextCompleteEvent",
                   "text_delta": "#/components/schemas/TextDeltaEvent",
@@ -651,6 +602,12 @@
                   "$ref": "#/components/schemas/SubagentTaskEvent"
                 },
                 {
+                  "$ref": "#/components/schemas/SandboxEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ApprovalEvent"
+                },
+                {
                   "$ref": "#/components/schemas/DoneEvent"
                 },
                 {
@@ -675,6 +632,523 @@
           "events"
         ],
         "title": "AgentTurnResponse",
+        "type": "object"
+      },
+      "ApprovalEvent": {
+        "description": "风险审批事件：命中未放行的审批项时在对话流里落一条可操作的卡片。\n\n``confirmation_id`` 是 ``policy_confirmations`` 的主键，同时用作时间线的确定性\nkey（``approval:<id>``），使 pending → approved / rejected 在同一位置原地更新，\n而不是每次阶段变化都新增一条。",
+        "properties": {
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "agent_name": {
+            "default": "",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "approval_key": {
+            "default": "",
+            "title": "Approval Key",
+            "type": "string"
+          },
+          "confirmation_id": {
+            "title": "Confirmation Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "nested_call_id": {
+            "default": "",
+            "title": "Nested Call Id",
+            "type": "string"
+          },
+          "nested_for": {
+            "default": "",
+            "title": "Nested For",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ApprovalPhaseSchema"
+          },
+          "seq": {
+            "default": 0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "type": {
+            "const": "approval",
+            "default": "approval",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "confirmation_id",
+          "phase"
+        ],
+        "title": "ApprovalEvent",
+        "type": "object"
+      },
+      "ApprovalGateSchema": {
+        "additionalProperties": false,
+        "description": "单个风险审批项的状态（src-hunt §2 的一条例）。\n\n``allow=True`` → 已获用户放行，不再逐条确认；``allow=False`` → 命中即进人工确认队列。\n``signals`` 是该项的命令文本命中特征，随条目一起读写，供面板自定义。",
+        "properties": {
+          "allow": {
+            "title": "Allow",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "allow",
+          "signals"
+        ],
+        "title": "ApprovalGateSchema",
+        "type": "object"
+      },
+      "ApprovalItem": {
+        "additionalProperties": false,
+        "description": "一条风险审批项 —— 与 ``src-hunt`` 的 ``SKILL.md`` §2「安全红线与授权」逐条对应。\n\n语义（照 §2 总纲）：**唯一绝对红线是 DoS**（见 :class:`RedlineConfig`）；\n其余动作**默认不做**，用户点头后才发。这里的 ``allow`` 就是\"用户是否已点头\"：\n\n- ``allow=False``（默认）→ 命中即进入人工确认队列，逐条批准后才执行；提示词里也会要求\n  agent 先说明载荷与影响、等你点头；\n- ``allow=True`` → 该项已获用户放行：闸门不再拦停，提示词改为「**执行前用一句话声明即可，\n  不必再等用户确认**」（仍受 scope / denylist / 限速约束）。\n\n``signals`` 是**命令文本命中特征**（用户可自定义，大小写不敏感）：裸词按两侧词边界\n匹配、多词特征按左侧词边界匹配；含 ``+`` 的项表示各段须**同时**命中（复合 AND），\n用于表达上下文，例如 ``-x post +/logout`` 只在真的发起登出请求时命中。命中即把该\n命令归入本审批项。空列表 = 不按命令文本判定，只由智能体纪律约束（如「越权写」要看\n业务语义，命令文本判不出来）。",
+        "properties": {
+          "allow": {
+            "default": false,
+            "title": "Allow",
+            "type": "boolean"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ApprovalItem",
+        "type": "object"
+      },
+      "ApprovalPatchSchema": {
+        "additionalProperties": false,
+        "description": "单个审批项的部分更新：只传需要改的字段，未传的保持不变。",
+        "properties": {
+          "allow": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "signals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signals"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "ApprovalPatchSchema",
+        "type": "object"
+      },
+      "ApprovalPhaseSchema": {
+        "description": "一次风险审批的生命周期阶段（命中未放行的审批项时挂起等待用户决策）。",
+        "enum": [
+          "pending",
+          "approved",
+          "rejected",
+          "timeout",
+          "cancelled"
+        ],
+        "title": "ApprovalPhaseSchema",
+        "type": "string"
+      },
+      "AuditConfig": {
+        "additionalProperties": false,
+        "description": "Tier-1：审计日志，不可关闭。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "retention_days": {
+            "default": 90,
+            "minimum": 1.0,
+            "title": "Retention Days",
+            "type": "integer"
+          }
+        },
+        "title": "AuditConfig",
+        "type": "object"
+      },
+      "AuditEventSchema": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "policy_revision": {
+            "title": "Policy Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "action",
+          "category",
+          "target",
+          "decision",
+          "code",
+          "reason",
+          "policy_revision",
+          "actor",
+          "detail"
+        ],
+        "title": "AuditEventSchema",
+        "type": "object"
+      },
+      "BlackboardCreateNodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "creator_agent_code": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Creator Agent Code",
+            "type": "string"
+          },
+          "description": {
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "extra": {
+            "default": "{}",
+            "title": "Extra",
+            "type": "string"
+          },
+          "node_type": {
+            "$ref": "#/components/schemas/BlackboardNodeType"
+          },
+          "parent_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          },
+          "session_id": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_type",
+          "description"
+        ],
+        "title": "BlackboardCreateNodeRequest",
+        "type": "object"
+      },
+      "BlackboardNodeSchema": {
+        "properties": {
+          "confidence": {
+            "default": 1.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "creator_agent_code": {
+            "default": "",
+            "title": "Creator Agent Code",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "extra": {
+            "default": "{}",
+            "title": "Extra",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "node_type": {
+            "$ref": "#/components/schemas/BlackboardNodeType"
+          },
+          "parent_ids": {
+            "default": "[]",
+            "title": "Parent Ids",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "session_id": {
+            "default": "",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BlackboardNodeStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "node_type",
+          "status",
+          "description",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BlackboardNodeSchema",
+        "type": "object"
+      },
+      "BlackboardNodeStatus": {
+        "enum": [
+          "proposed",
+          "in_progress",
+          "confirmed",
+          "rejected",
+          "superseded"
+        ],
+        "title": "BlackboardNodeStatus",
+        "type": "string"
+      },
+      "BlackboardNodeType": {
+        "enum": [
+          "fact",
+          "intent",
+          "hint"
+        ],
+        "title": "BlackboardNodeType",
+        "type": "string"
+      },
+      "BlackboardSnapshotSchema": {
+        "description": "Full blackboard graph for a project — all nodes + metadata.",
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/BlackboardNodeSchema"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "nodes",
+          "total_count"
+        ],
+        "title": "BlackboardSnapshotSchema",
+        "type": "object"
+      },
+      "BlackboardUpdateNodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "extra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra"
+          },
+          "parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Ids"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlackboardNodeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "BlackboardUpdateNodeRequest",
         "type": "object"
       },
       "Body_upload_container_files_route_api_sandbox_containers__id__files_upload_post": {
@@ -702,6 +1176,23 @@
           "files"
         ],
         "title": "Body_upload_container_files_route_api_sandbox_containers__id__files_upload_post",
+        "type": "object"
+      },
+      "Body_upload_work_project_source_route_api_work_projects_source_uploads_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_work_project_source_route_api_work_projects_source_uploads_post",
         "type": "object"
       },
       "CommonResponse": {
@@ -800,6 +1291,32 @@
         "title": "CommonResponse[Any]",
         "type": "object"
       },
+      "CommonResponse_BlackboardSnapshotSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BlackboardSnapshotSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[BlackboardSnapshotSchema]",
+        "type": "object"
+      },
       "CommonResponse_ContainerFileReadResponse_": {
         "properties": {
           "code": {
@@ -876,6 +1393,32 @@
           }
         },
         "title": "CommonResponse[CreateWorkProjectSessionResponse]",
+        "type": "object"
+      },
+      "CommonResponse_DeleteAuditEventsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeleteAuditEventsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[DeleteAuditEventsResponse]",
         "type": "object"
       },
       "CommonResponse_DeleteEgressProxyResponse_": {
@@ -1058,6 +1601,32 @@
           }
         },
         "title": "CommonResponse[EgressProxySchema]",
+        "type": "object"
+      },
+      "CommonResponse_FetchUpstreamModelsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FetchUpstreamModelsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[FetchUpstreamModelsResponse]",
         "type": "object"
       },
       "CommonResponse_InstanceConfigSchema_": {
@@ -1268,6 +1837,84 @@
         "title": "CommonResponse[ManagedHostSchema]",
         "type": "object"
       },
+      "CommonResponse_PolicyApprovalsSnapshotSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyApprovalsSnapshotSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[PolicyApprovalsSnapshotSchema]",
+        "type": "object"
+      },
+      "CommonResponse_PolicyConfirmationSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyConfirmationSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[PolicyConfirmationSchema]",
+        "type": "object"
+      },
+      "CommonResponse_PolicySnapshotSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicySnapshotSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[PolicySnapshotSchema]",
+        "type": "object"
+      },
       "CommonResponse_PullManagedHostImagesResponse_": {
         "properties": {
           "code": {
@@ -1292,6 +1939,58 @@
           }
         },
         "title": "CommonResponse[PullManagedHostImagesResponse]",
+        "type": "object"
+      },
+      "CommonResponse_PurgeAuditEventsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PurgeAuditEventsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[PurgeAuditEventsResponse]",
+        "type": "object"
+      },
+      "CommonResponse_QueryAuditEventsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryAuditEventsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[QueryAuditEventsResponse]",
         "type": "object"
       },
       "CommonResponse_QueryEgressProxiesResponse_": {
@@ -1344,6 +2043,32 @@
           }
         },
         "title": "CommonResponse[QueryManagedHostsResponse]",
+        "type": "object"
+      },
+      "CommonResponse_QueryPolicyConfirmationsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryPolicyConfirmationsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[QueryPolicyConfirmationsResponse]",
         "type": "object"
       },
       "CommonResponse_QuerySandboxContainersResponse_": {
@@ -1606,6 +2331,32 @@
         "title": "CommonResponse[UpdateInstanceConfigResponse]",
         "type": "object"
       },
+      "CommonResponse_WorkProjectFindingEvidenceSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkProjectFindingEvidenceSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[WorkProjectFindingEvidenceSchema]",
+        "type": "object"
+      },
       "CommonResponse_WorkProjectRecordSnapshotSchema_": {
         "properties": {
           "code": {
@@ -1657,6 +2408,50 @@
         },
         "title": "CommonResponse[WorkProjectSchema]",
         "type": "object"
+      },
+      "CommonResponse_WorkProjectSourceUploadSchema_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkProjectSourceUploadSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[WorkProjectSourceUploadSchema]",
+        "type": "object"
+      },
+      "ConfirmationMode": {
+        "description": "批准后的放行方式。",
+        "enum": [
+          "once",
+          "always"
+        ],
+        "title": "ConfirmationMode",
+        "type": "string"
+      },
+      "ConfirmationStatus": {
+        "enum": [
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "ConfirmationStatus",
+        "type": "string"
       },
       "ContainerFileCopyRequest": {
         "properties": {
@@ -2166,6 +2961,56 @@
         "title": "CreateWorkProjectSessionResponse",
         "type": "object"
       },
+      "DecidePolicyConfirmationRequest": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ConfirmationMode",
+            "default": "once"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 512,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "DecidePolicyConfirmationRequest",
+        "type": "object"
+      },
+      "DeleteAuditEventsRequest": {
+        "additionalProperties": false,
+        "description": "按 id 批量删除审计事件（单条删除即只传一个 id）。",
+        "properties": {
+          "ids": {
+            "description": "要删除的审计事件 id 列表。",
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "DeleteAuditEventsRequest",
+        "type": "object"
+      },
+      "DeleteAuditEventsResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "DeleteAuditEventsResponse",
+        "type": "object"
+      },
       "DeleteEgressProxyResponse": {
         "properties": {
           "id": {
@@ -2264,6 +3109,35 @@
         "title": "DeleteWorkProjectResponse",
         "type": "object"
       },
+      "DenylistConfig": {
+        "additionalProperties": false,
+        "description": "明确禁止的动作 / 路径 / 载荷关键词。命中即拒绝并记审计。",
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Paths",
+            "type": "array"
+          },
+          "payload_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Payload Keywords",
+            "type": "array"
+          }
+        },
+        "title": "DenylistConfig",
+        "type": "object"
+      },
       "DoneEvent": {
         "properties": {
           "agent_name": {
@@ -2302,6 +3176,38 @@
           "created_at"
         ],
         "title": "DoneEvent",
+        "type": "object"
+      },
+      "DosConfig": {
+        "additionalProperties": false,
+        "description": "DoS 判定阈值：命中即拒绝，避免把目标打挂。",
+        "properties": {
+          "max_concurrency_per_target": {
+            "default": 8,
+            "minimum": 0.0,
+            "title": "Max Concurrency Per Target",
+            "type": "integer"
+          },
+          "max_payload_bytes": {
+            "default": 1048576,
+            "minimum": 1.0,
+            "title": "Max Payload Bytes",
+            "type": "integer"
+          },
+          "max_requests_per_minute_per_target": {
+            "default": 120,
+            "minimum": 1.0,
+            "title": "Max Requests Per Minute Per Target",
+            "type": "integer"
+          },
+          "max_requests_total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Requests Total",
+            "type": "integer"
+          }
+        },
+        "title": "DosConfig",
         "type": "object"
       },
       "EgressProxySchema": {
@@ -2412,6 +3318,58 @@
         "title": "ErrorEvent",
         "type": "object"
       },
+      "FetchUpstreamModelsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "base_url",
+          "api_key"
+        ],
+        "title": "FetchUpstreamModelsRequest",
+        "type": "object"
+      },
+      "FetchUpstreamModelsResponse": {
+        "properties": {
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "models"
+        ],
+        "title": "FetchUpstreamModelsResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "InstanceConfigSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2427,9 +3385,89 @@
             },
             "title": "Agents",
             "type": "object"
+          },
+          "integrations": {
+            "$ref": "#/components/schemas/IntegrationsConfig"
           }
         },
         "title": "InstanceConfigSchema",
+        "type": "object"
+      },
+      "IntegrationsConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "exa_api_key": {
+            "default": "",
+            "title": "Exa Api Key",
+            "type": "string"
+          },
+          "perplexity_api_key": {
+            "default": "",
+            "title": "Perplexity Api Key",
+            "type": "string"
+          },
+          "searxng_auto_provision": {
+            "default": true,
+            "title": "Searxng Auto Provision",
+            "type": "boolean"
+          },
+          "searxng_base_url": {
+            "default": "http://127.0.0.1:8888",
+            "title": "Searxng Base Url",
+            "type": "string"
+          },
+          "web_search_provider": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "exa",
+              "perplexity",
+              "searxng"
+            ],
+            "title": "Web Search Provider",
+            "type": "string"
+          }
+        },
+        "title": "IntegrationsConfig",
+        "type": "object"
+      },
+      "KillSwitchConfig": {
+        "additionalProperties": false,
+        "description": "Tier-1：急停开关，不可关闭。``engaged`` 置位后所有出网动作立即被拒。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "engaged": {
+            "default": false,
+            "title": "Engaged",
+            "type": "boolean"
+          },
+          "max_audit_denials_before_engage": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Audit Denials Before Engage",
+            "type": "integer"
+          }
+        },
+        "title": "KillSwitchConfig",
+        "type": "object"
+      },
+      "KillSwitchRequest": {
+        "additionalProperties": false,
+        "description": "急停开关的置位 / 解除。置位后所有出网动作立即被拒。",
+        "properties": {
+          "engaged": {
+            "title": "Engaged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "engaged"
+        ],
+        "title": "KillSwitchRequest",
         "type": "object"
       },
       "ListAgentEventsResponse": {
@@ -2443,7 +3481,9 @@
             "items": {
               "discriminator": {
                 "mapping": {
+                  "approval": "#/components/schemas/ApprovalEvent",
                   "error": "#/components/schemas/ErrorEvent",
+                  "sandbox": "#/components/schemas/SandboxEvent",
                   "subagent_task": "#/components/schemas/SubagentTaskEvent",
                   "text_complete": "#/components/schemas/TextCompleteEvent",
                   "text_delta": "#/components/schemas/TextDeltaEvent",
@@ -2483,6 +3523,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/SubagentTaskEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SandboxEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ApprovalEvent"
                 },
                 {
                   "$ref": "#/components/schemas/ErrorEvent"
@@ -2716,6 +3762,216 @@
         "title": "ManagedHostSchema",
         "type": "object"
       },
+      "PolicyApprovalsSnapshotSchema": {
+        "additionalProperties": false,
+        "description": "``GET`` / ``PATCH /api/policy/actions`` 的返回体：全部审批项 + 版本。",
+        "properties": {
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalGateSchema"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "approvals"
+        ],
+        "title": "PolicyApprovalsSnapshotSchema",
+        "type": "object"
+      },
+      "PolicyConfig": {
+        "additionalProperties": false,
+        "description": "红线策略根节点。",
+        "properties": {
+          "approval_wait_seconds": {
+            "default": 600,
+            "minimum": 0.0,
+            "title": "Approval Wait Seconds",
+            "type": "integer"
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalItem"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/AuditConfig"
+          },
+          "denylist": {
+            "$ref": "#/components/schemas/DenylistConfig"
+          },
+          "dos": {
+            "$ref": "#/components/schemas/DosConfig"
+          },
+          "kill_switch": {
+            "$ref": "#/components/schemas/KillSwitchConfig"
+          },
+          "rate_limit": {
+            "$ref": "#/components/schemas/RateLimitConfig"
+          },
+          "redline": {
+            "$ref": "#/components/schemas/RedlineConfig"
+          },
+          "report_gate": {
+            "$ref": "#/components/schemas/ReportGateConfig"
+          },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/SandboxLimitsConfig"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeConfig"
+          }
+        },
+        "title": "PolicyConfig",
+        "type": "object"
+      },
+      "PolicyConfirmationSchema": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "consumed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "title": "Decided By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfirmationMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConfirmationStatus"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "action",
+          "category",
+          "target",
+          "reason",
+          "status",
+          "mode",
+          "note",
+          "decided_by",
+          "decided_at",
+          "consumed_at",
+          "revoked_at"
+        ],
+        "title": "PolicyConfirmationSchema",
+        "type": "object"
+      },
+      "PolicySnapshotSchema": {
+        "additionalProperties": false,
+        "description": "``GET /api/policy`` 返回体：当前生效策略 + 版本 + 文件路径。",
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/PolicyConfig"
+          },
+          "policy_path": {
+            "title": "Policy Path",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "policy_path",
+          "policy"
+        ],
+        "title": "PolicySnapshotSchema",
+        "type": "object"
+      },
       "PullManagedHostImageResultSchema": {
         "properties": {
           "image_name": {
@@ -2771,6 +4027,73 @@
           "items"
         ],
         "title": "PullManagedHostImagesResponse",
+        "type": "object"
+      },
+      "PurgeAuditEventsRequest": {
+        "additionalProperties": false,
+        "description": "按筛选条件批量删除审计事件；三个条件都为空即清空全部。\n\n审计链属敏感数据：调用方（管理端页面）必须先做二次确认。",
+        "properties": {
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "decision": {
+            "default": "",
+            "title": "Decision",
+            "type": "string"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          }
+        },
+        "title": "PurgeAuditEventsRequest",
+        "type": "object"
+      },
+      "PurgeAuditEventsResponse": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "title": "PurgeAuditEventsResponse",
+        "type": "object"
+      },
+      "QueryAuditEventsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "size",
+          "total",
+          "items"
+        ],
+        "title": "QueryAuditEventsResponse",
         "type": "object"
       },
       "QueryEgressProxiesResponse": {
@@ -2833,6 +4156,37 @@
           "items"
         ],
         "title": "QueryManagedHostsResponse",
+        "type": "object"
+      },
+      "QueryPolicyConfirmationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyConfirmationSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "size",
+          "total",
+          "items"
+        ],
+        "title": "QueryPolicyConfirmationsResponse",
         "type": "object"
       },
       "QuerySandboxContainersResponse": {
@@ -2957,6 +4311,87 @@
           "items"
         ],
         "title": "QueryWorkProjectsResponse",
+        "type": "object"
+      },
+      "RateLimitConfig": {
+        "additionalProperties": false,
+        "description": "Tier-1：限速，不可关闭。",
+        "properties": {
+          "burst": {
+            "default": 20,
+            "minimum": 1.0,
+            "title": "Burst",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "global_per_minute": {
+            "default": 600,
+            "minimum": 1.0,
+            "title": "Global Per Minute",
+            "type": "integer"
+          },
+          "per_target_per_minute": {
+            "default": 120,
+            "minimum": 1.0,
+            "title": "Per Target Per Minute",
+            "type": "integer"
+          }
+        },
+        "title": "RateLimitConfig",
+        "type": "object"
+      },
+      "RedlineConfig": {
+        "additionalProperties": false,
+        "description": "绝对红线（``src-hunt`` §2.2）：**DoS 同意也不做**。\n\n命中即硬拒并记审计，**不在控制台提供放行开关**（面板不显示、接口也改不了），\n属 Tier-1 性质；只有命中特征可自定义。\n\n匹配语义见 :func:`core.policy.action_signals.classify_sandbox_command`：裸词按词边界、\n多词按左侧词边界；且**只对可执行命令生效**，文件正文 / 报告 / 笔记（``scope=content``）\n豁免，避免文档里正当提及工具名被误拒。",
+        "properties": {
+          "dos_signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dos Signals",
+            "type": "array"
+          }
+        },
+        "title": "RedlineConfig",
+        "type": "object"
+      },
+      "ReportGateConfig": {
+        "additionalProperties": false,
+        "description": "报告结构门（**可配置**）：finding 离开 draft 前必须达到的最小报告要素。\n\nsrc-hunt 的报告口径要求「不能只有一句结论」。这里只校验**现有字段**的完整性；\nsrc-hunt 7 段里的「复现步骤 / 修复建议」尚未建模，属后续工作。",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "min_description_chars": {
+            "default": 80,
+            "minimum": 0.0,
+            "title": "Min Description Chars",
+            "type": "integer"
+          },
+          "min_title_chars": {
+            "default": 8,
+            "minimum": 1.0,
+            "title": "Min Title Chars",
+            "type": "integer"
+          },
+          "require_asset": {
+            "default": true,
+            "title": "Require Asset",
+            "type": "boolean"
+          },
+          "require_impact": {
+            "default": true,
+            "title": "Require Impact",
+            "type": "boolean"
+          }
+        },
+        "title": "ReportGateConfig",
         "type": "object"
       },
       "RunStateEvent": {
@@ -3217,6 +4652,10 @@
             "title": "Port Mappings",
             "type": "array"
           },
+          "source": {
+            "$ref": "#/components/schemas/SandboxContainerSource",
+            "default": "manual"
+          },
           "status": {
             "$ref": "#/components/schemas/SandboxContainerStatus"
           },
@@ -3254,6 +4693,15 @@
         "title": "SandboxContainerSchema",
         "type": "object"
       },
+      "SandboxContainerSource": {
+        "description": "容器来源：管理员手工创建 vs 运行时按会话自动 provision。\n\n运行时自建容器没有平台控制面（``control_proxy_host_port`` 恒为 0），\n因此以该字段是否为 0 作为判定依据，而不是靠容器命名等易变特征。",
+        "enum": [
+          "manual",
+          "runtime"
+        ],
+        "title": "SandboxContainerSource",
+        "type": "string"
+      },
       "SandboxContainerStatus": {
         "enum": [
           "created",
@@ -3263,6 +4711,82 @@
         ],
         "title": "SandboxContainerStatus",
         "type": "string"
+      },
+      "SandboxEvent": {
+        "description": "会话沙箱的生命周期事件（由运行时自动 provisioning 驱动）。\n\n前端据此展示\"本会话正在用哪个沙箱\"、沙箱准备进度与回收状态。",
+        "properties": {
+          "agent_name": {
+            "default": "",
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "container_hash": {
+            "default": "",
+            "title": "Container Hash",
+            "type": "string"
+          },
+          "container_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container Id"
+          },
+          "container_name": {
+            "default": "",
+            "title": "Container Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "image_name": {
+            "default": "",
+            "title": "Image Name",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "nested_call_id": {
+            "default": "",
+            "title": "Nested Call Id",
+            "type": "string"
+          },
+          "nested_for": {
+            "default": "",
+            "title": "Nested For",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SandboxPhaseSchema"
+          },
+          "seq": {
+            "default": 0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "sandbox",
+            "default": "sandbox",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "phase"
+        ],
+        "title": "SandboxEvent",
+        "type": "object"
       },
       "SandboxImageSchema": {
         "properties": {
@@ -3304,6 +4828,74 @@
         "title": "SandboxImageSchema",
         "type": "object"
       },
+      "SandboxLimitsConfig": {
+        "additionalProperties": false,
+        "description": "Tier-1：沙箱容器资源上限，不可关闭。",
+        "properties": {
+          "cpu_cores": {
+            "default": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Cpu Cores",
+            "type": "number"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "memory_mb": {
+            "default": 2048,
+            "minimum": 64.0,
+            "title": "Memory Mb",
+            "type": "integer"
+          },
+          "pids_limit": {
+            "default": 512,
+            "minimum": 16.0,
+            "title": "Pids Limit",
+            "type": "integer"
+          }
+        },
+        "title": "SandboxLimitsConfig",
+        "type": "object"
+      },
+      "SandboxPhaseSchema": {
+        "description": "会话沙箱的生命周期阶段（由运行时自动 provisioning 驱动）。",
+        "enum": [
+          "provisioning",
+          "ready",
+          "cleanup"
+        ],
+        "title": "SandboxPhaseSchema",
+        "type": "string"
+      },
+      "ScopeConfig": {
+        "additionalProperties": false,
+        "description": "允许的目标范围。列表为空表示不按范围限制（建议仅在受控环境使用）。",
+        "properties": {
+          "allowed_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "allowed_ports": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Allowed Ports",
+            "type": "array"
+          },
+          "deny_private_ranges": {
+            "default": false,
+            "title": "Deny Private Ranges",
+            "type": "boolean"
+          }
+        },
+        "title": "ScopeConfig",
+        "type": "object"
+      },
       "SessionType": {
         "enum": [
           "chat",
@@ -3311,6 +4903,67 @@
         ],
         "title": "SessionType",
         "type": "string"
+      },
+      "StrixTurnRequest": {
+        "properties": {
+          "agent_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Code"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "image": "#/components/schemas/AgentImageInputPart",
+                      "text": "#/components/schemas/AgentTextInputPart"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentTextInputPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentImageInputPart"
+                    }
+                  ]
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task"
+          }
+        },
+        "title": "StrixTurnRequest",
+        "type": "object"
       },
       "SubagentTaskEvent": {
         "properties": {
@@ -3972,27 +5625,6 @@
         "title": "UpdateAgentConfigRequest",
         "type": "object"
       },
-      "UpdateAgentSessionSandboxContainerRequest": {
-        "properties": {
-          "sandbox_container_id": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sandbox Container Id"
-          }
-        },
-        "required": [
-          "sandbox_container_id"
-        ],
-        "title": "UpdateAgentSessionSandboxContainerRequest",
-        "type": "object"
-      },
       "UpdateAgentSessionTitleRequest": {
         "properties": {
           "title": {
@@ -4089,12 +5721,16 @@
             },
             "title": "Agents",
             "type": "object"
+          },
+          "integrations": {
+            "$ref": "#/components/schemas/UpdateIntegrationsRequest"
           }
         },
         "required": [
           "agents",
           "agent_pool",
-          "agent_runtime"
+          "agent_runtime",
+          "integrations"
         ],
         "title": "UpdateInstanceConfigRequest",
         "type": "object"
@@ -4114,6 +5750,49 @@
           "restarted"
         ],
         "title": "UpdateInstanceConfigResponse",
+        "type": "object"
+      },
+      "UpdateIntegrationsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "exa_api_key": {
+            "maxLength": 4096,
+            "title": "Exa Api Key",
+            "type": "string"
+          },
+          "perplexity_api_key": {
+            "maxLength": 4096,
+            "title": "Perplexity Api Key",
+            "type": "string"
+          },
+          "searxng_auto_provision": {
+            "default": true,
+            "title": "Searxng Auto Provision",
+            "type": "boolean"
+          },
+          "searxng_base_url": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Searxng Base Url",
+            "type": "string"
+          },
+          "web_search_provider": {
+            "enum": [
+              "auto",
+              "exa",
+              "perplexity",
+              "searxng"
+            ],
+            "title": "Web Search Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "web_search_provider",
+          "exa_api_key",
+          "perplexity_api_key"
+        ],
+        "title": "UpdateIntegrationsRequest",
         "type": "object"
       },
       "UpdateManagedHostRequest": {
@@ -4229,6 +5908,114 @@
           }
         },
         "title": "UpdateManagedHostRequest",
+        "type": "object"
+      },
+      "UpdatePolicyApprovalsRequest": {
+        "additionalProperties": false,
+        "description": "``PATCH /api/policy/actions`` 请求体；``revision`` 用于乐观并发校验。",
+        "properties": {
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalPatchSchema"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "required": [
+          "approvals"
+        ],
+        "title": "UpdatePolicyApprovalsRequest",
+        "type": "object"
+      },
+      "UpdatePolicyConfigRequest": {
+        "additionalProperties": false,
+        "description": "``PATCH /api/policy`` 请求体：整份策略的分组部分更新。\n\n只传需要改动的分组，未传的分组保持不变；``revision`` 用于乐观并发校验。\n``approvals`` 走独立接口（它按审批项逐条改，不与这里的整组替换混在一起）。",
+        "properties": {
+          "denylist": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DenylistConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dos": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DosConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate_limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "redline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RedlineConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportGateConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScopeConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "UpdatePolicyConfigRequest",
         "type": "object"
       },
       "UpdateSandboxContainerEgressRequest": {
@@ -4414,6 +6201,46 @@
           "content"
         ],
         "title": "UserMessageEvent",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       },
       "WorkProjectAgentSummaryContentSchema": {
@@ -4793,6 +6620,94 @@
         "title": "WorkProjectAttackPathStepSchema",
         "type": "object"
       },
+      "WorkProjectFindingEvidenceSchema": {
+        "description": "一条发现所关联的可重放证据包。\n\n证据包里是「唯一事实来源」：完整探测请求（method / url / headers / body）、\nbaseline 与 probe 两个响应，以及验证器的重放结论。报告视图据此渲染\nsrc-hunt 规范版「复现过程」，使报告可被第三方按原包复现。",
+        "properties": {
+          "baseline_body": {
+            "default": "",
+            "title": "Baseline Body",
+            "type": "string"
+          },
+          "baseline_status": {
+            "default": 0,
+            "title": "Baseline Status",
+            "type": "integer"
+          },
+          "captured_at": {
+            "default": "",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "diff": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Diff",
+            "type": "object"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "integer"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "integer"
+          },
+          "method": {
+            "default": "GET",
+            "title": "Method",
+            "type": "string"
+          },
+          "probe_body": {
+            "default": "",
+            "title": "Probe Body",
+            "type": "string"
+          },
+          "probe_status": {
+            "default": 0,
+            "title": "Probe Status",
+            "type": "integer"
+          },
+          "request_body": {
+            "default": "",
+            "title": "Request Body",
+            "type": "string"
+          },
+          "request_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Request Headers",
+            "type": "object"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          },
+          "verdict": {
+            "default": "",
+            "title": "Verdict",
+            "type": "string"
+          },
+          "verifier_note": {
+            "default": "",
+            "title": "Verifier Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "evidence_id"
+        ],
+        "title": "WorkProjectFindingEvidenceSchema",
+        "type": "object"
+      },
       "WorkProjectFindingSchema": {
         "properties": {
           "asset_id": {
@@ -4836,6 +6751,17 @@
               }
             ],
             "title": "Edge Id"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
           },
           "id": {
             "title": "Id",
@@ -5206,6 +7132,54 @@
         "title": "WorkProjectSchema",
         "type": "object"
       },
+      "WorkProjectSourceUploadSchema": {
+        "description": "一次源码包上传的结果；``server_path`` 可直接作为 binary 资产的 path 使用。",
+        "properties": {
+          "file_count": {
+            "default": 0,
+            "description": "解压出的文件数。",
+            "minimum": 0.0,
+            "title": "File Count",
+            "type": "integer"
+          },
+          "server_path": {
+            "description": "解压后的服务器绝对路径（binary 资产的 path）。",
+            "title": "Server Path",
+            "type": "string"
+          },
+          "skipped_entries": {
+            "default": 0,
+            "description": "被跳过的条目数（依赖目录、符号链接等）。",
+            "minimum": 0.0,
+            "title": "Skipped Entries",
+            "type": "integer"
+          },
+          "slug": {
+            "description": "解压后的顶层目录名，也是沙箱内的挂载目录名。",
+            "title": "Slug",
+            "type": "string"
+          },
+          "token": {
+            "description": "本次上传的存储令牌（工作区内的目录名）。",
+            "title": "Token",
+            "type": "string"
+          },
+          "total_bytes": {
+            "default": 0,
+            "description": "解压出的总字节数。",
+            "minimum": 0.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "token",
+          "slug",
+          "server_path"
+        ],
+        "title": "WorkProjectSourceUploadSchema",
+        "type": "object"
+      },
       "WorkProjectStatus": {
         "enum": [
           "working",
@@ -5270,7 +7244,8 @@
           "todo",
           "in_progress",
           "blocked",
-          "done"
+          "done",
+          "canceled"
         ],
         "title": "WorkProjectTaskStatus",
         "type": "string"
@@ -5287,13 +7262,13 @@
     "securitySchemes": {
       "AccessTokenAuth": {
         "in": "header",
-        "name": "X-Z3r0-Access-Token",
+        "name": "X-Ravenholt-Access-Token",
         "type": "apiKey"
       }
     }
   },
   "info": {
-    "title": "Z3r0 - A controlled multi-agent workbench for authorized security assessment, code auditing, internal review, and controlled research.",
+    "title": "Ravenholt RedTeam Agent - 开源红队多智能体协作平台，用于授权安全评估、代码审计、渗透测试与安全研究。",
     "version": "0.2.1"
   },
   "openapi": "3.1.0",
@@ -5358,14 +7333,14 @@
         ]
       }
     },
-    "/api/agent-sessions/turns": {
+    "/api/agent-sessions/strix-turns": {
       "post": {
-        "operationId": "create_agent_session_turn_route_api_agent_sessions_turns_post",
+        "operationId": "create_agent_session_strix_turn_route_api_agent_sessions_strix_turns_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AgentTurnRequest"
+                "$ref": "#/components/schemas/StrixTurnRequest"
               }
             }
           },
@@ -5408,7 +7383,7 @@
             "AccessTokenAuth": []
           }
         ],
-        "summary": "Create Agent Session Turn Route",
+        "summary": "Create Agent Session Strix Turn Route",
         "tags": [
           "agent-sessions"
         ]
@@ -5701,9 +7676,9 @@
         ]
       }
     },
-    "/api/agent-sessions/{session_id}/sandbox-container": {
-      "patch": {
-        "operationId": "update_agent_session_sandbox_container_route_api_agent_sessions__session_id__sandbox_container_patch",
+    "/api/agent-sessions/{session_id}/strix-turn": {
+      "post": {
+        "operationId": "submit_agent_session_strix_turn_route_api_agent_sessions__session_id__strix_turn_post",
         "parameters": [
           {
             "in": "path",
@@ -5719,7 +7694,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateAgentSessionSandboxContainerRequest"
+                "$ref": "#/components/schemas/StrixTurnRequest"
               }
             }
           },
@@ -5730,7 +7705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CommonResponse_AgentSessionSummarySchema_"
+                  "$ref": "#/components/schemas/CommonResponse_AgentTurnResponse_"
                 }
               }
             },
@@ -5772,7 +7747,7 @@
             "AccessTokenAuth": []
           }
         ],
-        "summary": "Update Agent Session Sandbox Container Route",
+        "summary": "Submit Agent Session Strix Turn Route",
         "tags": [
           "agent-sessions"
         ]
@@ -5855,83 +7830,6 @@
         ]
       }
     },
-    "/api/agent-sessions/{session_id}/turns": {
-      "post": {
-        "operationId": "submit_agent_session_turn_route_api_agent_sessions__session_id__turns_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "session_id",
-            "required": true,
-            "schema": {
-              "title": "Session Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentTurnRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommonResponse_AgentTurnResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommonResponse_Any_"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommonResponse_Any_"
-                }
-              }
-            },
-            "description": "Agent session not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommonResponse_Any_"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "AccessTokenAuth": []
-          }
-        ],
-        "summary": "Submit Agent Session Turn Route",
-        "tags": [
-          "agent-sessions"
-        ]
-      }
-    },
     "/api/agents": {
       "get": {
         "operationId": "list_agents_handler_api_agents_get",
@@ -5975,6 +7873,533 @@
         "summary": "List Agents Handler",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/api/audit-events": {
+      "get": {
+        "operationId": "query_audit_events_route_api_audit_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Decision",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_QueryAuditEventsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Query Audit Events Route",
+        "tags": [
+          "audit-events"
+        ]
+      }
+    },
+    "/api/audit-events/delete": {
+      "post": {
+        "operationId": "delete_audit_events_route_api_audit_events_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAuditEventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_DeleteAuditEventsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Delete Audit Events Route",
+        "tags": [
+          "audit-events"
+        ]
+      }
+    },
+    "/api/audit-events/purge": {
+      "post": {
+        "operationId": "purge_audit_events_route_api_audit_events_purge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeAuditEventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PurgeAuditEventsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Purge Audit Events Route",
+        "tags": [
+          "audit-events"
+        ]
+      }
+    },
+    "/api/blackboard/{project_id}": {
+      "get": {
+        "operationId": "get_blackboard_route_api_blackboard__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_BlackboardSnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Read full blackboard graph for a project",
+        "tags": [
+          "blackboard"
+        ]
+      }
+    },
+    "/api/blackboard/{project_id}/nodes": {
+      "post": {
+        "operationId": "create_blackboard_node_route_api_blackboard__project_id__nodes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlackboardCreateNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Create a new blackboard node (fact / intent / hint)",
+        "tags": [
+          "blackboard"
+        ]
+      }
+    },
+    "/api/blackboard/{project_id}/nodes/{node_id}": {
+      "delete": {
+        "operationId": "delete_blackboard_node_route_api_blackboard__project_id__nodes__node_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Delete a blackboard node",
+        "tags": [
+          "blackboard"
+        ]
+      },
+      "put": {
+        "operationId": "update_blackboard_node_route_api_blackboard__project_id__nodes__node_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlackboardUpdateNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Update a blackboard node (status / description / etc)",
+        "tags": [
+          "blackboard"
         ]
       }
     },
@@ -6997,6 +9422,741 @@
         "summary": "Delete Managed Host Image Handler",
         "tags": [
           "hosts"
+        ]
+      }
+    },
+    "/api/policy": {
+      "get": {
+        "operationId": "read_policy_route_api_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicySnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Read Policy Route",
+        "tags": [
+          "policy"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_config_route_api_policy_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePolicyConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicySnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Update Policy Config Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/actions": {
+      "get": {
+        "operationId": "read_policy_actions_route_api_policy_actions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicyApprovalsSnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Read Policy Actions Route",
+        "tags": [
+          "policy"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_actions_route_api_policy_actions_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePolicyApprovalsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicyApprovalsSnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Update Policy Actions Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/confirmations": {
+      "get": {
+        "operationId": "query_policy_confirmations_route_api_policy_confirmations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_QueryPolicyConfirmationsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Query Policy Confirmations Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/confirmations/{id}": {
+      "delete": {
+        "operationId": "delete_policy_confirmation_route_api_policy_confirmations__id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Policy confirmation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Delete Policy Confirmation Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/confirmations/{id}/approve": {
+      "post": {
+        "operationId": "approve_policy_confirmation_route_api_policy_confirmations__id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecidePolicyConfirmationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicyConfirmationSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Policy confirmation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Approve Policy Confirmation Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/confirmations/{id}/reject": {
+      "post": {
+        "operationId": "reject_policy_confirmation_route_api_policy_confirmations__id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecidePolicyConfirmationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicyConfirmationSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Policy confirmation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Reject Policy Confirmation Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/confirmations/{id}/revoke": {
+      "post": {
+        "operationId": "revoke_policy_confirmation_route_api_policy_confirmations__id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicyConfirmationSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Policy confirmation not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Revoke Policy Confirmation Route",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/policy/kill-switch": {
+      "post": {
+        "operationId": "set_kill_switch_route_api_policy_kill_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KillSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_PolicySnapshotSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Set Kill Switch Route",
+        "tags": [
+          "policy"
         ]
       }
     },
@@ -8879,6 +12039,82 @@
         ]
       }
     },
+    "/api/system-config/upstream-models": {
+      "post": {
+        "operationId": "fetch_upstream_models_handler_api_system_config_upstream_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchUpstreamModelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_FetchUpstreamModelsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Fetch Upstream Models Handler",
+        "tags": [
+          "system-config"
+        ]
+      }
+    },
     "/api/system-users": {
       "get": {
         "operationId": "query_system_users_route_api_system_users_get",
@@ -9412,6 +12648,82 @@
         ]
       }
     },
+    "/api/work-projects/source-uploads": {
+      "post": {
+        "operationId": "upload_work_project_source_route_api_work_projects_source_uploads_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_work_project_source_route_api_work_projects_source_uploads_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_WorkProjectSourceUploadSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Upload Work Project Source Route",
+        "tags": [
+          "work-projects"
+        ]
+      }
+    },
     "/api/work-projects/{id}": {
       "delete": {
         "operationId": "delete_work_project_handler_api_work_projects__id__delete",
@@ -9571,6 +12883,82 @@
           }
         ],
         "summary": "Cancel Work Project Handler",
+        "tags": [
+          "work-projects"
+        ]
+      }
+    },
+    "/api/work-projects/{id}/findings/{finding_id}/evidence": {
+      "get": {
+        "operationId": "get_work_project_finding_evidence_route_api_work_projects__id__findings__finding_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_WorkProjectFindingEvidenceSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Work project not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Get Work Project Finding Evidence Route",
         "tags": [
           "work-projects"
         ]

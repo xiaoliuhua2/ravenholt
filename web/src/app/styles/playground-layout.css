@@ -1,3 +1,8 @@
+/* ══════════════════════════════════════════════════════════════
+   操作台 — 会话列 + 主区框架（方向 A）
+   语言：去掉栅格/扫描线底纹与圆角，改用白底 + 1px 发丝线 + 品牌色竖条
+   ══════════════════════════════════════════════════════════════ */
+
 .playground-shell {
   position: relative;
   display: flex;
@@ -5,37 +10,10 @@
   min-height: 0;
   overflow: hidden;
   color: var(--z-text);
-  background: var(--z-page-bg);
+  background: var(--z-surface);
 }
 
-.playground-shell::before,
-.playground-shell::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-}
-
-.playground-shell::before {
-  opacity: 0.18;
-  background-image:
-    linear-gradient(var(--z-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--z-grid-line) 1px, transparent 1px);
-  background-size: 48px 48px;
-  animation: gridDrift 18s linear infinite;
-}
-
-.playground-shell::after {
-  opacity: 0.06;
-  background: linear-gradient(180deg, transparent, var(--z-scanline), transparent);
-  animation: scanline 9s ease-in-out infinite;
-}
-
-.playground-shell > * {
-  position: relative;
-  z-index: 1;
-}
-
+/* 会话列：容器已由 .admin-context 提供 1px 右边框与白底，这里不再重复描边 */
 .session-list {
   display: flex;
   flex-direction: column;
@@ -43,7 +21,6 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  border-left: 1px solid var(--z-line-soft);
 }
 
 .session-list-body {
@@ -51,7 +28,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: 4px 0 0 8px;
+  padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -83,13 +60,14 @@
   font-size: 12px;
 }
 
+/* 会话行：发丝线分隔的行，不再是圆角「药丸」 */
 .session-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 0;
-  border-radius: 8px;
   min-width: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--z-line-soft);
   animation: rowFadeIn 220ms var(--ease-emphasized) both;
   transition:
     background var(--motion-fast) var(--ease-standard),
@@ -101,8 +79,8 @@
 }
 
 .session-row-active {
-  background: linear-gradient(135deg, var(--z-brand-glow), transparent);
-  box-shadow: inset 2px 0 0 var(--z-brand);
+  background: var(--z-surface-muted);
+  box-shadow: inset 3px 0 0 var(--z-brand);
 }
 
 .session-row-main {
@@ -110,13 +88,17 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 4px 7px 8px;
+  gap: 8px;
+  padding: 11px 6px 11px 16px;
   color: inherit;
   background: transparent;
   border: 0;
   cursor: pointer;
   text-align: left;
+}
+
+.session-row-active .session-row-main {
+  padding-left: 13px;
 }
 
 .session-row-icon {
@@ -125,22 +107,18 @@
   width: 20px;
   height: 20px;
   place-items: center;
-  border-radius: 5px;
+  border-radius: 2px;
   color: var(--z-text-subtle);
   background: var(--z-surface-muted);
   transition:
     color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
+    background var(--motion-fast) var(--ease-standard);
 }
 
-.session-row:hover .session-row-icon {
-  transform: scale(1.04);
-}
-
+/* 项目行：品牌色实底（不再是渐变） */
 .session-row-project .session-row-icon {
-  color: var(--z-text-strong);
-  background: linear-gradient(135deg, var(--z-brand) 0%, var(--z-brand-dark) 100%);
+  color: var(--z-on-brand);
+  background: var(--z-brand);
 }
 
 .session-row-project-session {
@@ -148,7 +126,7 @@
 }
 
 .session-row-project-session .session-row-main {
-  padding-left: 6px;
+  padding-left: 14px;
 }
 
 .session-row-project-session .session-row-icon {
@@ -161,9 +139,9 @@
 
 .session-project-children {
   display: grid;
-  gap: 1px;
+  gap: 0;
   min-width: 0;
-  padding-left: 4px;
+  padding-left: 0;
 }
 
 .session-project-empty {
@@ -171,14 +149,20 @@
   min-width: 0;
   align-items: center;
   gap: 6px;
-  margin-left: 18px;
-  padding: 8px 8px 8px 12px;
+  margin-left: 0;
+  padding: 11px 16px 11px 30px;
   color: var(--z-text-subtle);
   background: transparent;
   border: 0;
+  border-bottom: 1px solid var(--z-line-soft);
   cursor: pointer;
   font-size: 12px;
   text-align: left;
+}
+
+.session-project-empty:hover {
+  color: var(--z-text-strong);
+  background: var(--z-surface-muted);
 }
 
 .session-project-empty span {
@@ -197,10 +181,10 @@
 .session-row-title {
   display: block;
   overflow: hidden;
-  color: var(--z-text-subtle);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.35;
+  color: var(--z-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -213,13 +197,11 @@
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  margin-right: 2px;
+  margin-right: 6px;
   opacity: 0;
   pointer-events: none;
-  transform: scale(0.96);
   transition:
     opacity var(--motion-fast) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard),
     background var(--motion-fast) var(--ease-standard);
 }
 
@@ -227,7 +209,6 @@
 .session-row:focus-within .semi-button {
   opacity: 1;
   pointer-events: auto;
-  transform: scale(1);
 }
 
 .playground-main {

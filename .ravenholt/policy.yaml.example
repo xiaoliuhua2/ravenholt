@@ -1,0 +1,192 @@
+# Ravenholt 红线策略（Tier-1 安全网的配置面）
+#
+# 重要语义：
+#   - 本文件是 fail-closed：文件缺失 / YAML 语法错误 / 校验失败 → 平台拒绝启动。
+#   - rate_limit / sandbox / kill_switch / audit 四节属于 Tier-1 安全网，
+#     enabled 必须为 true；写成 false 会被判为非法配置并拒绝启动。它们的参数可自由调整。
+#   - 控制台改动即时生效并写回本文件（整体重写、注释折叠）；手工改动需重启生效。
+#   - 实际使用请复制为 .ravenholt/policy.yaml（该文件不应提交到仓库）。
+
+revision: 1
+
+scope:
+  allowed_hosts: []          # 允许的目标（域名 / IP / CIDR）；空 = 不按范围限制
+  allowed_ports: []          # 允许的端口；空 = 不限制
+  deny_private_ranges: false # 是否禁止内网网段
+
+denylist:
+  actions: []                # 禁止的动作名（归一化后比对）
+  paths: []                  # 禁止的目标路径（前缀或子串）
+  payload_keywords: []       # 禁止的载荷关键词
+
+dos:
+  max_requests_per_minute_per_target: 120
+  max_concurrency_per_target: 8
+  max_payload_bytes: 1048576
+  max_requests_total: 0      # 0 = 不限总量
+
+# 风险审批项（对应「安全红线与授权」清单）：
+#   总纲 —— 唯一「绝对红线 · 同意也不做」是 DoS（见下面的 redline）；其余动作默认不做，
+#   用户同意后即可执行。
+#
+#   ★ allow 的完整语义（两层，别混淆）：
+#     1) 策略闸门：allow=true → 沙箱命令**不再拦停、不出审批卡**；allow=false → 命中即挂起等确认。
+#     2) 提示词纪律：allow=true → agent 只**执行前用一句话声明载荷与影响**，**不再等你点头**；
+#        allow=false → agent 会**直接发起该动作**，由平台在会话里弹**审批卡片**给你点「同意」，
+#        命令在 approval_wait_seconds 内继续执行（**不打断本次测试**）——而不是用纯文本问你。
+#     与 allow 无关：DoS 绝对红线永远硬拒（同意也不做）。
+#     生效时机：提示词在**创建 agent 时**渲染 → 改 allow 后，**新会话 / 新建的子代理**才生效。
+#
+#   signals = 命令文本命中特征（大小写不敏感）：
+#     裸词（如 hoic）按两侧词边界匹配；含空格/符号的多词特征（如 ping -f）按左侧词边界匹配；
+#     含 "+" 者为复合特征 —— 各段须**同时**命中（如 "-x post +/logout" 只在真的发起登出请求时命中）。
+#     空列表 = 不按命令文本判定（只由智能体纪律约束）。
+#   description 会原样显示在控制台面板与二次确认弹窗里；allow=true 时它作为纪律说明展示，
+#     渲染给模型的放行区会**自动剥离「默认不做 / 须你同意」这类闸门措辞**（保留「改密不自己动手」等纪律）。
+approvals:
+  - key: password_change
+    label: 改密码
+    description: 修改目标账号的密码：任何情况下不自己动手，须你明确指名；改得回就立刻改回原值。
+    allow: false
+    signals:
+      - updatepassword
+      - change_password
+      - changepassword
+      - reset_password
+      - resetpassword
+      - set_password
+      - modifypassword
+      - password/reset
+      - password/change
+  - key: destructive
+    label: 破坏性操作
+    description: 真资损、批量取数、写死马，以及删除、格式化、改核心配置、关机等不可逆破坏：默认不做，须你同意。
+    allow: false
+    signals:
+      - rm -rf /
+      - rm -rf /*
+      - rm -rf ~
+      - find / -delete
+      - ":(){:|:&};:"
+      - mkfs
+      - mke2fs
+      - dd of=/dev/
+      - fdisk
+      - parted
+      - diskpart
+      - iptables -F
+      - systemctl stop
+      - shutdown
+      - reboot
+      - poweroff
+      - init 0
+      - kill -9 -1
+      - chmod -R 000
+      - mysqldump
+      - pg_dump
+      - mongodump
+      - drop database
+      - truncate table
+  - key: payload_exec
+    label: 执行型载荷
+    description: 让目标执行我们提供的代码，例如反弹 shell、命令执行、内存马：默认不做；同意前会先说明载荷、会发生什么、副作用影响面、中止与善后。
+    allow: false
+    signals:
+      - msfconsole
+      - msfvenom
+      - meterpreter
+      - --os-shell
+      - --sql-shell
+      - nc -e
+      - /dev/tcp/
+      - reverse shell
+  - key: data_mutation
+    label: 修改目标数据
+    description: 改绑手机邮箱、改资料、删除、提交、上传落文件等会改变目标状态的写操作：默认不做，须你同意；同意后按最小伤害顺序执行。
+    allow: false
+    signals:
+      - delete from
+      - insert into
+      - alter table
+      - -X PUT
+      - -X PATCH
+      - -X DELETE
+      - --upload-file
+      - --file-write
+      - git push
+  - key: logout_revoke
+    label: 登出 / 注销 / 吊销
+    description: 调用退出或吊销接口，会让正在使用的登录态失效：默认不做，须你同意。
+    allow: false
+    # 只拦「主动调用」（带 POST 语义）；被动 grep / 读日志提到路径不算。`+` = 各段须同时命中。
+    signals:
+      - "-x post +/logout"
+      - "-x post +/signout"
+      - "-x post +/revoke"
+      - "-x post +revoke_token"
+  - key: cors
+    label: CORS 跨域探测
+    description: 跨域读写探测：默认不挖，只有你点名才做。
+    allow: false
+    # 只拦「主动构造跨域请求」（发 Origin / 预检头）；被动读取响应头不再误拦。
+    signals:
+      - "-h 'origin:"
+      - '-h "origin:'
+      - access-control-request-method
+  - key: privilege_write
+    label: 越权写
+    description: 写数据以验证越权：默认不做，须你同意；命令文本判不出业务语义，默认无命中特征，由智能体纪律约束。
+    allow: false
+    signals: []
+
+# 绝对红线：DoS —— 同意也不做。命中即硬拒并记审计，
+# 控制台**不提供放行开关**（属 Tier-1 性质），只有命中特征可自定义。
+redline:
+  dos_signals:
+    - --flood
+    - hping3
+    - slowloris
+    - slowhttptest
+    - "t50 "
+    - ab -n 1000000
+    - wrk -t
+    - siege -c
+    - goldeneye
+    - "loic "
+    - hoic
+    - ping -f
+
+# 命中未放行审批项后的挂起时长（秒）：对话流里出现审批卡片并等待用户决策，
+# 超时按「拒绝」处理（fail-closed），避免无人值守时任务一直卡住。
+# 0 = 无限等待（需要用户自行中断回合）。
+approval_wait_seconds: 600
+
+rate_limit:                  # Tier-1，不可关闭
+  enabled: true
+  global_per_minute: 600
+  per_target_per_minute: 120
+  burst: 20
+
+sandbox:                     # Tier-1，不可关闭
+  enabled: true
+  cpu_cores: 2.0
+  memory_mb: 2048
+  pids_limit: 512
+
+kill_switch:                 # Tier-1，不可关闭
+  enabled: true
+  engaged: false
+  max_audit_denials_before_engage: 0
+
+audit:                       # Tier-1，不可关闭
+  enabled: true
+  retention_days: 90
+
+# 报告结构门（可配置）：finding 离开 draft 前必须达到的最小报告要素。
+# src-hunt 的报告口径要求「不能只有一句结论」；这是硬门，不达标一律降级回 suspected。
+report_gate:
+  enabled: true
+  require_asset: true          # 必须绑定影响资产
+  min_title_chars: 8
+  min_description_chars: 80    # 描述过短视为不足以复核
+  require_impact: true

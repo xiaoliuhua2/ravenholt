@@ -70,15 +70,15 @@ export function EgressProxyFormModal({ open, mode, proxy, saving, onCancel, onSu
   return (
     <ResourceModal
       open={open}
-      title={mode === "create" ? "Create Egress Proxy" : "Edit Egress Proxy"}
+      title={mode === "create" ? "创建出口代理" : "编辑出口代理"}
       saving={saving}
-      submitLabel={mode === "create" ? "Create" : "Save"}
+      submitLabel={mode === "create" ? "创建" : "保存"}
       submitDisabled={submitDisabled}
       onCancel={onCancel}
       onSubmit={submit}
     >
       <label>
-        <span>Proxy Type</span>
+        <span>代理类型</span>
         <Select
           prefix={<Network size={16} />}
           value={values.proxy_type}
@@ -89,27 +89,27 @@ export function EgressProxyFormModal({ open, mode, proxy, saving, onCancel, onSu
         />
       </label>
       <label>
-        <span>Proxy Host</span>
+        <span>代理主机</span>
         <Input prefix={<Server size={16} />} value={values.proxy_host} maxLength={255} required
           autoComplete="off"
           onChange={(proxy_host) => setValues((current) => ({ ...current, proxy_host }))}
         />
       </label>
       <label>
-        <span>Proxy Port</span>
+        <span>代理端口</span>
         <InputNumber prefix={<Network size={16} />} value={values.proxy_port} min={1} max={65535}
           onChange={(proxy_port) => typeof proxy_port === "number" && setValues((current) => ({ ...current, proxy_port }))}
         />
       </label>
       <label>
-        <span>Proxy Account</span>
+        <span>代理账号</span>
         <Input prefix={<User size={16} />} value={values.proxy_account} maxLength={255}
           autoComplete="off"
           onChange={(proxy_account) => setValues((current) => ({ ...current, proxy_account }))}
         />
       </label>
       <label>
-        <span>Proxy Password</span>
+        <span>代理密码</span>
         <Input mode="password" prefix={<KeyRound size={16} />} value={values.proxy_password} maxLength={512}
           autoComplete="new-password"
           onChange={(proxy_password) => setValues((current) => ({ ...current, proxy_password }))}

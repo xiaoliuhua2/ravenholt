@@ -14,7 +14,7 @@ from service.host.docker import docker_client_for_host
 
 logger = get_logger(__name__)
 
-# 容器保活命令：XuanMu 原镜像靠 supervisord 常驻；Strix 官方沙箱镜像的
+# 容器保活命令：Ravenholt 原镜像靠 supervisord 常驻；ravenholt 官方沙箱镜像的
 # docker-entrypoint.sh 执行完即退出（镜像没有常驻 CMD），必须显式给一个
 # 常驻命令容器才会保持 running。可用 SANDBOX_CONTAINER_COMMAND 覆盖，设为空串则不注入。
 _CONTAINER_COMMAND = os.environ.get("SANDBOX_CONTAINER_COMMAND", "sleep infinity")
@@ -29,6 +29,20 @@ class DockerContainerState:
 def _resolve_container_command() -> list[str] | None:
     value = _CONTAINER_COMMAND.strip()
     return shlex.split(value) if value else None
+
+
+def _sandbox_resource_limits() -> dict[str, object]:
+    """Tier-1：把策略里的容器资源上限注入 docker create。"""
+    from core.policy import get_policy, policy_loaded
+
+    if not policy_loaded():
+        return {}
+    sandbox = get_policy().sandbox
+    return {
+        "mem_limit": f"{sandbox.memory_mb}m",
+        "nano_cpus": int(sandbox.cpu_cores * 1_000_000_000),
+        "pids_limit": sandbox.pids_limit,
+    }
 
 
 def _to_docker_ports(port_mappings: list[SandboxContainerPortMapping]) -> dict[str, tuple[str, int]] | None:
@@ -56,6 +70,7 @@ def create_container_sync(
             "stdin_open": True,
             "tty": False,
         }
+        create_kwargs.update(_sandbox_resource_limits())
         if environment:
             create_kwargs["environment"] = environment
         resolved_command = command if command is not None else _resolve_container_command()

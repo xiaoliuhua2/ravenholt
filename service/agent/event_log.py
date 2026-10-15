@@ -10,12 +10,14 @@ import json
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database import get_async_session
 from logger import get_logger
 from model.agent.event_log import AgentEventLog
+from schema.agent.subordinates import AgentSubordinateStatus
 
 
 logger = get_logger(__name__)
@@ -23,6 +25,11 @@ logger = get_logger(__name__)
 # item_key prefix that marks a top-level user message; used for turn-aligned
 # pagination so a page never starts in the middle of an agent turn
 USER_MESSAGE_KEY_PREFIX = "user_message:"
+
+# item_key prefix for a subagent task frame, keyed by run id
+SUBAGENT_KEY_PREFIX = "sa:"
+
+_INTERRUPTED_SUBAGENT_ERROR = "Subagent task was interrupted by backend restart."
 
 
 async def load_timeline_head(session_id: str) -> tuple[int, dict[str, int]]:
@@ -81,7 +88,7 @@ async def persist_subagent_event_unpooled(session_id: str, event: Any) -> None:
     run_id = getattr(event, "run_id", "")
     if not run_id:
         return
-    item_key = f"sa:{run_id}"
+    item_key = f"{SUBAGENT_KEY_PREFIX}{run_id}"
     table = AgentEventLog.__table__
     async with get_async_session() as session:
         existing = (await session.execute(
@@ -111,6 +118,58 @@ async def persist_subagent_event_unpooled(session_id: str, event: Any) -> None:
         )
         await session.execute(statement)
         await session.commit()
+
+
+async def settle_stale_running_subagent_events() -> int:
+    """Turn timeline frames that still claim a running subagent into terminal ones.
+
+    Subagent status reaches the console as a projected event: native subordinate
+    tasks go through the task registry, and on the strix main line the status is
+    polled from an in-process ``AgentCoordinator``. A hard kill (SIGKILL, power
+    loss, reboot) therefore freezes the last persisted frame at "running" with
+    nothing left alive to emit the terminal status, so the subagent panel would
+    show Running forever and contradict the (idle) session state.
+
+    No subagent run can outlive a process restart, so every still-running frame
+    observed at boot is stale by definition. Called once during startup, before
+    the server accepts requests.
+    """
+    table = AgentEventLog.__table__
+    payload_status = func.jsonb_extract_path_text(cast(table.c.payload, JSONB), "status")
+    settled = 0
+
+    async with get_async_session() as session:
+        rows = (await session.execute(
+            select(table.c.session_id, table.c.item_key, table.c.payload).where(
+                table.c.item_key.like(f"{SUBAGENT_KEY_PREFIX}%"),
+                payload_status == AgentSubordinateStatus.RUNNING.value,
+            )
+        )).all()
+        for row in rows:
+            try:
+                payload = json.loads(row.payload)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            payload["status"] = AgentSubordinateStatus.FAILED.value
+            if not payload.get("error_preview"):
+                payload["error_preview"] = _INTERRUPTED_SUBAGENT_ERROR
+            await session.execute(
+                update(table)
+                .where(
+                    table.c.session_id == row.session_id,
+                    table.c.item_key == row.item_key,
+                )
+                .values(payload=json.dumps(payload, ensure_ascii=False))
+            )
+            settled += 1
+        if settled:
+            await session.commit()
+
+    if settled:
+        logger.info("settled %d interrupted subagent timeline frame(s) at startup", settled)
+    return settled
 
 
 async def fetch_timeline_page(

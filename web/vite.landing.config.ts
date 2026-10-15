@@ -3,9 +3,8 @@ import { defineConfig, type Plugin } from "vite";
 import { renderLandingHtml } from "./src/landing-prerender";
 import { landingSeo, getRobotsTxt, getSitemapXml, getWebManifest, structuredData } from "./landing.seo";
 
-const logoEntryPath = "../src/assets/z3r0-logo.png";
-const logoOutputPath = "assets/z3r0-logo.png";
-const siteImageUrl = new URL(logoOutputPath, landingSeo.siteUrl).toString();
+const logoAssetPath = "./assets/ravenholt-logo.svg";
+const siteImageUrl = new URL(landingSeo.imagePath, landingSeo.siteUrl).toString();
 
 function escapeHtml(value: string) {
   return value
@@ -21,8 +20,8 @@ function buildMetaTags() {
     `<meta name="description" content="${escapeHtml(landingSeo.description)}" />`,
     `<meta name="keywords" content="${escapeHtml(landingSeo.keywords.join(", "))}" />`,
     '<meta name="robots" content="index, follow, max-image-preview:large" />',
-    '<meta name="author" content="Z3r0" />',
-    '<meta name="theme-color" content="#d92d3a" />',
+    '<meta name="author" content="Ravenholt" />',
+    '<meta name="theme-color" content="#f7f8fa" />',
     `<link rel="canonical" href="${landingSeo.siteUrl}" />`,
     '<link rel="manifest" href="./site.webmanifest" />',
     `<meta property="og:site_name" content="${escapeHtml(landingSeo.siteName)}" />`,
@@ -32,9 +31,7 @@ function buildMetaTags() {
     `<meta property="og:description" content="${escapeHtml(landingSeo.description)}" />`,
     `<meta property="og:image" content="${siteImageUrl}" />`,
     `<meta property="og:image:alt" content="${escapeHtml(landingSeo.imageAlt)}" />`,
-    '<meta property="og:image:type" content="image/png" />',
-    '<meta property="og:image:width" content="1000" />',
-    '<meta property="og:image:height" content="1000" />',
+    '<meta property="og:image:type" content="image/svg+xml" />',
     '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${escapeHtml(landingSeo.title)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(landingSeo.description)}" />`,
@@ -48,14 +45,13 @@ function buildMetaTags() {
 
 function landingSeoPlugin(): Plugin {
   return {
-    name: "z3r0-landing-seo",
+    name: "ravenholt-landing-seo",
     transformIndexHtml(html) {
       return html
         .replace(/\s*<meta\s+name="description"[\s\S]*?\/>\s*/i, "\n")
         .replace(/\s*<title>[\s\S]*?<\/title>\s*/i, "\n")
         .replace("</head>", `    ${buildMetaTags()}\n  </head>`)
-        .replace('<link rel="icon" type="image/png" href="../src/assets/z3r0-logo.png" />', `<link rel="icon" type="image/png" href="${logoEntryPath}" />`)
-        .replace('<div id="root"></div>', `<div id="root">${renderLandingHtml(`./${logoOutputPath}`)}</div>`);
+        .replace('<div id="root"></div>', `<div id="root">${renderLandingHtml(logoAssetPath)}</div>`);
     },
     generateBundle() {
       this.emitFile({
@@ -71,7 +67,7 @@ function landingSeoPlugin(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "site.webmanifest",
-        source: getWebManifest(`./${logoOutputPath}`),
+        source: getWebManifest(logoAssetPath),
       });
     },
   };
@@ -84,13 +80,5 @@ export default defineConfig({
   build: {
     outDir: "../dist-landing",
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        assetFileNames(assetInfo) {
-          if (assetInfo.name === "z3r0-logo.png") return logoOutputPath;
-          return "assets/[name]-[hash][extname]";
-        },
-      },
-    },
   },
 });

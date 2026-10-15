@@ -110,14 +110,14 @@ export function BlackboardGraphCanvas({ nodes }: { nodes: BlackboardNode[] }) {
 
   return (
     <div className="project-graph">
-      <div ref={graphRef} className="project-graph-canvas" role="img" aria-label="Blackboard reasoning graph" />
+      <div ref={graphRef} className="project-graph-canvas" role="img" aria-label="黑板推理图" />
 
       <BlackboardLegend />
 
       <div className="project-graph-controls blackboard-graph-controls">
-        <button type="button" aria-label="Zoom in" onClick={() => zoomFromCenter(CONTROL_ZOOM_FACTOR)}><Plus size={15} /></button>
-        <button type="button" aria-label="Zoom out" onClick={() => zoomFromCenter(1 / CONTROL_ZOOM_FACTOR)}><Minus size={15} /></button>
-        <button type="button" aria-label="Reset view" onClick={resetView}><Maximize2 size={14} /></button>
+        <button type="button" aria-label="放大" onClick={() => zoomFromCenter(CONTROL_ZOOM_FACTOR)}><Plus size={15} /></button>
+        <button type="button" aria-label="缩小" onClick={() => zoomFromCenter(1 / CONTROL_ZOOM_FACTOR)}><Minus size={15} /></button>
+        <button type="button" aria-label="重置视图" onClick={resetView}><Maximize2 size={14} /></button>
       </div>
     </div>
   );
@@ -181,13 +181,13 @@ function blackboardStyles(): cytoscape.StylesheetJson {
       selector: "core",
       style: {
         "selection-box-color": "#7ddbd3",
-        "selection-box-border-color": "#d6fff9",
+        "selection-box-border-color": "#0f766e",
         "selection-box-opacity": 0.16,
         "active-bg-color": "#7ddbd3",
         "active-bg-size": 18,
         "active-bg-opacity": 0.12,
-        "outside-texture-bg-color": "#08111c",
-        "outside-texture-bg-opacity": 0.9,
+        "outside-texture-bg-color": "#f7f8fa",
+        "outside-texture-bg-opacity": 1,
         "selection-box-border-width": 1,
       },
     },
@@ -210,8 +210,8 @@ function blackboardStyles(): cytoscape.StylesheetJson {
         "text-halign": "center",
         "text-margin-y": 8,
         "min-zoomed-font-size": 7,
-        "color": "#c7d2df",
-        "text-outline-color": "#08111c",
+        "color": "#232935",
+        "text-outline-color": "#ffffff",
         "text-outline-width": 2.5,
         "overlay-opacity": 0,
         "transition-property": "background-opacity, border-width",
@@ -238,8 +238,8 @@ function blackboardStyles(): cytoscape.StylesheetJson {
       selector: "edge",
       style: {
         width: 1.2,
-        "line-color": "#5a7a8a",
-        "target-arrow-color": "#5a7a8a",
+        "line-color": "#8b93a3",
+        "target-arrow-color": "#8b93a3",
         "target-arrow-shape": "triangle",
         "arrow-scale": 0.7,
         "curve-style": "bezier",
@@ -258,7 +258,7 @@ function BlackboardLegend() {
   return (
     <div className="project-graph-legend">
       <div className="project-graph-legend-group">
-        <span className="project-graph-legend-title">Node</span>
+        <span className="project-graph-legend-title">节点</span>
         {nodeTypes.map((t) => (
           <span key={t} className="project-graph-legend-item">
             <i className="project-graph-legend-dot" style={{ "--graph-color": BLACKBOARD_NODE_TYPE_COLOR[t] } as React.CSSProperties} />
@@ -267,7 +267,7 @@ function BlackboardLegend() {
         ))}
       </div>
       <div className="project-graph-legend-group">
-        <span className="project-graph-legend-title">Status</span>
+        <span className="project-graph-legend-title">状态</span>
         {statuses.map((s) => (
           <span key={s} className="project-graph-legend-item">
             <i className="project-graph-legend-dot" style={{ "--graph-color": BLACKBOARD_NODE_STATUS_COLOR[s] } as React.CSSProperties} />

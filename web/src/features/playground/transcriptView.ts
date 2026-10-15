@@ -12,29 +12,31 @@ type TranscriptItem = AgentTranscript["blocks"][number];
 export type ToolBlock = ToolExecutionItem | SubagentExecutionItem;
 export type ContentBlock = TextItem | ErrorItem;
 export type TranscriptRenderSegment =
-  | { kind: "thinking"; id: "thinking"; items: ThinkingItem[] }
-  | { kind: "tools"; id: "tools"; items: ToolBlock[] }
+  | { kind: "thinking"; id: string; items: ThinkingItem[] }
+  | { kind: "tools"; id: string; items: ToolBlock[] }
   | { kind: "content"; id: string; block: ContentBlock };
 
+// 按 blocks 的原始顺序切段：相邻同类块（思考/工具）聚成一段，正文各自成段。
+// 于是思考链、正文、工具调用会按真实发生顺序自然穿插，而不是被全部提到最前面。
 export function buildTranscriptSegments(blocks: TranscriptItem[]): TranscriptRenderSegment[] {
-  const thinkingItems: ThinkingItem[] = [];
-  const toolItems: ToolBlock[] = [];
-  const contentSegments: TranscriptRenderSegment[] = [];
+  const segments: TranscriptRenderSegment[] = [];
 
   for (const block of blocks) {
+    const last = segments[segments.length - 1];
     if (block.kind === "thinking") {
-      thinkingItems.push(block);
-    } else if (isToolBlock(block)) {
-      toolItems.push(block);
-    } else {
-      contentSegments.push({ kind: "content", id: `${block.kind}:${block.id}`, block });
+      if (last?.kind === "thinking") last.items.push(block);
+      else segments.push({ kind: "thinking", id: `thinking:${block.id}`, items: [block] });
+      continue;
     }
+    if (isToolBlock(block)) {
+      if (last?.kind === "tools") last.items.push(block);
+      else segments.push({ kind: "tools", id: `tools:${block.id}`, items: [block] });
+      continue;
+    }
+    segments.push({ kind: "content", id: `${block.kind}:${block.id}`, block });
   }
 
-  const segments: TranscriptRenderSegment[] = [];
-  if (thinkingItems.length) segments.push({ kind: "thinking", id: "thinking", items: thinkingItems });
-  if (toolItems.length) segments.push({ kind: "tools", id: "tools", items: toolItems });
-  return [...segments, ...contentSegments];
+  return segments;
 }
 
 export function emptyAgentTranscript(): AgentTranscript {
@@ -51,6 +53,26 @@ export function isTranscriptEmpty(transcript: AgentTranscript) {
 
 export function activeThinkingItemId(blocks: TranscriptItem[]) {
   return [...blocks].reverse().find((block): block is ThinkingItem => block.kind === "thinking" && !block.complete)?.id ?? "";
+}
+
+/** 本段思考的耗时文案；进行中或时间戳缺失时返回空串（头部不显示）。 */
+export function thinkingSegmentDuration(items: ThinkingItem[]): string {
+  const startedAt = items.find((item) => item.startedAt)?.startedAt;
+  const completedAt = [...items].reverse().find((item) => item.completedAt)?.completedAt;
+  if (!startedAt || !completedAt) return "";
+  const ms = Date.parse(completedAt) - Date.parse(startedAt);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  if (ms < 1000) return "<1s";
+  const seconds = ms / 1000;
+  return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+}
+
+/** 折叠态的摘要：最新已完成段落的首行，帮助用户在收起时判断这段在想什么。 */
+export function thinkingSegmentSummary(items: ThinkingItem[]): string {
+  const latest = [...items].reverse().find((item) => item.complete && item.text.trim());
+  const source = (latest ?? items[items.length - 1])?.text ?? "";
+  const firstLine = source.trim().split("\n").find((line) => line.trim()) ?? "";
+  return firstLine.trim().slice(0, 80);
 }
 
 export function activeTextItemId(blocks: TranscriptItem[]) {

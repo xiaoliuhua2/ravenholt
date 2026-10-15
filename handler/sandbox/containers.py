@@ -4,7 +4,7 @@ from http import HTTPStatus
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import UploadFile, WebSocket, WebSocketDisconnect, status as ws_status
+from fastapi import Request, UploadFile, WebSocket, WebSocketDisconnect, status as ws_status
 from fastapi.responses import JSONResponse, Response as FastAPIResponse, StreamingResponse
 from fastapi.websockets import WebSocketState
 
@@ -575,3 +575,68 @@ async def handle_novnc_ws_proxy(websocket: WebSocket, id: int, token: str) -> No
         logger.debug("novnc ws proxy handler error: %s", id, exc_info=True)
     finally:
         await _close_silently(websocket, ws_status.WS_1000_NORMAL_CLOSURE)
+
+
+# ── Caido proxy handlers ───────────────────────────────────────────────────────
+#
+# Caido 前端完全用相对路径推导资源与接口（./assets/...、相对 GraphQL、相对重定向），
+# 所以前缀反代不需要改写响应体；但要求入口 URL 以 "/" 结尾，否则相对路径会退化到上一层
+# 前缀。浏览器直接导航带不了自定义请求头，因此首屏用 ?token= 换一个 HttpOnly Cookie，
+# 后续的相对请求与 WebSocket 升级只带 Cookie。
+
+_CAIDO_ACCESS_COOKIE = "sandbox_caido_access"
+_CAIDO_ENTRY_PREFIX = "/api/sandbox-containers"
+
+
+async def handle_caido_root_redirect(id: int, token: str = "") -> FastAPIResponse:
+    location = f"{_CAIDO_ENTRY_PREFIX}/{id}/caido/"
+    if token:
+        location = f"{location}?token={quote(token)}"
+    return FastAPIResponse(status_code=HTTPStatus.TEMPORARY_REDIRECT.value, headers={"location": location})
+
+
+async def handle_caido_http_proxy(
+    request: Request,
+    id: int,
+    path: str,
+    token: str = "",
+    cookie_token: str = "",
+) -> FastAPIResponse:
+    from service.sandbox.caido import filter_response_headers, proxy_caido_http, resolve_caido_target
+
+    effective_token = token or cookie_token
+    user = authenticate_ws_token(effective_token)
+    if user is None or not await _can_access_container_by_id(user, id):
+        return FastAPIResponse(status_code=HTTPStatus.NOT_FOUND.value, content="Not Found")
+
+    target = await resolve_caido_target(id)
+    if target is None:
+        return FastAPIResponse(status_code=HTTPStatus.NOT_FOUND.value, content="Not Found")
+
+    try:
+        response = await proxy_caido_http(
+            target,
+            path,
+            method=request.method,
+            query=request.url.query,
+            headers=dict(request.headers),
+            body=await request.body(),
+        )
+    except Exception:
+        logger.debug("caido http proxy failed: %s", id, exc_info=True)
+        return FastAPIResponse(status_code=HTTPStatus.BAD_GATEWAY.value, content="Bad Gateway")
+
+    proxied = FastAPIResponse(
+        content=response.content,
+        status_code=response.status_code,
+        headers=filter_response_headers(response.headers),
+    )
+    if token:
+        proxied.set_cookie(
+            key=_CAIDO_ACCESS_COOKIE,
+            value=token,
+            path=f"{_CAIDO_ENTRY_PREFIX}/{id}/caido",
+            httponly=True,
+            samesite="strict",
+        )
+    return proxied

@@ -13,7 +13,7 @@ from schema.common.responses import CommonResponse
 from schema.system_user.users import SystemUserRole
 
 
-ACCESS_TOKEN_HEADER = "X-XM-Access-Token"
+ACCESS_TOKEN_HEADER = "X-Ravenholt-Access-Token"
 _API_PATH_PREFIX = "/api"
 
 
@@ -114,5 +114,5 @@ def _is_valid_payload(payload: Any) -> bool:
         and payload.get("role") in {SystemUserRole.ADMIN.value, SystemUserRole.USER.value}
         and isinstance(payload.get("email"), str)
         and isinstance(payload.get("username"), str)
-        and payload.get("sub") == "xuanmu"
+        and payload.get("sub") == "ravenholt"
     )

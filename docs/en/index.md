@@ -1,15 +1,15 @@
 ---
 # https://vitepress.dev/reference/default-theme-home-page
 layout: home
-pageClass: z3r0-docs-home
+pageClass: ravenholt-docs-home
 
 hero:
-  name: Z3r0
-  text: Red Team Workbench
+  name: Ravenholt
+  text: Red Team Collaboration Workbench
   tagline: A multi-agent collaboration platform for authorized penetration testing and vulnerability discovery
   image:
-    src: /z3r0-logo.png
-    alt: Z3r0 logo
+    src: /ravenholt-logo-light.svg
+    alt: Ravenholt Logo
   actions:
     - theme: brand
       text: Quick Start
@@ -20,15 +20,15 @@ hero:
 
 features:
   - title: Multi-agent collaboration
-    details: Distribute intelligence gathering, vulnerability validation, code analysis, and attack-path mapping across expert agents so authorized testing improves execution efficiency and coverage.
+    details: The lead agent dynamically spawns expert agents per task, driving intelligence gathering, vulnerability validation, code analysis, and attack-path mapping forward in parallel to improve the execution efficiency and coverage of authorized testing.
   - title: Project-oriented architecture
-    details: Use WorkProject to manage test scope, tasks, sessions, assets, vulnerability findings, and attack paths, keeping red team operations organized, traceable, and reviewable.
+    details: Use WorkProject to centrally manage test scope, tasks, sessions, assets, vulnerability findings, and attack paths, making the red team workflow organized, traceable, and reviewable.
   - title: Asynchronous task runtime
-    details: Run long commands and subagent tasks in the background, then resume context automatically when they finish to reduce waiting and preserve task state.
-  - title: Distributed sandbox resource pool
-    details: Support multiple hosts, Docker containers, and project-bound environments so test infrastructure can be isolated, scaled, and switched by project.
-  - title: Controlled egress and identity isolation
-    details: Reduce exposure of the operator environment through proxy egress, sandbox boundaries, and independent execution environments, making the platform better suited to authorized penetration-testing scenarios.
+    details: Long commands and sub-agents can run in the background and automatically wake their context when they finish, reducing waiting and avoiding task state loss.
+  - title: Controlled sandbox execution surface
+    details: Docker-based custom sandbox containers provide command execution, file management, a web terminal, and noVNC remote view; containers are provisioned automatically per session, and their egress can be bound to a proxy.
+  - title: Policy governance and auditing
+    details: The red-line policy makes fail-closed decisions on high-risk actions, actions requiring human confirmation enter the approval queue, and key actions and block reasons are written to the audit log.
   - title: Structured evidence retention
-    details: Continuously record assets, vulnerability findings, graph relationships, and attack paths to make validation quality, review efficiency, and deliverables more stable.
+    details: Continuously record assets, vulnerability findings, relationship graphs, and attack paths. A finding must carry reproducible evidence before it can be confirmed, making validation quality, review efficiency, and deliverables more consistent.
 ---

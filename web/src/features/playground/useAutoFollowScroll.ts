@@ -87,15 +87,18 @@ export function useAutoFollowScroll<T extends HTMLElement = HTMLDivElement>({
     if (!container) return;
 
     const syncFollowing = () => {
-      if (suspendAutoFollow) return;
       const scrollingUp = container.scrollTop < lastScrollTopRef.current - 2;
       lastScrollTopRef.current = container.scrollTop;
 
+      // 用户向上滚动查看历史时，无论是否处于「暂停自动跟随」状态都必须立即停止跟随，
+      // 否则加载历史期间的向上滚动会被静默忽略，随后内容变化会把页面强行拽回底部。
       if (scrollingUp) {
         setFollowing(false);
         triggerScrollToTop();
         return;
       }
+
+      if (suspendAutoFollow) return;
 
       if (!isNearScrollTail(container) && followingRef.current) {
         setFollowing(false);

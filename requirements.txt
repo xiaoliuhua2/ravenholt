@@ -23,8 +23,16 @@ jiter==0.15.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 mcp==1.27.1
-openai
-openai-agents==0.17.4
+openai==2.53.0
+openai-agents[litellm]==0.19.0
+# --- vendored ravenholt runtime deps (see strix/ package) ---
+caido-sdk-client==0.3.2
+cvss==3.6
+Jinja2==3.1.6
+litellm==1.105.0
+markdown-it-py==4.2.0
+Pygments==2.21.0
+rich==15.0.0
 pycparser==3.0
 pydantic==2.13.4
 pydantic-settings==2.14.1

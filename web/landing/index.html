@@ -2,9 +2,20 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="../src/assets/xuanmu-logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="../src/assets/ravenholt-logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>XuanMu RedTeam Agent</title>
+    <title>Ravenholt · 红队智能体协作平台</title>
+    <script>
+      // 首屏前置应用主题色，避免闪烁
+      (function () {
+        try {
+          var theme = window.localStorage.getItem("ravenholt.theme");
+          if (theme) document.documentElement.dataset.theme = theme;
+        } catch (error) {
+          /* 忽略：localStorage 不可用时使用默认主题 */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

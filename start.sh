@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# XuanMu RedTeam Agent - 一键启动脚本
+# Ravenholt RedTeam Agent - 一键启动脚本
 # 启动 PostgreSQL + 后端 API + 前端（构建后自动托管）
 # ============================================================
 set -e
@@ -10,7 +10,7 @@ PROJECT_DIR="$(pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
 
 echo "========================================"
-echo "  XuanMu RedTeam Agent"
+echo "  Ravenholt RedTeam Agent"
 echo "  Version 0.2.1"
 echo "========================================"
 
@@ -44,12 +44,12 @@ source "$VENV_DIR/bin/activate"
 echo "  ✅ 虚拟就绪: $(python3 --version)"
 
 # 3. 启动后端
-echo "[3/3] 启动 XuanMu 后端服务..."
+echo "[3/3] 启动 Ravenholt 后端服务..."
 echo ""
 echo "  🌐 API 地址:     http://127.0.0.1:8000"
 echo "  📖 API 文档:     http://127.0.0.1:8000/docs"
 echo "  🖥️  前端界面:    http://127.0.0.1:8000"
-echo "  👤 管理员登录:   admin@admin.com / admin123"
+echo "  👤 管理员登录:   见 .ravenholt/config.json（system.bootstrap_admin）"
 echo ""
 echo "  按 Ctrl+C 停止服务"
 echo "========================================"

@@ -1,6 +1,8 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from config import AgentConfig, AgentPoolConfig, AgentRuntimeConfig
+from config import AgentConfig, AgentPoolConfig, AgentRuntimeConfig, IntegrationsConfig
 
 
 class InstanceConfigSchema(BaseModel):
@@ -9,6 +11,7 @@ class InstanceConfigSchema(BaseModel):
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     agent_pool: AgentPoolConfig = Field(default_factory=AgentPoolConfig)
     agent_runtime: AgentRuntimeConfig = Field(default_factory=AgentRuntimeConfig)
+    integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
 
     @model_validator(mode="after")
     def validate_agent_codes(self):
@@ -30,14 +33,36 @@ class UpdateAgentConfigRequest(BaseModel):
     context_window: int = Field(ge=0)
 
 
+class UpdateIntegrationsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    web_search_provider: Literal["auto", "exa", "perplexity", "searxng"]
+    exa_api_key: str = Field(max_length=4096)
+    perplexity_api_key: str = Field(max_length=4096)
+    searxng_base_url: str = Field(default="", max_length=1024)
+    searxng_auto_provision: bool = True
+
+
 class UpdateInstanceConfigRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agents: dict[str, UpdateAgentConfigRequest]
     agent_pool: AgentPoolConfig
     agent_runtime: AgentRuntimeConfig
+    integrations: UpdateIntegrationsRequest
 
 
 class UpdateInstanceConfigResponse(BaseModel):
     config: InstanceConfigSchema
     restarted: bool
+
+
+class FetchUpstreamModelsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str = Field(min_length=1, max_length=512)
+    api_key: str = Field(min_length=1, max_length=4096)
+
+
+class FetchUpstreamModelsResponse(BaseModel):
+    models: list[str]

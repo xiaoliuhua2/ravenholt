@@ -36,19 +36,19 @@ export function WorkProjectInfoModal({ open, projectId, initialTab = "assets", o
             <section className="project-info-main">
               <section className="project-info-meta">
                 <div>
-                  <span>Type</span>
+                  <span>类型</span>
                   <WorkProjectTypeTag project={project} />
                 </div>
                 <div>
-                  <span>Status</span>
+                  <span>状态</span>
                   <WorkProjectStatusTag project={project} />
                 </div>
                 <div>
-                  <span>Owners</span>
+                  <span>负责人</span>
                   <strong>{workProjectOwnerNames(project)}</strong>
                 </div>
                 <div>
-                  <span>Sandbox</span>
+                  <span>沙箱</span>
                   <strong>{project.sandbox_container_ids.length || "-"}</strong>
                 </div>
               </section>
@@ -56,23 +56,23 @@ export function WorkProjectInfoModal({ open, projectId, initialTab = "assets", o
               {project.description ? <div className="project-info-description">{project.description}</div> : null}
 
               <section className="project-info-progress">
-                <span>Task Progress</span>
+                <span>任务进度</span>
                 <Progress percent={project.progress} size="small" showInfo />
               </section>
 
               <WorkProjectPanel
-                title="Tasks"
+                title="任务"
                 icon={<FileText size={15} />}
-                empty={!project.tasks.length ? "No data." : ""}
+                empty={!project.tasks.length ? "暂无数据。" : ""}
                 mode="info"
               >
                 <WorkProjectTasks project={project} mode="info" />
               </WorkProjectPanel>
 
               <WorkProjectPanel
-                title="Agent Summaries"
+                title="Agent 摘要"
                 icon={<UserRound size={15} />}
-                empty={!project.agent_summaries.length ? "No data." : ""}
+                empty={!project.agent_summaries.length ? "暂无数据。" : ""}
                 mode="info"
               >
                 <WorkProjectSummaries project={project} mode="info" />
@@ -88,7 +88,7 @@ export function WorkProjectInfoModal({ open, projectId, initialTab = "assets", o
             </section>
           </div>
         ) : (
-          <Empty className="empty-state" image={<FileText size={42} />} title="No project selected." description="" />
+          <Empty className="empty-state" image={<FileText size={42} />} title="未选择项目。" description="" />
         )}
       </Spin>
     </Modal>
@@ -98,7 +98,7 @@ export function WorkProjectInfoModal({ open, projectId, initialTab = "assets", o
 function ProjectInfoTitle({ project }: { project: WorkProject | null }) {
   return (
     <div className="project-info-title">
-      <strong>{project?.name ?? "Work Project"}</strong>
+      <strong>{project?.name ?? "工作项目"}</strong>
     </div>
   );
 }

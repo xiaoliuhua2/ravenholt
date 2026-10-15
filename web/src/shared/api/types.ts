@@ -75,9 +75,12 @@ export type InstanceConfig = components["schemas"]["InstanceConfigSchema"];
 export type AgentConfig = components["schemas"]["AgentConfig"];
 export type AgentPoolConfig = components["schemas"]["AgentPoolConfig"];
 export type AgentRuntimeConfig = components["schemas"]["AgentRuntimeConfig"];
+export type IntegrationsConfig = components["schemas"]["IntegrationsConfig"];
 export type GetInstanceConfigResponse = JsonResponse<paths["/api/system-config/instance"]["get"]>;
 export type UpdateInstanceConfigRequest = JsonRequestBody<paths["/api/system-config/instance"]["patch"]>;
 export type UpdateInstanceConfigResponse = JsonResponse<paths["/api/system-config/instance"]["patch"]>;
+export type FetchUpstreamModelsRequest = JsonRequestBody<paths["/api/system-config/upstream-models"]["post"]>;
+export type FetchUpstreamModelsResponse = JsonResponse<paths["/api/system-config/upstream-models"]["post"]>;
 
 export type QuerySandboxImagesParams = QueryParameters<paths["/api/sandbox-images"]["get"]>;
 export type QuerySandboxImagesResponse = JsonResponse<paths["/api/sandbox-images"]["get"]>;
@@ -102,6 +105,7 @@ export type SandboxContainer = QuerySandboxContainersData["items"][number];
 export type QueryAvailableSandboxContainersParams = QueryParameters<paths["/api/sandbox-containers/available"]["get"]>;
 export type QueryAvailableSandboxContainersResponse = JsonResponse<paths["/api/sandbox-containers/available"]["get"]>;
 export type SandboxContainerStatus = components["schemas"]["SandboxContainerStatus"];
+export type SandboxContainerSource = components["schemas"]["SandboxContainerSource"];
 export type SandboxContainerEgressMode = components["schemas"]["SandboxContainerEgressMode"];
 export type SandboxContainerPortMapping = components["schemas"]["SandboxContainerPortMapping"];
 
@@ -181,6 +185,11 @@ export type CreateWorkProjectSessionResponse = JsonResponse<paths["/api/work-pro
 export type DeleteWorkProjectSessionResponse = JsonResponse<paths["/api/work-projects/{id}/sessions/{session_id}"]["delete"]>;
 export type GetWorkProjectRecordSnapshotResponse = JsonResponse<paths["/api/work-projects/{id}/record-snapshot"]["get"]>;
 
+// 源码包上传（multipart）：解压后返回的 server_path 直接作为 binary 资产的 path。
+export type UploadWorkProjectSourceRequest = MultipartRequestBody<paths["/api/work-projects/source-uploads"]["post"]>;
+export type UploadWorkProjectSourceResponse = JsonResponse<paths["/api/work-projects/source-uploads"]["post"]>;
+export type WorkProjectSourceUpload = NonNullable<UploadWorkProjectSourceResponse["data"]>;
+
 // ── Blackboard (manual types, not from generated schema) ──
 export type BlackboardNodeType = "fact" | "intent" | "hint";
 export type BlackboardNodeStatus = "proposed" | "in_progress" | "confirmed" | "rejected" | "superseded";
@@ -209,6 +218,31 @@ export interface BlackboardSnapshot {
 export type GetBlackboardSnapshotResponse = { code: number; message: string; data?: BlackboardSnapshot | null };
 export type BlackboardProjectPathParams = { project_id: number };
 
+// ── 发现证据包（手写类型：可重放的完整请求 + baseline/probe 响应） ──
+export interface WorkProjectFindingEvidence {
+  finding_id: number;
+  evidence_id: number;
+  target: string;
+  method: string;
+  url: string;
+  request_headers: Record<string, string>;
+  request_body: string;
+  baseline_status: number;
+  baseline_body: string;
+  probe_status: number;
+  probe_body: string;
+  diff: Record<string, unknown>;
+  verdict: string;
+  verifier_note: string;
+  captured_at: string;
+}
+
+export type GetWorkProjectFindingEvidenceResponse = {
+  code: number;
+  message: string;
+  data?: WorkProjectFindingEvidence | null;
+};
+
 export type AgentSessionSummary = components["schemas"]["AgentSessionSummarySchema"];
 export type SessionType = components["schemas"]["SessionType"];
 
@@ -219,10 +253,10 @@ export type ListAgentsData = NonNullable<ListAgentsResponse["data"]>;
 export type ListAgentSessionsResponse = JsonResponse<paths["/api/agent-sessions"]["get"]>;
 export type ListAgentSessionsData = NonNullable<ListAgentSessionsResponse["data"]>;
 
-export type AgentTurnRequest = JsonRequestBody<paths["/api/agent-sessions/turns"]["post"]>;
 export type AgentTurnData = components["schemas"]["AgentTurnResponse"];
-export type CreateAgentSessionTurnResponse = JsonResponse<paths["/api/agent-sessions/turns"]["post"]>;
-export type SubmitAgentSessionTurnResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/turns"]["post"]>;
+export type StrixTurnRequest = JsonRequestBody<paths["/api/agent-sessions/strix-turns"]["post"]>;
+export type CreateAgentSessionStrixTurnResponse = JsonResponse<paths["/api/agent-sessions/strix-turns"]["post"]>;
+export type SubmitAgentSessionStrixTurnResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/strix-turn"]["post"]>;
 export type InterruptAgentSessionResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/interrupt"]["post"]>;
 export type CancelAllAgentSessionTasksResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/cancel-all"]["post"]>;
 
@@ -230,8 +264,6 @@ export type ListAgentEventsResponse = JsonResponse<paths["/api/agent-sessions/{s
 export type ListAgentEventsData = NonNullable<ListAgentEventsResponse["data"]>;
 export type UpdateAgentSessionTitleRequest = JsonRequestBody<paths["/api/agent-sessions/{session_id}/title"]["patch"]>;
 export type UpdateAgentSessionTitleResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/title"]["patch"]>;
-export type UpdateAgentSessionSandboxContainerRequest = JsonRequestBody<paths["/api/agent-sessions/{session_id}/sandbox-container"]["patch"]>;
-export type UpdateAgentSessionSandboxContainerResponse = JsonResponse<paths["/api/agent-sessions/{session_id}/sandbox-container"]["patch"]>;
 export type DeleteAgentSessionResponse = JsonResponse<paths["/api/agent-sessions/{session_id}"]["delete"]>;
 
 export type UserMessageEvent = components["schemas"]["UserMessageEvent"];
@@ -243,6 +275,10 @@ export type ThinkingCompleteEvent = components["schemas"]["ThinkingCompleteEvent
 export type ToolCallEvent = components["schemas"]["ToolCallEvent"];
 export type ToolResultEvent = components["schemas"]["ToolResultEvent"];
 export type SubagentTaskEvent = components["schemas"]["SubagentTaskEvent"];
+export type SandboxEvent = components["schemas"]["SandboxEvent"];
+export type SandboxPhase = components["schemas"]["SandboxPhaseSchema"];
+export type ApprovalEvent = components["schemas"]["ApprovalEvent"];
+export type ApprovalPhase = components["schemas"]["ApprovalPhaseSchema"];
 export type AgentSubordinateStatus = components["schemas"]["AgentSubordinateStatus"];
 export type ErrorEvent = components["schemas"]["ErrorEvent"];
 export type DoneEvent = components["schemas"]["DoneEvent"];
@@ -251,7 +287,47 @@ export type AgentInputPart = components["schemas"]["AgentTextInputPart"] | compo
 export type AgentTextInputPart = components["schemas"]["AgentTextInputPart"];
 export type AgentImageInputPart = components["schemas"]["AgentImageInputPart"];
 
+// ── 策略审批 / 审计日志 ──
+export type ConfirmationStatus = components["schemas"]["ConfirmationStatus"];
+export type ConfirmationMode = components["schemas"]["ConfirmationMode"];
+export type PolicyConfirmation = components["schemas"]["PolicyConfirmationSchema"];
+export type QueryPolicyConfirmationsParams = QueryParameters<paths["/api/policy/confirmations"]["get"]>;
+export type QueryPolicyConfirmationsResponse = JsonResponse<paths["/api/policy/confirmations"]["get"]>;
+export type DecidePolicyConfirmationRequest = JsonRequestBody<paths["/api/policy/confirmations/{id}/approve"]["post"]>;
+export type ApprovePolicyConfirmationResponse = JsonResponse<paths["/api/policy/confirmations/{id}/approve"]["post"]>;
+export type RejectPolicyConfirmationResponse = JsonResponse<paths["/api/policy/confirmations/{id}/reject"]["post"]>;
+export type RevokePolicyConfirmationResponse = JsonResponse<paths["/api/policy/confirmations/{id}/revoke"]["post"]>;
+
+export type PolicyActionsSnapshotResponse = JsonResponse<paths["/api/policy/actions"]["get"]>;
+export type PolicyApprovalGates = NonNullable<PolicyActionsSnapshotResponse["data"]>["approvals"];
+export type PolicyApprovalGate = PolicyApprovalGates[number];
+export type UpdatePolicyActionsRequest = JsonRequestBody<paths["/api/policy/actions"]["patch"]>;
+
+export type PolicySnapshotResponse = JsonResponse<paths["/api/policy"]["get"]>;
+export type PolicyConfig = NonNullable<PolicySnapshotResponse["data"]>["policy"];
+export type UpdatePolicyConfigRequest = JsonRequestBody<paths["/api/policy"]["patch"]>;
+export type KillSwitchRequest = JsonRequestBody<paths["/api/policy/kill-switch"]["post"]>;
+
+export type AuditEvent = components["schemas"]["AuditEventSchema"];
+export type QueryAuditEventsParams = QueryParameters<paths["/api/audit-events"]["get"]>;
+export type QueryAuditEventsResponse = JsonResponse<paths["/api/audit-events"]["get"]>;
+export type QueryAuditEventsData = NonNullable<QueryAuditEventsResponse["data"]>;
+
+// ── 审计事件删除（手写类型：新端点未进 openapi.json） ──
+export type DeleteAuditEventsRequest = { ids: number[] };
+export type DeleteAuditEventsResponse = {
+  code: number;
+  message: string;
+  data?: { deleted: number } | null;
+};
+export type PurgeAuditEventsRequest = { action?: string; decision?: string; keyword?: string };
+export type PurgeAuditEventsResponse = {
+  code: number;
+  message: string;
+  data?: { deleted: number } | null;
+};
+
 export type AgentContentEvent = ListAgentEventsData["items"][number];
 export type AgentStreamEvent = UserMessageEvent | TurnBoundaryEvent | RunStateEvent | TextDeltaEvent | TextCompleteEvent
   | ThinkingDeltaEvent | ThinkingCompleteEvent | ToolCallEvent | ToolResultEvent
-  | SubagentTaskEvent | DoneEvent | ErrorEvent;
+  | SubagentTaskEvent | SandboxEvent | ApprovalEvent | DoneEvent | ErrorEvent;

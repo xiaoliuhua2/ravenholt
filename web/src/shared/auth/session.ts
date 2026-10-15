@@ -1,4 +1,4 @@
-const ACCESS_TOKEN_KEY = "xuanmu.access_token";
+const ACCESS_TOKEN_KEY = "ravenholt.access_token";
 
 export function getStoredAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY);

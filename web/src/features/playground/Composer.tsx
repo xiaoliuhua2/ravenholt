@@ -1,7 +1,8 @@
 import { Button, TextArea, Toast } from "@douyinfe/semi-ui";
-import { AtSign, ImagePlus, OctagonX, Send, Square, X } from "lucide-react";
+import { AtSign, ImagePlus, OctagonX, Pause, Send, X } from "lucide-react";
 import { ClipboardEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentPicker } from "./AgentPicker";
+import { PolicyGateControl } from "./PolicyGateControl";
 import type { AgentImageInputPart, AgentInfo, AgentInputPart } from "../../shared/api/types";
 import { cx } from "../../shared/lib/className";
 
@@ -141,7 +142,7 @@ export function Composer({
     focusTextarea();
   };
 
-  const agentSwitchDisabledReason = "Finish or cancel running subagent tasks before switching agents";
+  const agentSwitchDisabledReason = "请先结束或取消正在运行的子智能体任务，再切换智能体";
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (pickerOpen) {
@@ -182,11 +183,11 @@ export function Composer({
   };
 
   const action = streaming
-    ? { icon: <Square size={16} />, type: "danger" as const, title: "Stop", onClick: onInterrupt, disabled: false }
+    ? { icon: <Pause size={16} />, type: "danger" as const, title: "暂停", onClick: onInterrupt, disabled: false }
     : {
         icon: <Send size={16} />,
         type: "primary" as const,
-        title: "Send",
+        title: "发送",
         onClick: () => void submit(),
         disabled: disabled || (!text.trim() && images.length === 0),
       };
@@ -194,7 +195,7 @@ export function Composer({
   return (
     <div ref={wrapperRef} className={cx("composer", streaming && "composer-streaming")}>
       <div className="composer-input">
-        {pickerOpen ? (
+        {pickerOpen && agents.length > 1 ? (
           <div className="composer-picker">
             <AgentPicker
               agents={agents}
@@ -211,12 +212,12 @@ export function Composer({
             <div className="composer-attachments">
               {images.map((image, index) => (
                 <div key={`${image.media_type}:${index}:${image.data.length}`} className="composer-attachment">
-                  <img src={`data:${image.media_type};base64,${image.data}`} alt="Attachment preview" />
+                  <img src={`data:${image.media_type};base64,${image.data}`} alt="附件预览" />
                   <button
                     type="button"
                     className="composer-attachment-remove"
                     onClick={() => setImages((current) => current.filter((_, i) => i !== index))}
-                    aria-label="Remove image"
+                    aria-label="移除图片"
                   >
                     <X size={12} />
                   </button>
@@ -234,10 +235,10 @@ export function Composer({
             disabled={disabled && !streaming}
             placeholder={
               disabled
-                ? "Loading conversation history…"
+                ? "正在加载会话历史…"
                 : streaming
-                  ? "Streaming response… press Enter or stop to interrupt"
-                  : "Send a message · Shift+Enter for newline"
+                  ? "正在流式输出… 按 Enter 或点击暂停可中断"
+                  : "发送消息 · Shift+Enter 换行"
             }
           />
           <input
@@ -253,18 +254,22 @@ export function Composer({
             }}
           />
           <div className="composer-footer">
-            <button
-              type="button"
-              className="composer-agent-chip"
-              onClick={toggleChip}
-              disabled={agentSwitchDisabled}
-              aria-label={activeAgent ? `Speaking to ${activeAgent.name}` : "Pick an agent"}
-              title={agentSwitchDisabled ? agentSwitchDisabledReason : activeAgent ? "Click to switch agent" : "Pick an agent"}
-            >
-              <AtSign size={14} />
-              <span>{activeAgent?.name || "Agent"}</span>
-            </button>
+            {/* 只有一套模型预设时没有可切换的对象，隐藏切换入口 */}
+            {agents.length > 1 ? (
+              <button
+                type="button"
+                className="composer-agent-chip"
+                onClick={toggleChip}
+                disabled={agentSwitchDisabled}
+                aria-label={activeAgent ? `与 ${activeAgent.name} 对话` : "选择智能体"}
+                title={agentSwitchDisabled ? agentSwitchDisabledReason : activeAgent ? "点击切换智能体" : "选择智能体"}
+              >
+                <AtSign size={14} />
+                <span>{activeAgent?.name || "智能体"}</span>
+              </button>
+            ) : null}
             <div className="composer-actions">
+              <PolicyGateControl onOpen={closePicker} />
               <Button
                 className="composer-action-button"
                 icon={<ImagePlus size={16} />}
@@ -272,8 +277,8 @@ export function Composer({
                 type="tertiary"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={disabled || streaming || images.length >= MAX_IMAGES}
-                aria-label="Attach image"
-                title="Attach image"
+                aria-label="附加图片"
+                title="附加图片"
               />
               <Button
                 className="composer-action-button"
@@ -282,7 +287,7 @@ export function Composer({
                 type={action.type}
                 onClick={action.onClick}
                 disabled={action.disabled}
-                aria-label={streaming ? "Interrupt streaming" : "Send message"}
+                aria-label={streaming ? "中断输出" : "发送消息"}
                 title={action.title}
               />
               <Button
@@ -292,8 +297,8 @@ export function Composer({
                 type="danger"
                 onClick={onCancelAll}
                 disabled={disabled || !canCancelAll}
-                aria-label="Cancel all running subagent tasks"
-                title={canCancelAll ? "Cancel all running subagent tasks" : "No running subagent tasks"}
+                aria-label="取消所有运行中的子智能体任务"
+                title={canCancelAll ? "取消所有运行中的子智能体任务" : "没有运行中的子智能体任务"}
               />
             </div>
           </div>

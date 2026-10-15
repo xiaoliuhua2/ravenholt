@@ -195,7 +195,7 @@ export function ContainerFileManager({ containerId }: Props) {
       } else {
         await writeContainerFile(containerId, { path: itemPath, content: "" });
       }
-      Toast.success(createType === "dir" ? "Directory created" : "File created");
+      Toast.success(createType === "dir" ? "目录已创建" : "文件已创建");
       await loadFiles(path);
     });
       setCreateType(null);
@@ -248,38 +248,38 @@ export function ContainerFileManager({ containerId }: Props) {
   return (
     <div className="file-manager-body">
       <div className="file-manager-toolbar">
-        <Button icon={<ArrowLeft size={15} />} theme="borderless" type="tertiary" disabled={historyIndex <= 0 || toolbarDisabled} onClick={goBack} aria-label="Back" />
-        <Button icon={<ArrowRight size={15} />} theme="borderless" type="tertiary" disabled={historyIndex >= pathHistory.length - 1 || toolbarDisabled} onClick={goForward} aria-label="Forward" />
-        <Button icon={<ArrowUp size={15} />} theme="borderless" type="tertiary" disabled={path === "/" || toolbarDisabled} onClick={goUp} aria-label="Up" />
-        <Button icon={<RefreshCw size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled} onClick={refresh} aria-label="Refresh" />
+        <Button icon={<ArrowLeft size={15} />} theme="borderless" type="tertiary" disabled={historyIndex <= 0 || toolbarDisabled} onClick={goBack} aria-label="后退" />
+        <Button icon={<ArrowRight size={15} />} theme="borderless" type="tertiary" disabled={historyIndex >= pathHistory.length - 1 || toolbarDisabled} onClick={goForward} aria-label="前进" />
+        <Button icon={<ArrowUp size={15} />} theme="borderless" type="tertiary" disabled={path === "/" || toolbarDisabled} onClick={goUp} aria-label="上一级" />
+        <Button icon={<RefreshCw size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled} onClick={refresh} aria-label="刷新" />
         <span className="file-manager-separator" />
-        <Button icon={<FilePlus size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled || createType !== null} onClick={() => startCreate("file")} aria-label="New file" />
-        <Button icon={<FolderPlus size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled || createType !== null} onClick={() => startCreate("dir")} aria-label="New folder" />
-        <Tooltip content="Upload files">
-          <Button icon={<Upload size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled} onClick={handleUploadClick} aria-label="Upload files" />
+        <Button icon={<FilePlus size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled || createType !== null} onClick={() => startCreate("file")} aria-label="新建文件" />
+        <Button icon={<FolderPlus size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled || createType !== null} onClick={() => startCreate("dir")} aria-label="新建文件夹" />
+        <Tooltip content="上传文件">
+          <Button icon={<Upload size={15} />} theme="borderless" type="tertiary" disabled={toolbarDisabled} onClick={handleUploadClick} aria-label="上传文件" />
         </Tooltip>
-        <Tooltip content="Download selected">
-          <Button icon={<Download size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={() => void handleDownload()} aria-label="Download selected" />
+        <Tooltip content="下载所选">
+          <Button icon={<Download size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={() => void handleDownload()} aria-label="下载所选" />
         </Tooltip>
         <span className="file-manager-separator" />
-        <Tooltip content="Copy selected">
-          <Button icon={<Copy size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={handleCopy} aria-label="Copy" />
+        <Tooltip content="复制所选">
+          <Button icon={<Copy size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={handleCopy} aria-label="复制" />
         </Tooltip>
-        <Tooltip content="Cut selected">
-          <Button icon={<Scissors size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={handleCut} aria-label="Cut" />
+        <Tooltip content="剪切所选">
+          <Button icon={<Scissors size={15} />} theme="borderless" type="tertiary" disabled={!hasSelection || toolbarDisabled} onClick={handleCut} aria-label="剪切" />
         </Tooltip>
-        <Tooltip content={canPaste ? `Paste ${clipboard?.paths.length ?? 0} item(s)` : "Nothing to paste"}>
-          <Button icon={<ClipboardPaste size={15} />} theme="borderless" type="tertiary" disabled={!canPaste || toolbarDisabled} onClick={() => void handlePaste()} aria-label="Paste" />
+        <Tooltip content={canPaste ? `粘贴 ${clipboard?.paths.length ?? 0} 项` : "没有可粘贴的内容"}>
+          <Button icon={<ClipboardPaste size={15} />} theme="borderless" type="tertiary" disabled={!canPaste || toolbarDisabled} onClick={() => void handlePaste()} aria-label="粘贴" />
         </Tooltip>
-        <Popconfirm title="Delete selected items" content={`Delete ${selectedPaths.size} selected item(s)?`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void handleDelete()}>
-          <Button icon={<Trash2 size={15} />} theme="borderless" type="danger" disabled={!hasSelection || toolbarDisabled} aria-label="Delete" />
+        <Popconfirm title="删除所选项目" content={`确定删除选中的 ${selectedPaths.size} 项？`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void handleDelete()}>
+          <Button icon={<Trash2 size={15} />} theme="borderless" type="danger" disabled={!hasSelection || toolbarDisabled} aria-label="删除" />
         </Popconfirm>
         <span className="file-manager-separator" />
-        <Tooltip content="List view">
-          <Button icon={<List size={15} />} theme="borderless" type={viewMode === "list" ? "primary" : "tertiary"} disabled={toolbarDisabled} onClick={() => setViewMode("list")} aria-label="List view" />
+        <Tooltip content="列表视图">
+          <Button icon={<List size={15} />} theme="borderless" type={viewMode === "list" ? "primary" : "tertiary"} disabled={toolbarDisabled} onClick={() => setViewMode("list")} aria-label="列表视图" />
         </Tooltip>
-        <Tooltip content="Icon view">
-          <Button icon={<Grid3X3 size={15} />} theme="borderless" type={viewMode === "icon" ? "primary" : "tertiary"} disabled={toolbarDisabled} onClick={() => setViewMode("icon")} aria-label="Icon view" />
+        <Tooltip content="图标视图">
+          <Button icon={<Grid3X3 size={15} />} theme="borderless" type={viewMode === "icon" ? "primary" : "tertiary"} disabled={toolbarDisabled} onClick={() => setViewMode("icon")} aria-label="图标视图" />
         </Tooltip>
       </div>
       <input ref={uploadInputRef} className="file-manager-upload-input" type="file" multiple onChange={(event) => void handleUploadChange(event)} />
@@ -306,7 +306,7 @@ export function ContainerFileManager({ containerId }: Props) {
             />
           )}
           {files.length === 0 && !createType ? (
-            <div className="file-manager-empty">{loading ? "Loading..." : "This directory is empty"}</div>
+            <div className="file-manager-empty">{loading ? "加载中…" : "此目录为空"}</div>
           ) : (
             files.map((file) => (
               <FileListRow
@@ -329,7 +329,7 @@ export function ContainerFileManager({ containerId }: Props) {
             />
           )}
           {files.length === 0 && !createType ? (
-            <div className="file-manager-empty">{loading ? "Loading..." : "This directory is empty"}</div>
+            <div className="file-manager-empty">{loading ? "加载中…" : "此目录为空"}</div>
           ) : (
             files.map((file) => (
               <FileIconItem
@@ -345,17 +345,17 @@ export function ContainerFileManager({ containerId }: Props) {
       )}
 
       <div className="file-manager-statusbar">
-        <span>{files.length} item(s)</span>
+        <span>{files.length} 项</span>
         {clipboard && (
           <span className="file-manager-clipboard-hint">
-            <Clipboard size={12} /> {clipboard.action === "cut" ? "Cut" : "Copied"} {clipboard.paths.length} item(s) — <button type="button" onClick={() => setClipboard(null)}>clear</button>
+            <Clipboard size={12} /> {clipboard.action === "cut" ? "剪切" : "已复制"} {clipboard.paths.length} 项 — <button type="button" onClick={() => setClipboard(null)}>清除</button>
           </span>
         )}
       </div>
 
       {viewingFile ? (
         <div className="file-manager-viewer-overlay">
-          <Suspense fallback={<div className="file-manager-loading">Loading viewer...</div>}>
+          <Suspense fallback={<div className="file-manager-loading">查看器加载中…</div>}>
             <FileViewer
               containerId={containerId}
               file={viewingFile}
@@ -376,10 +376,10 @@ const FILE_LIST_GRID_STYLE: CSSProperties = {
 function FileListHeader() {
   return (
     <div className="file-manager-list-row file-manager-list-head" style={FILE_LIST_GRID_STYLE}>
-      <div>Name</div>
-      <div>Size</div>
-      <div>Modified</div>
-      <div>Perms</div>
+      <div>名称</div>
+      <div>大小</div>
+      <div>修改时间</div>
+      <div>权限</div>
     </div>
   );
 }
@@ -456,7 +456,7 @@ function InlineCreateInput({ type, onConfirm, onCancel, cancelOnBlur = false }: 
         if (e.key === "Escape") onCancel();
       }}
       onBlur={cancelOnBlur ? () => onCancel() : undefined}
-      placeholder={type === "dir" ? "New folder" : "New file"}
+      placeholder={type === "dir" ? "新建文件夹" : "新建文件"}
     />
   );
 }

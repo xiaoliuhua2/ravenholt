@@ -1,89 +1,43 @@
-# Changelog
+# 变更日志
 
-All notable changes to Z3r0 are documented in this file.
+本文件记录 **Ravenholt**（本仓库）的版本变更；版本号与 `app.py` 中的 `version` 保持一致。
 
-## [0.2.1] - 2026-07-01
+> 本项目曾用名 **Z3r0 / XuanMu**，其历史版本条目已不再维护——本文件从当前版本重新起记。
 
-### Added
+---
 
-- Added host management with SSH terminal access and Docker TLS certificate support for managed hosts.
-- Added dynamic sandbox egress proxy management, Tor-only sandbox egress, image-scoped sandbox control ports, and proxied noVNC access with container ownership control.
-- Added bilingual product documentation and a manual GitHub Pages deployment script.
-- Added sandbox artifact triage skills and a quick-open action for sub-agent messages.
+## [0.2.1] - 2026-10-16
 
-### Changed
+### 新增
 
-- Reworked the sandbox proxy into a modular Go proxy with shell, files, WebSocket, entry proxy, egress proxy, and PTY resize handling.
-- Replaced the WorkProject graph renderer with Cytoscape.
-- Strengthened coordinator and specialist agent instructions around coverage, retesting, MITRE ATT&CK-aligned methodology, and failure-seeking completion review.
-- Refined frontend layout, resource styling, playground streaming behavior, sandbox controls, and admin resource interactions.
+- **策略治理层（红线策略）**：`.ravenholt/policy.yaml` 作为 Tier-1 安全网配置面，**fail-closed**——文件缺失、YAML 语法错误或校验失败一律拒绝启动；`rate_limit` / `sandbox` / `kill_switch` / `audit` 四节不允许被关闭。
+- **策略审批**：高风险动作进入审批队列，由管理员批准/拒绝；审批记录（挂起 / 批准 / 拒绝 / 模式 / 决策人）可追溯。
+- **审计日志**：关键动作与事件的审计追踪（动作、判定、拦截原因、命令原文），独立页面与存储。
+- **出口代理**：受控网络出口的配置与管理。
+- **源码审计（白盒）通道**：支持上传源码包并走白盒分轨，技能路由与运行时口径随之切换。
+- **证据闸与独立验证器**：发现必须携带可复现证据方可置为已确认；验证器以「重放 + 四维差分」独立裁决。
+- **一键部署脚本**：`setup.sh` 覆盖 环境检测 → 系统依赖 → 配置初始化 → 数据库 → Python 依赖 → 前端构建 → 沙箱镜像 → 安装后自检，幂等且不覆盖既有配置。
 
-### Fixed
+### 变更
 
-- Fixed the default database port mismatch between runtime configuration and Docker Compose.
-- Fixed first-message playground streaming so REST-submitted turns render immediately.
-- Fixed host password field display, sandbox container hash display, Select prefix icon spacing, and Semi UI button usage.
-- Hardened git ignore coverage and normalized sandbox skill resource path handling.
+- **运行时单轨化到 strix**：退役原生 registry 轨道，改由 vendor 的 strix 运行时驱动；agent 列表改由项目配置决定，不再依赖固定静态角色表。
+- **沙箱执行面**：以 docker-py 取代 Go 控制面，统一命令执行与文件管理；新增沙箱镜像工具链适配（PATH 注入、工作目录可配置、容器保活）。
+- **前端**：落地页与登录页中文化；导航收敛为 操作台 / 工作项目 / 出口代理 / 策略审批 / 审计日志 / 系统用户 / 系统配置；「快捷导入」并入「系统配置」。
+- **文档**：README 重写为完整中文项目文档，包含一键 / 手动 / Docker Compose 三种详细安装方式。
 
-## [0.2.0] - 2026-06-10
+### 移除
 
-### Added
+- **静态六专家角色表**（cso / cae / cie / cpe / cre / cce）及其人设与知识库——单轨化后已无任何代码读取点。
+- **原生 registry 轨道的工具**：`local_shell`、`blackboard`、`knowledge`、`work_project*` 等随该轨道一并删除。
+- **过时的项目说明文档**：旧的英文 `README.md` 与 `GUIDE.md` / `GUIDE_zh.md`（内容仍描述已退役的 Blackboard 图与静态专家表）。
 
-- Added WorkProject attack-chain graphing with assets, findings, attack paths, and auditable record snapshots.
-- Added project workspace views for graph exploration, record review, and richer project editing.
-- Added Mermaid diagram enforcement and rendering in playground transcripts.
+### 修复
 
-### Changed
+- **页面改动不生效**：落地页等为**构建期固化**的产物，改源码后必须重新 `npm run build`；已明确该口径并在文档中提示。
+- **部署凭据不一致**：旧安装脚本写死的默认管理员/数据库口令，统一改为部署时随机生成且仅打印一次。
 
-- Refined WorkProject tool contracts around assets, findings, task summaries, shared task updates, graph edges, and attack paths.
-- Improved project graph layout, task label wrapping, and frontend resource presentation.
-- Repositioned README and landing copy around authorized red-team research and controlled multi-agent workflows.
+---
 
-### Fixed
+## 版本号说明
 
-- Consolidated WorkProject record snapshot flow and hardened record persistence.
-- Aligned generated API contracts, frontend constants, and backend tool schemas for WorkProject records.
-- Moved JWT authentication from bearer authorization to the custom access-token header contract.
-
-## [0.1.1] - 2026-06-05
-
-### Added
-
-- Added paginated `read_subagent_task(run_id, offset)` result and error reads so large subagent outputs can be consumed in chunks.
-- Added subtle playground message scrollbars that appear during wheel, touch, and keyboard scrolling.
-
-### Changed
-
-- Kept subagent completion notifications metadata-only; parent agents now read result bodies through `read_subagent_task`.
-- Split Vite app and landing entrypoints into dedicated root/config files.
-
-### Fixed
-
-- Kept subagent streams alive across main agent graph rebinds by giving each subagent driver its own bound graph.
-- Hardened instance config refresh and agent pool rebuild handling, including restart reporting and rollback on rebuild failure.
-- Replaced frontend-only random agent row IDs with stable agent codes in system configuration editing.
-- Stored sandbox image size as `bigint`.
-
-## [0.1.0] - 2026-06-03
-
-### Added
-
-- Initial public preview release of Z3r0.
-- Multi-agent security workbench with coordinator and specialist agents for code audit, intelligence, penetration validation, reverse engineering, and cryptography review.
-- FastAPI backend with authentication, system configuration, work projects, sandbox image/container management, and agent session APIs.
-- React workbench with playground chat, session replay, subagent progress, sandbox selection, file manager, shell access, and admin pages.
-- Docker-backed sandbox execution for controlled command execution, async jobs, browser/noVNC workflows, and file access.
-- Interrupt-driven agent runtime with resumable turns, async command completion notifications, subagent delegation, and context compaction.
-- Persistent timeline event log for live streaming and replay.
-- Docker Compose production quickstart with PostgreSQL and bundled frontend serving.
-
-### Security
-
-- Added explicit authorized-use and legal boundary documentation.
-- Runtime configuration uses local `.xuanmu/config.json`, with `.xuanmu/config.json.example` as the tracked template.
-- Sandbox and Docker socket access are documented as high-privilege deployment surfaces.
-
-### Known Notes
-
-- `docker-compose.prod.yml` includes default PostgreSQL and pgAdmin credentials for local evaluation; change them before exposing the service.
-- The application container mounts `/var/run/docker.sock`; deploy only on trusted, isolated hosts.
+当前 `app.py` 与 `web/package.json` 声明的版本为 `0.2.1`。由于本次为**破坏性重构**（运行时单轨化 + 治理层引入），如需以新版本号发布（例如 `0.3.0`），请同步修改这两处声明后再更新本文件。

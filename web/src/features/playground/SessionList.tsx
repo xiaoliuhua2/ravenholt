@@ -217,7 +217,7 @@ export function SessionList({
           {empty ? (
             <div className="session-empty">
               <MessageCircle size={28} />
-              <p>No conversations yet.</p>
+              <p>暂无对话。</p>
             </div>
           ) : (
             <>
@@ -260,7 +260,7 @@ export function SessionList({
       />
       <Modal
         visible={Boolean(renameTarget)}
-        title="Edit Session Title"
+        title="编辑会话标题"
         okText={UI_TEXT.save}
         cancelText={UI_TEXT.cancel}
         confirmLoading={renaming}
@@ -285,13 +285,13 @@ function ChatSessionRow({ session, active, onSelect, onDelete, onRename }: ChatS
     <SessionRow
       active={active}
       deleteConfirm={{
-        title: "Delete chat",
-        content: "Permanently delete this conversation?",
+        title: "删除对话",
+        content: "确定永久删除该对话？",
         onConfirm: () => onDelete(session.session_id),
       }}
       icon={<MessageCircle size={14} />}
       session={session}
-      titleFallback="Untitled session"
+      titleFallback="未命名会话"
       onRename={() => onRename(session)}
       onSelect={() => onSelect(session.session_id)}
     />
@@ -335,14 +335,14 @@ function ProjectGroup({
           type="primary"
           size="small"
           disabled={!project.can_create_session}
-          aria-label={`Create session for ${project.name}`}
+          aria-label={`为 ${project.name} 创建会话`}
           onClick={() => onCreateSession(project)}
         />
       </div>
 
       {expanded ? (
         <div className="session-project-children">
-          {state?.loading ? <div className="session-project-empty">Loading sessions...</div> : null}
+          {state?.loading ? <div className="session-project-empty">会话加载中…</div> : null}
           {!state?.loading && (!state || state.items.length === 0) ? (
             <button
               type="button"
@@ -351,7 +351,7 @@ function ProjectGroup({
               onClick={() => onCreateSession(project)}
             >
               <FolderKanban size={14} />
-              <span>New project session</span>
+              <span>新建项目会话</span>
             </button>
           ) : null}
           {state?.items.map((session) => (
@@ -391,13 +391,13 @@ function ProjectSessionRow({
       active={active}
       className="session-row-project-session"
       deleteConfirm={{
-        title: "Delete session",
-        content: "Permanently delete this project session?",
+        title: "删除会话",
+        content: "确定永久删除该项目的会话？",
         onConfirm: () => onDelete(projectId, session.session_id),
       }}
       icon={<Play size={13} />}
       session={session}
-      titleFallback="Project session"
+      titleFallback="项目会话"
       onRename={() => onRename(session, projectId)}
       onSelect={() => onSelect(session.session_id)}
     />

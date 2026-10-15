@@ -10,6 +10,7 @@ import type {
   AgentTranscript,
   StreamingItem,
   SubagentExecutionItem,
+  ThinkingItem,
   ToolExecutionItem,
   TranscriptBlock,
 } from "./transcriptTypes";
@@ -21,11 +22,11 @@ export function applyEventToTranscript(transcript: AgentTranscript, event: Agent
       return false;
     case "thinking_delta":
       setAgentName(transcript, event.agent_name);
-      upsertStreamingBlock(transcript.blocks, "thinking", event.segment_id, { text: event.text });
+      upsertStreamingBlock(transcript.blocks, "thinking", event.segment_id, { text: event.text, at: event.created_at });
       return false;
     case "thinking_complete":
       setAgentName(transcript, event.agent_name);
-      upsertStreamingBlock(transcript.blocks, "thinking", event.segment_id, { text: event.text, complete: true });
+      upsertStreamingBlock(transcript.blocks, "thinking", event.segment_id, { text: event.text, complete: true, at: event.created_at });
       return false;
     case "text_delta":
       setAgentName(transcript, event.agent_name);
@@ -46,6 +47,12 @@ export function applyEventToTranscript(transcript: AgentTranscript, event: Agent
     case "subagent_task":
       setAgentName(transcript, event.agent_name);
       upsertSubagentTask(transcript.blocks, subagentExecutionItemFromEvent(event));
+      return false;
+    case "sandbox":
+      // 沙箱生命周期不落进对话正文；由会话级状态（顶栏沙箱卡片）消费。
+      return false;
+    case "approval":
+      // 审批卡片同样不落进 agent 气泡正文；由对话流的独立节点承载。
       return false;
     case "error":
       setAgentName(transcript, event.agent_name);
@@ -70,12 +77,43 @@ function upsertStreamingBlock(
   blocks: TranscriptBlock[],
   kind: StreamingItem["kind"],
   segmentId: string,
-  patch: { text: string; complete?: boolean },
+  patch: { text: string; complete?: boolean; at?: string },
 ) {
+  const at = patch.at ?? "";
   const index = findStreamingBlockIndex(blocks, kind, segmentId);
   if (index === -1) {
     if (hasCoveredCompletedText(blocks, kind, patch.text)) return;
+    if (kind === "thinking") {
+      blocks.push({
+        kind,
+        id: `${kind}:${segmentId}`,
+        segmentId,
+        text: patch.text,
+        complete: Boolean(patch.complete),
+        // 首帧时间与完成时间用于展示本段思考耗时；未传时留空，UI 自动隐藏。
+        startedAt: at,
+        completedAt: patch.complete ? at : "",
+      });
+      return;
+    }
     blocks.push({ kind, id: `${kind}:${segmentId}`, segmentId, text: patch.text, complete: Boolean(patch.complete) } as StreamingItem);
+    return;
+  }
+  if (kind === "thinking") {
+    const existing = blocks[index] as ThinkingItem;
+    const duplicateIndex = findCompletedTextIndex(blocks, kind, patch.text, index);
+    if (duplicateIndex !== -1) {
+      blocks.splice(index, 1);
+      return;
+    }
+    if (existing.complete && existing.text === patch.text) return;
+    blocks[index] = {
+      ...existing,
+      text: patch.text,
+      complete: patch.complete ?? existing.complete,
+      startedAt: existing.startedAt || at,
+      completedAt: patch.complete ? (existing.completedAt || at) : existing.completedAt,
+    };
     return;
   }
   const existing = blocks[index] as StreamingItem;
@@ -118,7 +156,9 @@ function upsertSubagentTask(blocks: TranscriptBlock[], nextItem: SubagentExecuti
     blocks.push(nextItem);
     return;
   }
-  blocks[index] = nextItem;
+  // 状态更新事件必须保留已归集的子代理思考/正文流，否则每次进度轮询都会把它清空。
+  const existing = blocks[index] as SubagentExecutionItem;
+  blocks[index] = { ...nextItem, nested: existing.nested ?? nextItem.nested };
 }
 
 export function subagentExecutionItemFromEvent(event: SubagentTaskEvent): SubagentExecutionItem {
@@ -130,6 +170,7 @@ export function subagentExecutionItemFromEvent(event: SubagentTaskEvent): Subage
     parentAgentCode: event.parent_agent_code,
     parentAgentInstanceId: event.parent_agent_instance_id,
     agentCode: event.agent_code,
+    agentName: event.agent_name,
     nestedCallId: event.nested_call_id,
     status: event.status,
     resultPreview: event.result_preview,

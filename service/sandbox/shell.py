@@ -14,10 +14,10 @@ from schema.sandbox.containers import SandboxContainerStatus
 _DEFAULT_SHELL_ROWS = 24
 _DEFAULT_SHELL_COLS = 80
 
-# 交互式 shell 原先由容器内 Go 控制面的 WebSocket /shell 提供；Strix 官方沙箱镜像没有该
+# 交互式 shell 原先由容器内 Go 控制面的 WebSocket /shell 提供；ravenholt 官方沙箱镜像没有该
 # 控制面，无法建立 PTY 会话。这里显式失败，避免伪装成可用。
 _SHELL_UNAVAILABLE_MESSAGE = (
-    "sandbox container shell is unavailable: the Strix sandbox image does not provide the "
+    "sandbox container shell is unavailable: the ravenholt sandbox image does not provide the "
     "in-container control plane (/shell) that the interactive shell relied on"
 )
 

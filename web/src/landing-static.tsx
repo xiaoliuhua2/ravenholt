@@ -3,12 +3,15 @@ import ReactDOM, { hydrateRoot } from "react-dom/client";
 import "./app/styles/landing-static.css";
 import { LandingContent } from "./features/landing/LandingContent";
 import { landingPrimaryAction } from "./features/landing/landingConfig";
-import xuanmuLogo from "./assets/xuanmu-logo.svg";
+import { ThemeProvider } from "./shared/theme/ThemeProvider";
+import ravenholtLogo from "./assets/ravenholt-logo.svg";
 
 const rootElement = document.getElementById("root") as HTMLElement;
 const landing = (
   <React.StrictMode>
-    <LandingContent logoSrc={xuanmuLogo} primaryAction={landingPrimaryAction} />
+    <ThemeProvider>
+      <LandingContent logoSrc={ravenholtLogo} primaryAction={landingPrimaryAction} />
+    </ThemeProvider>
   </React.StrictMode>
 );
 

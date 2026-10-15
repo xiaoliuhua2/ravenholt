@@ -12,13 +12,12 @@ import { listAgents } from "../../shared/api/agents";
 import {
   buildAgentStreamUrl,
   cancelAllAgentSessionTasks,
-  createAgentSessionTurn,
+  createAgentSessionStrixTurn,
   deleteAgentSession,
   interruptAgentSession,
   listAgentEvents,
   listAgentSessions,
-  submitAgentSessionTurn,
-  updateAgentSessionSandboxContainer,
+  submitAgentSessionStrixTurn,
 } from "../../shared/api/agentSessions";
 import { showApiError, showApiSuccess } from "../../shared/api/feedback";
 import { getStoredAccessToken } from "../../shared/auth/session";
@@ -72,6 +71,10 @@ const IDLE_CLOSE_MS = 5 * 60 * 1000;
 const DELETED_SESSION_TOMBSTONE_MS = 30 * 1000;
 const HISTORY_PAGE_SIZE = 80;
 const LIVE_FLUSH_INTERVAL_MS = 33;
+// 与后端 core.runtime.session.SUBSCRIBER_CLOSED_CODE 保持一致：
+// 服务端主动重建事件流（配置更新 / 空闲淘汰）时用它关闭连接。
+const STREAM_RESTART_CLOSE_CODE = 4001;
+const STREAM_RESTART_DELAY_MS = 800;
 
 type AgentSessionContextValue = {
   sessions: AgentSessionSummary[];
@@ -97,8 +100,7 @@ type AgentSessionContextValue = {
   activeAgentCode: string;
   setActiveAgentCode: (code: string) => void;
 
-  send: (content: AgentInputPart[], sessionId: string | null, sandboxContainerId: number | null) => Promise<void>;
-  updateSelectedSandboxContainer: (sessionId: string, sandboxContainerId: number | null) => Promise<AgentSessionSummary | null>;
+  send: (content: AgentInputPart[], sessionId: string | null) => Promise<void>;
   interrupt: (sessionId?: string | null) => Promise<void>;
   cancelAll: (sessionId?: string | null) => Promise<void>;
   loadPreviousHistory: (sessionId?: string | null) => Promise<void>;
@@ -135,6 +137,9 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   const liveFlushTimersRef = useRef<Map<string, number>>(new Map());
   const liveFrameEventsRef = useRef<Map<string, AgentStreamEvent[]>>(new Map());
   const manualBlankSessionRef = useRef(false);
+  const restartTimersRef = useRef<Map<string, number>>(new Map());
+  // 服务端主动重建事件流后自动重连；赋值在 tryConnectFor 定义之后
+  const scheduleStreamRestartRef = useRef<((sessionId: string) => void) | null>(null);
 
   const clearDeletedMarkerLater = useCallback((sessionId: string) => {
     const existing = deletedMarkerTimersRef.current.get(sessionId);
@@ -309,6 +314,11 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
     if (events.some((event) => event.type === "run_state" && !event.running)) {
       void refreshSessionsRef.current(true);
     }
+    // 沙箱就绪（运行时 provision 完成并回写会话）后刷新摘要，
+    // 让"当前沙箱"在回合进行中即可见，而不是等回合结束。
+    if (events.some((event) => event.type === "sandbox" && event.phase === "ready")) {
+      void refreshSessionsRef.current(true);
+    }
   }, [applyStore]);
 
   const enqueueStreamEvent = useCallback((sessionId: string, event: AgentStreamEvent) => {
@@ -366,6 +376,18 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
       socketCleanupRef.current.delete(sessionId);
       clearIdleTimer(sessionId);
       if (deletedSessionsRef.current.has(sessionId)) return;
+
+      if (isStreamRestart(event)) {
+        // 服务端因配置更新重建了事件流：这不是故障，结束当前流后自动重连，
+        // 由历史回放重新投影真实状态（否则未返回结果的工具调用会一直显示 Running）。
+        updateRuntime(sessionId, (r) => {
+          const store = endStreaming(r.store);
+          return { ...r, status: "closed", store, state: deriveChatState(store) };
+        });
+        scheduleStreamRestartRef.current?.(sessionId);
+        return;
+      }
+
       updateRuntime(sessionId, (r) => {
         if (!r.store.streaming) {
           return { ...r, status: "closed" };
@@ -465,6 +487,27 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
     if (ensuredRef.current.has(sessionId)) return;
     loadHistory(sessionId, true);
   }, [loadHistory]);
+
+  // 服务端重建事件流之后的自动重连：合并历史把中断的轮次重新投影出来
+  const scheduleStreamRestart = useCallback((sessionId: string) => {
+    if (restartTimersRef.current.has(sessionId)) return;
+    const timer = window.setTimeout(() => {
+      restartTimersRef.current.delete(sessionId);
+      if (deletedSessionsRef.current.has(sessionId)) return;
+      if (socketsRef.current.has(sessionId)) return;
+      if (!tryConnectFor(sessionId)) return;
+      mergeLatestHistory(sessionId);
+      loadHistory(sessionId, ensuredRef.current.has(sessionId));
+    }, STREAM_RESTART_DELAY_MS);
+    restartTimersRef.current.set(sessionId, timer);
+  }, [loadHistory, mergeLatestHistory, tryConnectFor]);
+
+  useEffect(() => {
+    scheduleStreamRestartRef.current = scheduleStreamRestart;
+    return () => {
+      scheduleStreamRestartRef.current = null;
+    };
+  }, [scheduleStreamRestart]);
 
   const openLiveSession = useCallback((sessionId: string) => {
     initRuntime(sessionId);
@@ -581,13 +624,6 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   }, [defaultAgentCode, pendingAgentCode, runtimes, sessionAgentCode]);
 
   // ------------------------------------------------------------- commands
-  const updateSelectedSandboxContainer = useCallback(async (sessionId: string, sandboxContainerId: number | null) => {
-    const response = await updateAgentSessionSandboxContainer(sessionId, { sandbox_container_id: sandboxContainerId });
-    const summary = response.data ?? null;
-    if (summary) syncSession(summary);
-    return summary;
-  }, [syncSession]);
-
   const applyTurnEvents = useCallback((sessionId: string, events: readonly AgentStreamEvent[]) => {
     if (events.length) applyStore(sessionId, (store) => ingestEvents(store, events));
   }, [applyStore]);
@@ -595,16 +631,17 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   const send = useCallback(async (
     content: AgentInputPart[],
     sessionId: string | null,
-    sandboxContainerId: number | null,
   ) => {
     const agentCode = getSessionAgentCode(sessionId);
+    // 主线引擎：strix 轨道。富文本输入原样交给后端——沙箱由运行时按会话自动 provision，
+    // 图片在容器就绪后由后端落进沙箱并转写。
+    const payload = {
+      content,
+      agent_code: agentCode || null,
+    };
     try {
       if (sessionId) {
-        const response = await submitAgentSessionTurn(sessionId, {
-          content,
-          agent_code: agentCode || null,
-          sandbox_container_id: sandboxContainerId,
-        });
+        const response = await submitAgentSessionStrixTurn(sessionId, payload);
         const data = requireTurnData(response.data);
         syncSession(data.session);
         applyTurnEvents(sessionId, data.events);
@@ -612,11 +649,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const response = await createAgentSessionTurn({
-        content,
-        agent_code: agentCode || null,
-        sandbox_container_id: sandboxContainerId,
-      });
+      const response = await createAgentSessionStrixTurn(payload);
       const data = requireTurnData(response.data);
       syncSession(data.session);
       applyTurnEvents(data.session_id, data.events);
@@ -681,8 +714,10 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
       for (const timer of idleTimersRef.current.values()) window.clearTimeout(timer);
       for (const timer of deletedMarkerTimersRef.current.values()) window.clearTimeout(timer);
       for (const timer of liveFlushTimersRef.current.values()) window.clearTimeout(timer);
+      for (const timer of restartTimersRef.current.values()) window.clearTimeout(timer);
       socketsRef.current.clear();
       socketCleanupRef.current.clear();
+      restartTimersRef.current.clear();
       idleTimersRef.current.clear();
       deletedMarkerTimersRef.current.clear();
       liveFlushTimersRef.current.clear();
@@ -708,28 +743,32 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
     historyHasMore: activeRuntime.historyHasMore,
     historyVersion: activeRuntime.historyVersion,
     agents, defaultAgentCode, activeAgentCode, setActiveAgentCode,
-    send, updateSelectedSandboxContainer, interrupt, cancelAll, loadPreviousHistory,
+    send, interrupt, cancelAll, loadPreviousHistory,
   }), [
     sessions, sessionsLoading, refreshSessions, syncSessionSummaries, deleteSession,
     dropSessionRuntime,
     activeSessionId, activeSessionSummary, selectSession,
     activeRuntime,
     agents, defaultAgentCode, activeAgentCode, setActiveAgentCode,
-    send, updateSelectedSandboxContainer, interrupt, cancelAll, loadPreviousHistory,
+    send, interrupt, cancelAll, loadPreviousHistory,
   ]);
 
   return <AgentSessionContext.Provider value={value}>{children}</AgentSessionContext.Provider>;
 }
 
+function isStreamRestart(event: CloseEvent | Event): boolean {
+  return event instanceof CloseEvent && event.code === STREAM_RESTART_CLOSE_CODE;
+}
+
 function websocketCloseMessage(event: CloseEvent | Event): string {
   if (event instanceof CloseEvent) {
-    if (event.reason) return `Agent stream connection closed: ${event.reason}`;
-    if (event.code === 1009) return "Agent stream connection closed because the image payload is too large";
+    if (event.reason) return `智能体流连接已关闭：${event.reason}`;
+    if (event.code === 1009) return "智能体流连接已关闭：图片体积过大";
     if (event.code !== 1000 && event.code !== 1005) {
-      return `Agent stream connection closed unexpectedly (code ${event.code})`;
+      return `智能体流连接意外关闭（代码 ${event.code}）`;
     }
   }
-  return "Agent stream connection closed before the model returned output";
+  return "在模型返回输出前，智能体流连接已关闭";
 }
 
 function requireTurnData(data: AgentTurnData | null | undefined): AgentTurnData {

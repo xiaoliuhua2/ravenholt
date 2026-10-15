@@ -10,7 +10,9 @@ from schema.work_project.projects import (
     QueryWorkProjectsResponse,
     UpdateWorkProjectMetadataRequest,
 )
+from service.work_project.findings import get_work_project_finding_evidence
 from service.work_project.projects import (
+    can_access_work_project,
     cancel_work_project,
     create_work_project,
     create_work_project_session,
@@ -40,6 +42,19 @@ async def get_work_project_record_snapshot_handler(id: int, user: AuthUser) -> C
     if snapshot is None:
         return CommonResponse(code=HTTPStatus.NOT_FOUND.value, message="work project not found")
     return CommonResponse(data=snapshot)
+
+
+async def get_work_project_finding_evidence_handler(
+    id: int,
+    finding_id: int,
+    user: AuthUser,
+) -> CommonResponse:
+    if not await can_access_work_project(id, user.id, user.role):
+        return CommonResponse(code=HTTPStatus.NOT_FOUND.value, message="work project not found")
+    evidence = await get_work_project_finding_evidence(id, finding_id)
+    if evidence is None:
+        return CommonResponse(code=HTTPStatus.NOT_FOUND.value, message="finding evidence not found")
+    return CommonResponse(data=evidence)
 
 
 async def update_work_project_metadata_handler(

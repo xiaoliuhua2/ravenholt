@@ -24,7 +24,7 @@ from schema.sandbox.containers import (
 )
 
 
-# Strix 官方沙箱镜像没有 XuanMu 容器内的 Go 控制面（HTTP /files*），
+# ravenholt 官方沙箱镜像没有 Ravenholt 容器内的 Go 控制面（HTTP /files*），
 # 文件能力改为直接通过 docker-py 操作目标容器：目录/属性用容器内 shell（find/stat），
 # 读写/上传用 Docker archive API（get_archive / put_archive），其余用 exec_run 拼命令。
 _FIND_FORMAT = "'%f\\0%y\\0%s\\0%T@\\0%u\\0%g\\0%m\\0%p\\0'"
@@ -83,12 +83,51 @@ async def read_container_file(container_id: int, path: str, max_bytes: int = 1_0
     )
 
 
+_MAX_FILE_GATE_CHARS = 200_000
+
+# 平台对沙箱容器的文件操作映射：这些都是**容器内的产物操作**（建任务根、写报告、
+# 上传附件），不是对渗透目标的操作，因此统一归 sandbox_file —— 常规动作、默认放行，
+# 不进 src-hunt §2 的风险审批项。
+_FILE_ACTION_BY_OP = {
+    "upload": "sandbox.file.upload",
+    "download": "sandbox.file.download",
+    "write": "sandbox.file.write",
+    "write-bytes": "sandbox.file.write",
+    "copy": "sandbox.file.write",
+    "mkdir": "sandbox.file.write",
+    "move": "sandbox.file.write",
+    "delete": "sandbox.file.write",
+}
+
+
+async def _enforce_file_write(op: str, container_id: int, content: str, paths: list[str]) -> None:
+    """文件操作前的红线判定（kill switch / 禁测清单 / 载荷上限 / 限速）。"""
+    from core.policy import PolicyDenied, enforce
+
+    text = content[:_MAX_FILE_GATE_CHARS] if content else " ".join(paths)
+    decision = await enforce(
+        _FILE_ACTION_BY_OP.get(op, "sandbox.file.write"),
+        None,
+        payload_bytes=len(text.encode("utf-8")),
+        payload_text=content[:_MAX_FILE_GATE_CHARS],
+        detail={
+            "surface": "platform-files",
+            "op": op,
+            "container_id": container_id,
+            "paths": paths[:20],
+        },
+    )
+    if not decision.allowed:
+        raise PolicyDenied(decision)
+
+
 async def upload_container_files(
     container_id: int,
     path: str,
     sources: list[ContainerUploadSource],
     overwrite: bool,
 ) -> list[ContainerFileUploadItem]:
+    await _enforce_file_write("upload", container_id, "", [path])
     target = await _require_running_target(container_id)
     normalized = _normalize_container_path(path)
     try:
@@ -99,6 +138,7 @@ async def upload_container_files(
 
 
 async def download_container_paths(container_id: int, paths: list[str]) -> ContainerDownloadStream:
+    await _enforce_file_write("download", container_id, "", paths)
     target = await _require_running_target(container_id)
     normalized = [_normalize_container_path(path) for path in paths]
     if not normalized:
@@ -120,12 +160,24 @@ async def download_container_paths(container_id: int, paths: list[str]) -> Conta
 
 
 async def write_container_file(container_id: int, path: str, content: str) -> bool:
+    await _enforce_file_write("write", container_id, content, [path])
     target = await _require_running_target(container_id)
     await asyncio.to_thread(_write_container_file_sync, target, _normalize_container_path(path), content)
     return True
 
 
+async def write_container_bytes(container_id: int, path: str, data: bytes) -> bool:
+    """写入二进制内容（附件图片等）。文本写入见 ``write_container_file``。"""
+    await _enforce_file_write("write-bytes", container_id, "", [path])
+    target = await _require_running_target(container_id)
+    await asyncio.to_thread(
+        _write_container_bytes_sync, target, _normalize_container_path(path), data
+    )
+    return True
+
+
 async def copy_container_files(container_id: int, sources: list[str], destination: str) -> bool:
+    await _enforce_file_write("copy", container_id, "", [*sources, destination])
     target = await _require_running_target(container_id)
     normalized_sources = [_normalize_container_path(source) for source in sources]
     await asyncio.to_thread(
@@ -139,6 +191,7 @@ async def copy_container_files(container_id: int, sources: list[str], destinatio
 
 
 async def move_container_files(container_id: int, sources: list[str], destination: str) -> bool:
+    await _enforce_file_write("move", container_id, "", [*sources, destination])
     target = await _require_running_target(container_id)
     normalized_sources = [_normalize_container_path(source) for source in sources]
     await asyncio.to_thread(
@@ -152,6 +205,7 @@ async def move_container_files(container_id: int, sources: list[str], destinatio
 
 
 async def delete_container_files(container_id: int, paths: list[str]) -> bool:
+    await _enforce_file_write("delete", container_id, "", paths)
     target = await _require_running_target(container_id)
     normalized = [_normalize_container_path(path) for path in paths]
     await asyncio.to_thread(
@@ -164,6 +218,7 @@ async def delete_container_files(container_id: int, paths: list[str]) -> bool:
 
 
 async def create_container_directory(container_id: int, path: str) -> bool:
+    await _enforce_file_write("mkdir", container_id, "", [path])
     target = await _require_running_target(container_id)
     await asyncio.to_thread(
         _run_file_command,
@@ -265,16 +320,20 @@ def _read_container_file_sync(target: _DockerTarget, path: str, max_bytes: int, 
     return raw.decode("utf-8", errors="replace")
 
 
-def _write_container_file_sync(target: _DockerTarget, path: str, content: str) -> None:
+def _write_container_bytes_sync(target: _DockerTarget, path: str, data: bytes) -> None:
     directory = posixpath.dirname(path) or "/"
     name = posixpath.basename(path)
     if not name:
         raise ValueError("invalid sandbox file path")
-    archive = _build_file_tar(name, content.encode("utf-8"), 0o644)
+    archive = _build_file_tar(name, data, 0o644)
     with _docker_container(target) as container:
         ok = _put_archive(container, directory, archive)
     if not ok:
         raise RuntimeError("failed to write sandbox file")
+
+
+def _write_container_file_sync(target: _DockerTarget, path: str, content: str) -> None:
+    _write_container_bytes_sync(target, path, content.encode("utf-8"))
 
 
 def _upload_container_files_sync(

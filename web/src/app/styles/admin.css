@@ -1,3 +1,9 @@
+/* ══════════════════════════════════════════════════════════════
+   控制台外壳 — 方向 A「极简堡垒」
+   三段式：图标窄栏 60px（+ 会话列 300px，仅操作台） + 主区
+   语言：1px 发丝线 · 无卡片 · 无阴影 · 无渐变 · 圆角最多 2px
+   ══════════════════════════════════════════════════════════════ */
+
 .admin-app {
   height: 100vh;
   height: 100dvh;
@@ -7,169 +13,242 @@
 
 .admin-shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   color: var(--z-text);
-  background: var(--z-page-bg);
+  background: var(--z-bg);
 }
 
-.admin-sidebar {
-  height: 100%;
+/* 只有操作台需要中间的会话列 */
+.admin-shell-context {
+  grid-template-columns: 60px 300px minmax(0, 1fr);
+}
+
+/* ───────── 图标窄栏 ───────── */
+.admin-rail {
+  display: flex;
   min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 0 16px;
+  background: var(--z-surface);
+  border-right: 1px solid var(--z-line);
+}
+
+.rail-logo {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 20px;
+}
+
+.rail-nav {
   display: flex;
   flex-direction: column;
-  padding: 22px 16px;
-  color: var(--z-text-muted);
-  background:
-    linear-gradient(180deg, var(--z-brand-tint), transparent 34%),
-    rgba(9, 13, 22, 0.82);
-  border-right: 1px solid var(--z-line-soft);
-  backdrop-filter: blur(14px);
-}
-
-.brand-lockup {
-  display: flex;
-  gap: 12px;
   align-items: center;
-  padding: 0 8px 24px;
+  gap: 4px;
 }
 
-.brand-lockup > div:last-child {
-  min-width: 0;
-}
-
-.brand-name {
-  color: var(--z-text-strong);
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.brand-kicker {
-  color: var(--z-text-subtle);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.admin-nav {
+.rail-item {
+  position: relative;
   display: grid;
-  gap: 6px;
-}
-
-.admin-sidebar-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.admin-sidebar-footer {
-  padding: 8px 12px;
-  border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
-  color: var(--text-color-tertiary, rgba(255,255,255,0.35));
-  line-height: 1.4;
-}
-.admin-sidebar-footer a {
-  color: var(--text-color-tertiary, rgba(255,255,255,0.45));
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.admin-sidebar-footer a:hover {
-  color: var(--accent-color, #e94560);
-}
-
-.admin-sidebar-top {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.admin-sidebar-secondary {
-  flex: 1;
-  min-height: 0;
-  padding-left: 18px;
-}
-
-.admin-nav-bottom {
-  flex: 0 0 auto;
-}
-
-.admin-nav-link {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
   color: var(--z-text-subtle);
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: 2px;
   transition:
     color var(--motion-fast) var(--ease-standard),
-    background var(--motion-fast) var(--ease-standard),
-    box-shadow var(--motion-normal) var(--ease-standard),
-    transform var(--motion-fast) var(--ease-standard);
+    background var(--motion-fast) var(--ease-standard);
 }
 
-.admin-nav-link svg,
-.topbar-session-actions svg {
+.rail-item svg {
   color: currentColor;
   stroke: currentColor;
 }
 
-.admin-nav-link.active,
-.admin-nav-link:hover {
+.rail-item:hover,
+.rail-item:focus-visible {
   color: var(--z-text-strong);
   background: var(--z-surface-muted);
 }
 
-.admin-nav-link:hover {
-  transform: translateX(2px);
+.rail-item.active {
+  color: var(--z-text-strong);
+  background: var(--z-surface-muted);
 }
 
-.admin-nav-link.active {
-  box-shadow: inset 3px 0 0 var(--z-brand);
+/* 选中态：贴着窄栏左缘的一条品牌色竖条 */
+.rail-item.active::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: -11px;
+  width: 3px;
+  background: var(--z-brand);
+  border-radius: 0 2px 2px 0;
+  content: "";
 }
 
+/* 待处理事项角标：仅在有数量时出现 */
+.rail-item-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  background: var(--z-danger);
+  color: #fff;
+  border-radius: 8px;
+  font-family: var(--z-font-mono);
+  font-size: 9.5px;
+  line-height: 15px;
+  text-align: center;
+}
+
+/* 左下角账户区：主题色 / 头像 / 登出 */
+.rail-account {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 0 12px;
+}
+
+.rail-account .semi-avatar {
+  color: var(--z-on-brand);
+  background: var(--z-brand);
+  border: 1px solid var(--z-brand-dark);
+}
+
+.rail-account .semi-button {
+  color: var(--z-text-subtle);
+}
+
+.rail-account .semi-button:hover {
+  color: var(--z-text-strong);
+  background: var(--z-surface-muted);
+}
+
+.rail-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--z-text-subtle);
+  font-family: var(--z-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+
+.rail-meta a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.rail-meta a:hover {
+  color: var(--z-brand);
+}
+
+/* ───────── 会话列（仅操作台） ───────── */
+.admin-context {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--z-surface);
+  border-right: 1px solid var(--z-line);
+}
+
+.admin-context-head {
+  display: flex;
+  height: 48px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  color: var(--z-text-subtle);
+  font-family: var(--z-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--z-line);
+}
+
+.admin-context-head em {
+  color: var(--z-text-subtle);
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+.admin-context-actions {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--z-line);
+}
+
+.admin-context-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-context-body > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ───────── 主区 ───────── */
 .admin-main {
+  display: grid;
   min-width: 0;
   height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: 78px minmax(0, 1fr);
+  grid-template-rows: 66px minmax(0, 1fr);
   overflow: hidden;
 }
 
 .admin-topbar {
-  height: 78px;
+  /* 顶栏抬升层级：顶栏内的浮层（主题色面板）要能盖住下方的 .admin-content */
+  position: relative;
+  z-index: 30;
   display: flex;
+  height: 66px;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 0 30px;
+  padding: 0 28px;
   background: var(--z-surface);
   border-bottom: 1px solid var(--z-line);
-  backdrop-filter: blur(14px);
 }
 
 .admin-topbar h1 {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   color: var(--z-text-strong);
-  font-size: 24px;
+  font-size: 20px;
+  font-weight: 800;
   line-height: 1.2;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
+}
+
+.admin-topbar .page-eyebrow {
+  color: var(--z-brand);
+  font-family: var(--z-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
 }
 
 .topbar-actions,
 .topbar-resource-actions,
-.topbar-session-actions,
 .pager-row div {
   display: flex;
   align-items: center;
@@ -187,34 +266,12 @@
   padding-right: 4px;
 }
 
-.topbar-session-actions {
-  padding-left: 4px;
-  border-left: 1px solid var(--z-line);
-}
-
-.topbar-session-actions .semi-avatar {
-  color: var(--z-text-strong);
-  background: var(--z-brand);
-  border: 1px solid var(--z-danger-border);
-}
-
-.topbar-session-actions .semi-button {
-  color: var(--z-text-subtle);
-}
-
-.topbar-session-actions .semi-button:hover {
-  color: var(--z-text-strong);
-  background: var(--z-surface-muted);
-}
-
 .admin-content {
   position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 84% 12%, rgba(88, 156, 160, 0.08), transparent 28%),
-    rgba(9, 13, 22, 0.36);
+  background: var(--z-bg);
 }
 
 .admin-content-viewport {
@@ -226,8 +283,11 @@
 }
 
 .admin-content-viewport-scroll {
+  /* 列向 flex：让路由容器能吃满内容视口高度（内容不足时不塌陷） */
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  padding: 24px 30px 30px;
+  padding: 22px 28px 28px;
 }
 
 .admin-content-viewport-fixed {
@@ -237,6 +297,21 @@
 .admin-route {
   min-width: 0;
   min-height: 0;
+}
+
+/* 滚动页面的路由容器：始终至少撑满内容视口（内容不足不塌陷，超出时照常滚动）。
+   `flex: 1 0 auto` = 可被拉伸、但**不压缩** —— 若允许收缩，内容超出时路由容器会被
+   压回视口高度，溢出部分就滚不到了。 */
+.admin-route-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-height: 100%;
+}
+
+/* 页面根容器同样只拉伸、不压缩（min-height: 0 会引入收缩，故不设） */
+.admin-route-scroll > * {
+  flex: 1 0 auto;
 }
 
 .admin-route-fixed {
@@ -255,73 +330,76 @@
   place-items: center;
 }
 
-@media (max-width: 900px) {
-  .admin-shell {
-    height: 100%;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+/* ───────── 响应式 ───────── */
+@media (max-width: 1100px) {
+  .admin-shell-context {
+    grid-template-columns: 60px minmax(0, 1fr);
   }
 
-  .admin-main {
-    height: 100%;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    overflow: hidden;
-  }
-
-  .admin-sidebar {
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .admin-sidebar-body {
-    flex: 1;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-end;
-  }
-
-  .admin-sidebar-top,
-  .admin-nav-bottom {
-    flex: 0 0 auto;
-  }
-
-  .admin-sidebar-secondary {
+  .admin-context {
     display: none;
   }
+}
 
-  .brand-lockup {
+@media (max-width: 780px) {
+  .admin-shell,
+  .admin-shell-context {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+  }
+
+  .admin-rail {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--z-line);
+  }
+
+  .rail-logo {
+    width: 24px;
+    height: 24px;
+    margin: 0 12px 0 0;
+  }
+
+  .rail-nav {
+    flex-direction: row;
+  }
+
+  .rail-item.active::before {
+    inset: auto 9px -1px 9px;
+    width: auto;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .rail-account {
+    flex-direction: row;
+    gap: 10px;
+    margin: 0 0 0 auto;
     padding: 0;
   }
 
-  .admin-nav {
-    display: flex;
-    flex-wrap: wrap;
+  .rail-meta {
+    display: none;
   }
 
   .admin-topbar {
-    align-items: flex-start;
-    flex-direction: column;
     height: auto;
-    padding: 18px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
   }
 
   .topbar-actions {
     width: 100%;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
   }
 
-  .topbar-session-actions {
-    padding-left: 0;
-    border-left: 0;
-  }
-
   .admin-content-viewport-scroll {
-    min-height: 0;
-    padding: 18px;
+    padding: 16px;
   }
 }

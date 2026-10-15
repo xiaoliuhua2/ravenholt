@@ -37,6 +37,10 @@ def timeline_item_key(event: AgentEventSchema) -> str | None:
         return f"tr:{nested_call_id}:{event.call_id}"
     if event_type == "subagent_task":
         return f"sa:{event.run_id}"
+    if event_type == "approval":
+        # 确定性 key（不用 seq）：pending → approved/rejected 复用同一个 seq 与 order，
+        # 前端才能把同一条卡片原地更新，而不是每次阶段变化多出一条。
+        return f"approval:{event.confirmation_id}"
     return None
 
 

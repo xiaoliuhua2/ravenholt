@@ -58,36 +58,36 @@ export function UserFormModal({ open, mode, user, saving, onCancel, onSubmit }: 
   return (
     <ResourceModal
       open={open}
-      title={mode === "create" ? "Create User" : "Edit User"}
+      title={mode === "create" ? "创建用户" : "编辑用户"}
       saving={saving}
-      submitLabel={mode === "create" ? "Create" : "Save"}
+      submitLabel={mode === "create" ? "创建" : "保存"}
       onCancel={onCancel}
       onSubmit={submit}
     >
       <label>
-        <span>Username</span>
+        <span>用户名</span>
         <Input prefix={<User size={16} />} value={values.username} maxLength={64} required
           onChange={(username) => setValues((v) => ({ ...v, username }))}
         />
       </label>
       <label>
-        <span>Email</span>
+        <span>邮箱</span>
         <Input type="email" prefix={<Mail size={16} />} value={values.email} maxLength={255}
           onChange={(email) => setValues((v) => ({ ...v, email }))}
         />
       </label>
       <label>
-        <span>Role</span>
+        <span>角色</span>
         <Select prefix={<Shield size={16} />} value={values.role}
           onChange={(role) => isSystemUserRole(role) && setValues((v) => ({ ...v, role }))}
           optionList={roles.map((role) => ({ label: SYSTEM_USER_ROLE_LABEL[role], value: role }))}
         />
       </label>
       <label>
-        <span>Password</span>
+        <span>密码</span>
         <Input mode="password" prefix={<KeyRound size={16} />} value={values.password} maxLength={128}
           required={mode === "create"}
-          placeholder={mode === "create" ? "Password" : "Leave blank to keep current password"}
+          placeholder={mode === "create" ? "密码" : "留空则保持当前密码"}
           onChange={(password) => setValues((v) => ({ ...v, password }))}
         />
       </label>

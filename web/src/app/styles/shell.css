@@ -6,9 +6,9 @@
   grid-template-rows: 42px minmax(0, 1fr);
   overflow: hidden;
   color: var(--z-text-muted);
-  background: var(--z-bg-deep);
+  background: var(--z-surface);
   border: 1px solid var(--z-line);
-  border-radius: 8px;
+  border-radius: 2px;
   box-shadow: var(--z-shadow);
 }
 
@@ -117,7 +117,7 @@
 }
 
 .shell-terminal .xterm-viewport {
-  background-color: var(--z-bg-deep);
+  background-color: var(--z-terminal);
 }
 
 .novnc-body {
@@ -171,7 +171,7 @@
   color: var(--z-text-strong);
   background: var(--z-surface-strong);
   border: 1px solid var(--z-line);
-  border-radius: 8px 0 0 8px;
+  border-radius: 2px 0 0 2px;
   box-shadow: var(--z-shadow);
   cursor: pointer;
   animation: panelSlideIn 220ms var(--ease-emphasized) both;
@@ -271,7 +271,7 @@
 }
 
 .file-manager-breadcrumb-sep {
-  color: rgba(159, 178, 199, 0.36);
+  color: var(--z-text-subtle);
   margin: 0 2px;
   font-size: 13px;
 }
@@ -281,7 +281,7 @@
   color: var(--z-text-subtle);
   background: none;
   border: 0;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
@@ -395,7 +395,7 @@
   gap: 4px;
   width: 80px;
   padding: 10px 4px 8px;
-  border-radius: 6px;
+  border-radius: 2px;
   cursor: pointer;
   overflow: hidden;
   animation: contentScaleIn 180ms var(--ease-emphasized) both;
@@ -442,7 +442,7 @@
   color: var(--z-text-strong);
   background: var(--z-surface-muted);
   border: 1px solid var(--z-info-border);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 13px;
   font-family: inherit;
   outline: none;
@@ -585,7 +585,7 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 .fv-preview {

@@ -29,8 +29,8 @@ export function SystemUsersPage() {
   );
 
   useAdminResourceHeader({
-    createLabel: "Create User",
-    refreshLabel: "Refresh users",
+    createLabel: "创建用户",
+    refreshLabel: "刷新用户",
     loading,
     onCreate: () => setModal({ mode: "create" }),
     onRefresh: loadUsers,
@@ -56,27 +56,27 @@ export function SystemUsersPage() {
 
   const columns: ResourceColumn<SystemUser>[] = [
     {
-      key: "user", header: "User", width: "minmax(220px, 300px)",
+      key: "user", header: "用户", width: "minmax(220px, 300px)",
       render: (user) => (
         <ResourceIdentity icon={user.username.slice(0, 1).toUpperCase()} title={user.username} detail={user.email || "-"} />
       ),
     },
     {
-      key: "role", header: "Role", width: "190px",
+      key: "role", header: "角色", width: "190px",
       render: (user) => <Tag color={SYSTEM_USER_ROLE_COLOR[user.role]}>{SYSTEM_USER_ROLE_LABEL[user.role]}</Tag>,
     },
-    { key: "created", header: "Created", width: "minmax(150px, 1fr)", render: (u) => formatDateTime(u.created_at) },
-    { key: "updated", header: "Updated", width: "minmax(150px, 1fr)", render: (u) => formatDateTime(u.updated_at) },
+    { key: "created", header: "创建时间", width: "minmax(150px, 1fr)", render: (u) => formatDateTime(u.created_at) },
+    { key: "updated", header: "更新时间", width: "minmax(150px, 1fr)", render: (u) => formatDateTime(u.updated_at) },
     {
-      key: "actions", header: "Actions", width: "104px",
+      key: "actions", header: "操作", width: "104px",
       render: (user) => (
         <RowActions>
-          <Button icon={<Pencil size={15} />} theme="borderless" type="tertiary" aria-label={`Edit ${user.username}`}
+          <Button icon={<Pencil size={15} />} theme="borderless" type="tertiary" aria-label={`编辑 ${user.username}`}
             onClick={() => setModal({ mode: "edit", user })}
           />
-          <Popconfirm title="Delete user" content={`Delete ${user.username}?`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void deleteUser(user)}>
+          <Popconfirm title="删除用户" content={`删除 ${user.username}？`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void deleteUser(user)}>
             <Button icon={<Trash2 size={15} />} theme="borderless" type="danger"
-              loading={deletingUserId === user.id} aria-label={`Delete ${user.username}`}
+              loading={deletingUserId === user.id} aria-label={`删除 ${user.username}`}
             />
           </Popconfirm>
         </RowActions>
@@ -87,17 +87,17 @@ export function SystemUsersPage() {
   return (
     <>
       <ResourcePageShell
-        searchPlaceholder="Search username or email"
+        searchPlaceholder="搜索用户名或邮箱"
         keyword={keyword}
         loading={loading}
         metrics={[
-          { label: "Total", value: total },
-          { label: "Admins", value: summary.admin },
-          { label: "Users", value: summary.user },
+          { label: "总数", value: total },
+          { label: "管理员", value: summary.admin },
+          { label: "用户", value: summary.user },
         ]}
         empty={users.length === 0}
         emptyIcon={<Users size={42} />}
-        emptyTitle="No users found"
+        emptyTitle="暂无用户"
         page={page}
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
@@ -110,7 +110,7 @@ export function SystemUsersPage() {
         onNext={next}
       >
         <ResourceTable<SystemUser>
-          ariaLabel="System users"
+          ariaLabel="系统用户"
           columns={columns}
           rows={users}
           rowKey={(user) => user.id}

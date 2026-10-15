@@ -223,7 +223,7 @@ def _test_proxy_connectivity_sync(proxy: EgressProxy) -> int:
                 f"GET {path} HTTP/1.1\r\n"
                 f"Host: {target_host}\r\n"
                 "Connection: close\r\n"
-                "User-Agent: Z3r0-Proxy-Test/1.0\r\n"
+                "User-Agent: Ravenholt-Proxy-Test/1.0\r\n"
                 "\r\n"
             )
             tls_sock.sendall(request.encode("ascii"))

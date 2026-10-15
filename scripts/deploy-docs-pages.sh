@@ -7,7 +7,7 @@ DIST_DIR="$DOCS_DIR/.vitepress/dist"
 PAGES_REMOTE="origin"
 PAGES_BRANCH="gh-pages"
 PAGES_REMOTE_REF="refs/heads/$PAGES_BRANCH"
-PAGES_WORKTREE="/tmp/z3r0-pages"
+PAGES_WORKTREE="/tmp/ravenholt-pages"
 PAGES_KEEP_COMMITS=2
 COMMIT_MESSAGE="docs: deploy github pages"
 

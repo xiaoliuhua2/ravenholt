@@ -71,7 +71,7 @@ def _docker_tls_config_for_host(host: ManagedHost) -> tuple[TLSConfig, str]:
 
     safe_ip = re.sub(r"[^A-Za-z0-9]+", "_", host.ip_address).strip("_") or "host"
     host_id = host.id if host.id is not None else "new"
-    temp_dir = tempfile.mkdtemp(prefix=f"z3r0-docker-tls-{host_id}-{safe_ip}-")
+    temp_dir = tempfile.mkdtemp(prefix=f"ravenholt-docker-tls-{host_id}-{safe_ip}-")
 
     ca_path = Path(temp_dir) / "ca.pem"
     cert_path = Path(temp_dir) / "cert.pem"

@@ -7,6 +7,7 @@ from config import get_config
 from logger import get_logger
 from model.egress_proxy.proxies import EgressProxy
 from model.host.hosts import ManagedHost
+from model.policy.confirmations import PolicyConfirmation
 from model.sandbox.async_jobs import SandboxAsyncJob
 from model.agent.notifications import AgentNotification
 from model.agent.subordinates import AgentSubordinateTask
@@ -14,6 +15,7 @@ from model.agent.message_meta import AgentMessageMeta
 from model.agent.event_log import AgentEventLog
 from model.agent.context_compactions import AgentContextCompaction
 from model.agent.sessions import AgentSessionMeta
+from model.audit.events import AuditEvent
 from model.blackboard.nodes import BlackboardNode
 from model.evidence.evidence import Evidence
 from model.evidence.verifier_runs import VerifierRun
@@ -42,6 +44,8 @@ _registered_models = [
     Evidence, VerifierRun,
     AgentSessionMeta, AgentMessageMeta, AgentContextCompaction,
     AgentSubordinateTask, AgentNotification, SandboxAsyncJob, AgentEventLog,
+    AuditEvent,
+    PolicyConfirmation,
 ]
 
 _engine: AsyncEngine | None = None

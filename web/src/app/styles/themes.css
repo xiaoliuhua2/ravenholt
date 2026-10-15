@@ -1,0 +1,56 @@
+/* 主题色定义：通过 <html data-theme="..."> 切换，只覆盖品牌色相关变量。
+   底色恒为简约白色；语义色（成功 / 警告 / 危险 / 信息）不随主题变化。 */
+
+html[data-theme="crimson"] {
+  --z-brand: #d92d3a;
+  --z-brand-strong: #c8202d;
+  --z-brand-dark: #a9161f;
+  --z-brand-tint: rgba(217, 45, 58, 0.1);
+  --z-brand-glow: rgba(217, 45, 58, 0.18);
+  --z-accent: #c8202d;
+}
+
+html[data-theme="indigo"] {
+  --z-brand: #4f46e5;
+  --z-brand-strong: #4338ca;
+  --z-brand-dark: #3730a3;
+  --z-brand-tint: rgba(79, 70, 229, 0.1);
+  --z-brand-glow: rgba(79, 70, 229, 0.2);
+  --z-accent: #4338ca;
+}
+
+html[data-theme="emerald"] {
+  --z-brand: #059669;
+  --z-brand-strong: #047857;
+  --z-brand-dark: #065f46;
+  --z-brand-tint: rgba(5, 150, 105, 0.1);
+  --z-brand-glow: rgba(5, 150, 105, 0.2);
+  --z-accent: #047857;
+}
+
+html[data-theme="amber"] {
+  --z-brand: #d97706;
+  --z-brand-strong: #b45309;
+  --z-brand-dark: #92400e;
+  --z-brand-tint: rgba(217, 119, 6, 0.12);
+  --z-brand-glow: rgba(217, 119, 6, 0.22);
+  --z-accent: #b45309;
+}
+
+html[data-theme="violet"] {
+  --z-brand: #7c3aed;
+  --z-brand-strong: #6d28d9;
+  --z-brand-dark: #5b21b6;
+  --z-brand-tint: rgba(124, 58, 237, 0.1);
+  --z-brand-glow: rgba(124, 58, 237, 0.2);
+  --z-accent: #6d28d9;
+}
+
+html[data-theme="slate"] {
+  --z-brand: #334155;
+  --z-brand-strong: #1e293b;
+  --z-brand-dark: #0f172a;
+  --z-brand-tint: rgba(51, 65, 85, 0.1);
+  --z-brand-glow: rgba(51, 65, 85, 0.18);
+  --z-accent: #334155;
+}

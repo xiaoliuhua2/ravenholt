@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import secrets
 import socket
@@ -7,6 +8,7 @@ from datetime import datetime
 import docker
 from sqlmodel import select
 
+from core.policy.enforcer import enforce
 from database import get_async_session
 from model.egress_proxy.proxies import EgressProxy
 from logger import get_logger
@@ -46,7 +48,10 @@ _CONTROL_PROXY_HOST_PORT_RETRIES = 32
 
 
 def _container_name_prefix(image_name: str) -> str:
-    short_name = image_name.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
+    # 容器名前缀：默认用品牌前缀 ravenholt-sandbox；可用 SANDBOX_CONTAINER_NAME_PREFIX
+    # 覆盖，设为空串时回退为按镜像短名生成（如 strix-sandbox）。
+    configured = os.environ.get("SANDBOX_CONTAINER_NAME_PREFIX", "ravenholt-sandbox").strip()
+    short_name = configured or image_name.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
     normalized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", short_name).strip("-.")
     return normalized or "sandbox"
 
@@ -96,6 +101,17 @@ async def create_sandbox_container(
         container_name_prefix = _container_name_prefix(sandbox_image.image_name)
 
     try:
+        decision = await enforce(
+            "container.create",
+            None,
+            detail={"host_id": host_id, "image_id": image_id},
+        )
+        if not decision.allowed:
+            return SandboxContainerMutationResult(
+                record=None,
+                succeeded=False,
+                message=f"红线策略拒绝创建沙箱容器：[{decision.code}] {decision.reason}",
+            )
         await asyncio.to_thread(_assert_host_image_exists, host, sandbox_image.image_name)
         for mapping in port_mappings:
             if mapping.container_port == sandbox_image.control_proxy_port and mapping.protocol == "tcp":

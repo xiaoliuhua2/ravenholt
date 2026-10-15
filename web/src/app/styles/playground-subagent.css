@@ -24,7 +24,7 @@
   min-height: 0;
   background: var(--z-surface-strong);
   border-left: 1px solid var(--z-line);
-  box-shadow: -18px 0 36px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   backdrop-filter: blur(14px);
 }
 
@@ -41,7 +41,7 @@
 
 .subagent-side-heading {
   display: inline-flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   align-items: center;
   gap: 8px;
@@ -62,14 +62,25 @@
   flex: 1 1 auto;
   gap: 6px;
   min-width: 0;
-  padding: 0;
+  padding: 0 0 3px;
   overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* 子智能体多起来时标签条会横向溢出：保留一条细滚动条，
+     让靠后的子智能体可见可拖动（组件里另把竖向滚轮映射成横向滑动）。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--z-line-strong) transparent;
 }
 
 .subagent-side-tabs::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+
+.subagent-side-tabs::-webkit-scrollbar-thumb {
+  background: var(--z-line-strong);
+  border-radius: 2px;
+}
+
+.subagent-side-tabs::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .subagent-tab {
@@ -83,7 +94,7 @@
   padding: 3px 8px;
   background: var(--z-surface-muted);
   border: 1px solid var(--z-line);
-  border-radius: 8px;
+  border-radius: 2px;
   color: var(--z-text-subtle);
   cursor: pointer;
   font-size: 12px;
@@ -105,7 +116,7 @@
   background: var(--z-surface-soft);
   border-color: var(--z-line-strong);
   color: var(--z-text-strong);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  box-shadow: none;
 }
 
 .subagent-tab-name {
@@ -141,17 +152,22 @@
   animation: contentFadeUp 220ms var(--ease-emphasized) both;
 }
 
-.subagent-task-meta {
+/* 选中子智能体的状态行：位于面板头部之下、滚动区之外，
+   跟着面板常驻，滚动思考链时始终看得到状态，不必向上翻。 */
+.subagent-side-status {
   display: flex;
+  flex: 0 0 auto;
   min-width: 0;
   align-items: center;
   gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--z-line);
   color: var(--z-text-subtle);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--z-font-mono);
   font-size: 12px;
 }
 
-.subagent-task-meta span {
+.subagent-side-status span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

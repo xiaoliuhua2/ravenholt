@@ -1,6 +1,6 @@
 """Self-test for the finding evidence gate.
 
-Run from the project root (so ``load_config()`` can read ``.xuanmu/config.json``):
+Run from the project root (so ``load_config()`` can read ``.ravenholt/config.json``):
 
     .venv/bin/python scripts/verify_finding_gate_selftest.py              # POSIX
     .venv\\Scripts\\python.exe scripts\\verify_finding_gate_selftest.py   # Windows
@@ -35,8 +35,16 @@ if str(ROOT_PATH) not in sys.path:
 import httpx  # noqa: E402
 
 from config import load_config  # noqa: E402
+from core.policy import load_policy  # noqa: E402
 from database import create_all_tables, get_async_session, init_engine  # noqa: E402
+from service.work_project.findings import finding_gate_reason  # noqa: E402
+from model.work_project.assets import WorkProjectAsset  # noqa: E402
 from model.work_project.projects import WorkProject  # noqa: E402
+from schema.work_project.assets import (  # noqa: E402
+    WorkProjectAssetOrigin,
+    WorkProjectAssetRequest,
+    WorkProjectAssetType,
+)
 from schema.work_project.findings import (  # noqa: E402
     WorkProjectFindingRequest,
     WorkProjectFindingStatus,
@@ -60,33 +68,86 @@ async def _create_project() -> int:
     return project.id
 
 
+async def _create_asset(project_id: int) -> int:
+    """报告结构门要求绑定影响资产，所以自测也要建一个真实资产。"""
+    request = WorkProjectAssetRequest(
+        type=WorkProjectAssetType.SERVICE, host="127.0.0.1", port=8000
+    )
+    async with get_async_session() as session:
+        asset = WorkProjectAsset(
+            project_id=project_id,
+            type=request.type,
+            origin=WorkProjectAssetOrigin.DISCOVERED,
+            identifier=request.identifier,
+            host=request.host,
+            port=request.port,
+            path=request.path,
+        )
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+    return asset.id
+
+
 async def _create_validated_finding(
     project_id: int,
     title: str,
     evidence_id: int | None,
+    *,
+    asset_id: int | None = None,
+    complete: bool = True,
 ) -> tuple[WorkProjectFindingStatus | None, str]:
-    request = WorkProjectFindingRequest(
-        title=title,
-        severity="high",
-        status=WorkProjectFindingStatus.VALIDATED,
-        evidence_id=evidence_id,
-        description="gate self-test finding",
-    )
+    if complete:
+        request = WorkProjectFindingRequest(
+            title=f"{title} · 越权读取他人订单",
+            severity="high",
+            status=WorkProjectFindingStatus.VALIDATED,
+            evidence_id=evidence_id,
+            asset_id=asset_id,
+            description=(
+                "替换订单号即可读取其他用户的订单详情，返回体包含手机号、收货地址与订单金额；"
+                "基线请求返回 200 且为本人订单，探针请求同样返回 200 但内容属于他人，"
+                "差分在连续三次重放中稳定复现；将订单号递减一位即可遍历他人订单，"
+                "影响面覆盖同租户全部用户，可直接用于复现、定级与报告。"
+            ),
+            impact="同一租户下任意用户可越权读取他人订单与 PII，属高危信息泄露。",
+        )
+    else:
+        request = WorkProjectFindingRequest(
+            title=f"{title} · 薄报告",
+            severity="high",
+            status=WorkProjectFindingStatus.VALIDATED,
+            evidence_id=evidence_id,
+            asset_id=asset_id,
+            description="太短",
+            impact="",
+        )
     saved, error = await create_work_project_finding(project_id, request)
     if error or saved is None:
         return None, error or "no finding returned"
+    if saved.status != request.status:
+        reason = await finding_gate_reason(request)
+        print(f"    [debug] 被降级原因: {reason}")
+        print(
+            f"    [debug] title={len(request.title.strip())}字 "
+            f"description={len(request.description.strip())}字 "
+            f"impact={bool(request.impact.strip())} asset_id={request.asset_id}"
+        )
     return saved.status, ""
 
 
 async def main() -> int:
-    # get_config() 返回模块级默认实例，必须先显式加载 .xuanmu/config.json；
+    # get_config() 返回模块级默认实例，必须先显式加载 .ravenholt/config.json；
     # 否则数据库用户名/密码为空，asyncpg 回退成 OS 用户导致认证失败。
     load_config()
+    # 与应用启动流程保持一致：红线策略未加载时出网判定会 fail-closed 拒绝
+    load_policy()
     init_engine()
     await create_all_tables()
 
     project_id = await _create_project()
-    print(f"[setup] project_id={project_id}")
+    asset_id = await _create_asset(project_id)
+    print(f"[setup] project_id={project_id} asset_id={asset_id}")
 
     checks: list[tuple[str, bool]] = []
 
@@ -134,23 +195,37 @@ async def main() -> int:
         print("!! expected the positive evidence to reproduce; cannot test the gate")
         return 1
 
-    # 1) reproduced evidence -> terminal status honoured
-    s1, err1 = await _create_validated_finding(project_id, "gate-pass", reproduced_ev.id)
-    print(f"[case1] reproduced + validated -> status={s1} error='{err1}'")
-    checks.append(("case1 reproduced evidence passes the gate",
+    # 1) reproduced evidence + 完整报告 -> terminal status honoured（两个门都过）
+    s1, err1 = await _create_validated_finding(
+        project_id, "gate-pass", reproduced_ev.id, asset_id=asset_id, complete=True
+    )
+    print(f"[case1] reproduced + 完整报告 + validated -> status={s1} error='{err1}'")
+    checks.append(("case1 reproduced + complete report passes both gates",
                    err1 == "" and s1 == WorkProjectFindingStatus.VALIDATED))
 
     # 2) no evidence -> downgraded to suspected (draft)
-    s2, err2 = await _create_validated_finding(project_id, "gate-no-evidence", None)
+    s2, err2 = await _create_validated_finding(
+        project_id, "gate-no-evidence", None, asset_id=asset_id, complete=True
+    )
     print(f"[case2] no evidence + validated -> status={s2} error='{err2}'")
     checks.append(("case2 missing evidence downgrades to suspected",
                    err2 == "" and s2 == WorkProjectFindingStatus.SUSPECTED))
 
     # 3) evidence exists but was refuted -> downgraded to suspected (draft)
-    s3, err3 = await _create_validated_finding(project_id, "gate-refuted", refuted_ev.id)
+    s3, err3 = await _create_validated_finding(
+        project_id, "gate-refuted", refuted_ev.id, asset_id=asset_id, complete=True
+    )
     print(f"[case3] refuted + validated -> status={s3} error='{err3}'")
     checks.append(("case3 non-reproduced evidence downgrades to suspected",
                    err3 == "" and s3 == WorkProjectFindingStatus.SUSPECTED))
+
+    # 4) reproduced evidence 但报告太薄 -> 报告结构门降级
+    s4, err4 = await _create_validated_finding(
+        project_id, "gate-thin-report", reproduced_ev.id, asset_id=asset_id, complete=False
+    )
+    print(f"[case4] reproduced + 薄报告 + validated -> status={s4} error='{err4}'")
+    checks.append(("case4 reproduced but thin report is blocked by report gate",
+                   err4 == "" and s4 == WorkProjectFindingStatus.SUSPECTED))
 
     print("=" * 60)
     failed = [name for name, ok in checks if not ok]

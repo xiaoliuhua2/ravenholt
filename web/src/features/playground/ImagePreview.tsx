@@ -45,7 +45,7 @@ export function ImagePreview({
       className="image-preview-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Image preview"
+      aria-label="图片预览"
       onClick={onClose}
       onWheel={handleWheel}
     >
@@ -53,8 +53,8 @@ export function ImagePreview({
         type="button"
         className="image-preview-close"
         onClick={onClose}
-        aria-label="Close image preview"
-        title="Close"
+        aria-label="关闭图片预览"
+        title="关闭"
       >
         <X size={20} />
       </button>

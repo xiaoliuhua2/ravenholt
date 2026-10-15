@@ -42,6 +42,12 @@ export function clientItemKey(event: AgentStreamEvent): string | null {
       return `tr:${event.nested_call_id}:${event.call_id}`;
     case "subagent_task":
       return `sa:${event.run_id}`;
+    case "approval":
+      // 与后端 timeline_item_key 的 `approval:<id>` 逐字符对齐：同一张卡片在
+      // pending → approved/rejected 时原地更新，而不是每换阶段多出一条。
+      return `approval:${event.confirmation_id}`;
+    case "sandbox":
+      return event.seq > 0 ? `sandbox:${event.seq}` : "";
     case "user_message":
       return event.seq > 0 ? `user:${event.seq}` : "";
     case "turn_boundary":

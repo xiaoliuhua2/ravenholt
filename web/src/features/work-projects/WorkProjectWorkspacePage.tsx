@@ -15,21 +15,21 @@ export function WorkProjectWorkspacePage() {
   const { project, records, loading } = useWorkProjectRecordSnapshot(validProjectId);
 
   const metrics = useMemo(() => [
-    { label: "Assets", value: records.assets.length },
-    { label: "Findings", value: records.findings.length },
-    { label: "Relationships", value: records.graph.edges.length },
-    { label: "Sessions", value: project?.session_count ?? 0 },
+    { label: "资产", value: records.assets.length },
+    { label: "发现", value: records.findings.length },
+    { label: "关系", value: records.graph.edges.length },
+    { label: "会话", value: project?.session_count ?? 0 },
   ], [project, records]);
 
   if (!validProjectId) {
-    return <Empty className="empty-state" image={<FileText size={42} />} title="Invalid project" description="" />;
+    return <Empty className="empty-state" image={<FileText size={42} />} title="无效项目" description="" />;
   }
 
   return (
     <section className="work-project-workspace">
       <div className="workspace-back-row">
         <Button icon={<ArrowLeft size={15} />} theme="borderless" type="tertiary" onClick={() => navigate("/work-projects")}>
-          Back
+          返回
         </Button>
       </div>
       <div className="workspace-header">
@@ -38,7 +38,7 @@ export function WorkProjectWorkspacePage() {
             <div className="workspace-title-main">
               <h2>{project.name}</h2>
               {project.description ? <p>{project.description}</p> : null}
-              <span>Owners: {workProjectOwnerNames(project)}</span>
+              <span>负责人：{workProjectOwnerNames(project)}</span>
             </div>
             <div className="workspace-title-tags">
               <WorkProjectTypeTag project={project} />

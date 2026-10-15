@@ -52,15 +52,6 @@ async def resolve_sandbox_control_proxy_target(
     )
 
 
-def sandbox_control_proxy_token_headers(target: SandboxControlProxyTarget) -> dict[str, str]:
-    return {"X-Sandbox-Token": target.token}
-
-
-async def close_control_proxy_http_client() -> None:
-    # 旧的 Go 控制面 HTTP 客户端已移除，保留空实现以兼容既有调用方。
-    return None
-
-
 async def resolve_container_egress_environment(container_id: int) -> dict[str, str]:
     async with get_async_session() as session:
         row = (await session.exec(
@@ -78,10 +69,21 @@ async def resolve_container_egress_environment(container_id: int) -> dict[str, s
 
 
 async def apply_container_egress(container_id: int) -> None:
+    # 延迟导入：避免 core ←→ service 的导入环
+    from core.policy import PolicyDenied, enforce
+
     target = await resolve_sandbox_control_proxy_target(container_id, require_running=True)
     if target is None:
         raise ValueError("sandbox container is not running")
     environment = await resolve_container_egress_environment(container_id)
+    upstream = environment.get("SANDBOX_EGRESS_UPSTREAM_ADDR", "")
+    decision = await enforce(
+        "egress.apply",
+        upstream or None,
+        detail={"surface": "platform-egress", "container_id": container_id},
+    )
+    if not decision.allowed:
+        raise PolicyDenied(decision)
     await apply_egress_environment(target, environment)
 
 
@@ -106,10 +108,10 @@ async def apply_managed_proxy_egress_to_running_containers(egress_proxy_id: int)
 
 
 async def apply_egress_environment(target: SandboxControlProxyTarget, environment: dict[str, str]) -> None:
-    # XuanMu 依赖容器内常驻的 Go 控制面（POST /egress）动态刷新出网环境；Strix 官方沙箱镜像
+    # Ravenholt 依赖容器内常驻的 Go 控制面（POST /egress）动态刷新出网环境；ravenholt 官方沙箱镜像
     # 没有该控制面，运行中的容器无法再动态应用 egress 配置。egress 环境仅在容器创建时通过
     # docker create 注入，修改需要重建容器。这里显式失败，避免伪装成已生效。
     raise RuntimeError(
-        "sandbox egress cannot be applied at runtime: the Strix sandbox image has no in-container "
+        "sandbox egress cannot be applied at runtime: the ravenholt sandbox image has no in-container "
         "control plane; egress environment is only set when the container is created"
     )

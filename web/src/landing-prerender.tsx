@@ -1,9 +1,12 @@
 import { renderToString } from "react-dom/server";
 import { LandingContent } from "./features/landing/LandingContent";
 import { landingPrimaryAction } from "./features/landing/landingConfig";
+import { ThemeProvider } from "./shared/theme/ThemeProvider";
 
 export function renderLandingHtml(logoSrc: string) {
   return renderToString(
-    <LandingContent logoSrc={logoSrc} primaryAction={landingPrimaryAction} />,
+    <ThemeProvider>
+      <LandingContent logoSrc={logoSrc} primaryAction={landingPrimaryAction} />
+    </ThemeProvider>,
   );
 }

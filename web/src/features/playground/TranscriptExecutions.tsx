@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { NestedTranscript, SubagentExecutionItem, ToolExecutionItem } from "./chatState";
 import { cx } from "../../shared/lib/className";
 import { subagentStatusColor, subordinateStatusLabel, type SubagentSelection } from "./subagentView";
+import { TranscriptContent } from "./Transcript";
 import { emptyAgentTranscript, transcriptHasRunningExecution, transcriptItemCount, type ToolBlock } from "./transcriptView";
 
 export function ToolGroup({
@@ -27,7 +28,7 @@ export function ToolGroup({
     <div className={cx("transcript-panel transcript-panel-tools", live && "transcript-panel-live")}>
       {header({
         icon: <Wrench size={13} />,
-        title: "Tools",
+        title: "工具",
         count: items.length,
         open,
         onToggle: () => setOpen((next) => !next),
@@ -49,6 +50,7 @@ export function ToolGroup({
                 key={`${block.kind}:${block.id}`}
                 item={block}
                 selected={allowSubagentOpen && selectedSubagent === block.agentCode}
+                selectedSubagent={allowSubagentOpen ? selectedSubagent : null}
                 onOpenSubagent={allowSubagentOpen ? onOpenSubagent : undefined}
               />
             ),
@@ -83,7 +85,7 @@ function ToolExecutionBlock({
   const [open, setOpen] = useState(false);
   const detailRef = useRef<HTMLDivElement | null>(null);
   const nestedActive = !!item.nested && transcriptHasRunningExecution(item.nested);
-  const status = toolExecutionStatus(item);
+  const status = toolExecutionStatus(item, live);
   const displayName = item.name;
 
   useEffect(() => {
@@ -104,20 +106,21 @@ function ToolExecutionBlock({
       </button>
       {open ? (
         <div ref={detailRef} className="execution-row-detail">
-          <JsonExecutionSection label="Arguments" value={item.arguments} />
+          <JsonExecutionSection label="参数" value={item.arguments} />
           {allowSubagentOpen && (item.nested || item.subagentTask) ? (
             <NestedTranscriptPanel
               nested={item.nested ?? emptyAgentTranscript()}
               task={item.subagentTask}
               live={live && (nestedActive || item.subagentTask?.status === "running")}
               selected={selectedSubagent === item.subagentTask?.agentCode}
+              selectedSubagent={selectedSubagent}
               onOpenSubagent={onOpenSubagent}
             />
           ) : null}
           {item.resolved ? (
             <ToolOutputSection output={item.output} tone={item.isError ? "error" : undefined} />
           ) : (
-            <ExecutionSection label="Output" body="Pending..." />
+            <ExecutionSection label="输出" body={live ? "执行中…" : "无输出（轮次已中断）"} />
           )}
         </div>
       ) : null}
@@ -128,19 +131,46 @@ function ToolExecutionBlock({
 function SubagentExecutionBlock({
   item,
   selected,
+  selectedSubagent,
   onOpenSubagent,
 }: {
   item: SubagentExecutionItem;
   selected: boolean;
+  selectedSubagent?: SubagentSelection | null;
   onOpenSubagent?: (selection: SubagentSelection) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const nested = item.nested;
+  const hasNested = Boolean(nested && transcriptItemCount(nested) > 0);
+
   return (
     <div className={cx("execution-row execution-row-subagent", `execution-row-subagent-${item.status}`, selected && "execution-row-selected")}>
       <div className="execution-row-head execution-row-head-static">
-        <ExecutionName name={item.agentCode || "subagent"} />
+        <ExecutionName name={item.agentCode || "子智能体"} />
         <SubagentStatusTag status={item.status} />
+        {hasNested ? (
+          <button
+            type="button"
+            className="execution-row-toggle-button"
+            aria-expanded={open}
+            aria-label={open ? "收起子智能体思考链" : "展开子智能体思考链"}
+            onClick={() => setOpen((next) => !next)}
+          >
+            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+        ) : null}
         <OpenSubagentButton agentCode={item.agentCode} onOpenSubagent={onOpenSubagent} />
       </div>
+      {open && nested ? (
+        <div className="execution-row-detail">
+          <NestedTranscriptContent
+            nested={nested}
+            live={item.status === "running"}
+            selectedSubagent={selectedSubagent}
+            onOpenSubagent={onOpenSubagent}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -150,29 +180,77 @@ function NestedTranscriptPanel({
   task,
   live,
   selected,
+  selectedSubagent,
   onOpenSubagent,
 }: {
   nested: NestedTranscript;
   task?: SubagentExecutionItem;
   live: boolean;
   selected: boolean;
+  selectedSubagent?: SubagentSelection | null;
   onOpenSubagent?: (selection: SubagentSelection) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const itemCount = transcriptItemCount(nested);
   if (itemCount === 0 && !task) return null;
+  const hasNested = itemCount > 0;
 
   return (
     <div className={cx("nested-panel", live && "nested-panel-live", selected && "nested-panel-selected")}>
       <div className="nested-panel-head">
-        <GitBranch size={13} />
-        <span className="nested-panel-title">
-          Subagent{task?.agentCode ? ` - ${task.agentCode}` : nested.agentName ? ` - ${nested.agentName}` : ""}
-        </span>
-        {task ? <SubagentStatusTag status={task.status} /> : null}
-        <span className="nested-panel-count">{itemCount}</span>
+        <button
+          type="button"
+          className="nested-panel-toggle"
+          aria-expanded={open}
+          disabled={!hasNested}
+          onClick={() => hasNested && setOpen((next) => !next)}
+        >
+          <GitBranch size={13} />
+          <span className="nested-panel-title">
+            子智能体{task?.agentCode ? ` - ${task.agentCode}` : nested.agentName ? ` - ${nested.agentName}` : ""}
+          </span>
+          {task ? <SubagentStatusTag status={task.status} /> : null}
+          <span className="nested-panel-count">{itemCount}</span>
+          {hasNested ? (
+            <span className="execution-row-toggle">{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+          ) : null}
+        </button>
         <OpenSubagentButton agentCode={task?.agentCode} onOpenSubagent={onOpenSubagent} />
       </div>
+      {open ? (
+        <div className="nested-panel-body">
+          <NestedTranscriptContent
+            nested={nested}
+            live={live}
+            selectedSubagent={selectedSubagent}
+            onOpenSubagent={onOpenSubagent}
+          />
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function NestedTranscriptContent({
+  nested,
+  live,
+  selectedSubagent,
+  onOpenSubagent,
+}: {
+  nested: NestedTranscript;
+  live: boolean;
+  selectedSubagent?: SubagentSelection | null;
+  onOpenSubagent?: (selection: SubagentSelection) => void;
+}) {
+  return (
+    <TranscriptContent
+      transcript={nested}
+      live={live}
+      emptyText="暂无输出"
+      allowSubagentOpen
+      selectedSubagent={selectedSubagent}
+      onOpenSubagent={onOpenSubagent}
+    />
   );
 }
 
@@ -197,7 +275,7 @@ function OpenSubagentButton({
       type="tertiary"
       onClick={() => onOpenSubagent(agentCode)}
     >
-      Open
+      打开
     </Button>
   );
 }
@@ -238,18 +316,27 @@ function JsonExecutionSection({ label, value, tone }: { label: string; value: un
 function ToolOutputSection({ output, tone }: { output: string; tone?: "error" }) {
   const parsed = useMemo(() => parseJsonText(output), [output]);
   if (!parsed.ok) {
-    return <ExecutionSection label="Output" body={output || "(empty)"} tone={tone} />;
+    return <ExecutionSection label="输出" body={output || "(empty)"} tone={tone} />;
   }
-  return <JsonExecutionSection label="Output" value={parsed.value} tone={tone} />;
+  return <JsonExecutionSection label="输出" value={parsed.value} tone={tone} />;
 }
 
-function toolExecutionStatus(item: ToolExecutionItem): { label: string; color: "red" | "green" | "amber"; tone: "error" | "ok" | "running" } {
-  if (item.resolved && item.isError) return { label: "Failed", color: "red", tone: "error" };
+function toolExecutionStatus(
+  item: ToolExecutionItem,
+  live: boolean,
+): { label: string; color: "red" | "green" | "amber"; tone: "error" | "ok" | "running" } {
+  if (item.resolved && item.isError) return { label: "失败", color: "red", tone: "error" };
   if (item.subagentTask?.status === "failed" || item.subagentTask?.status === "canceled") {
     return { label: subordinateStatusLabel(item.subagentTask.status), color: "red", tone: "error" };
   }
-  if (!item.resolved || item.subagentTask?.status === "running") return { label: "Running", color: "amber", tone: "running" };
-  return { label: "Done", color: "green", tone: "ok" };
+  if (item.subagentTask?.status === "running") return { label: "运行中", color: "amber", tone: "running" };
+  if (!item.resolved) {
+    // 轮次已结束却没有返回结果，说明这次调用被中断了——不要一直显示运行中
+    return live
+      ? { label: "运行中", color: "amber", tone: "running" }
+      : { label: "已中断", color: "red", tone: "error" };
+  }
+  return { label: "完成", color: "green", tone: "ok" };
 }
 
 function parseJsonText(output: string): { ok: true; value: unknown } | { ok: false } {

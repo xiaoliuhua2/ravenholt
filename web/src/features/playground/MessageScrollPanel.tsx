@@ -138,7 +138,7 @@ export function MessageScrollPanel({
           theme="solid"
           type="tertiary"
           onClick={scrollToLatest}
-          aria-label="Scroll to latest message"
+          aria-label="滚动到最新消息"
         />
       ) : null}
     </div>

@@ -1,0 +1,28 @@
+# Ravenholt 技能路由表 —— 实例覆盖（可选）
+#
+# 语义（best-effort，不影响启动）：
+#   - 本文件是**叠加**在工厂默认（core/strix_runtime/skill_routes.default.yaml）之上的覆盖层，
+#     不是整体替换。
+#   - 与默认**同 id** 的条目 → 替换默认条目；
+#   - `disabled_routes` 里的 id → 从默认中移除；
+#   - `max_skills` / `fallback_skills` / `version` → 只有在本文件**显式写出**时才覆盖默认。
+#   - skills 必须写限定名 `src_hunt/<技能>`，且必须是 strix 加载器能解析到的技能名
+#     （未知名字会被忽略并在启动日志告警）。
+#   - 修改后需重启平台生效。实际使用请复制为 .ravenholt/skill_routes.yaml（不提交仓库）。
+
+# 示例：把默认的 idor 路由替换成更贴合自家业务的信号集
+routes:
+  - id: idor
+    note: 越权（本实例补充了自有业务字段名）
+    signals: [越权, idor, 换 id, 未授权, tenantid, enterpriseid, 邻号, 密文 id]
+    skills: [src_hunt/idor-test, src_hunt/401-403-bypass]
+
+  # 示例：新增一条本实例特有的路由
+  - id: custom-internal-cms
+    note: 自研 CMS 的未授权知识库读
+    signals: [自研 cms, 知识库, callname, 内部话术]
+    skills: [src_hunt/idor-test, src_hunt/info-leak-test]
+
+# 示例：屏蔽工厂默认里不需要的一条（红线默认不挖 CORS 时可启用）
+# disabled_routes:
+#   - cors

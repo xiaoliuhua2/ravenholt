@@ -61,6 +61,15 @@ export function findToolBlockIndex(
   return blocks.findIndex((block) => block.kind === "tool" && toolSignature(block.name, block.arguments) === signature);
 }
 
+// nested_call_id 既能命中父级工具调用（callId），也能命中子代理执行块（runId）：
+// strix 路径下子代理的流事件以自身 run_id 作为 nested_call_id 下发。
+export function findExecutionBlockIndex(blocks: TranscriptBlock[], blockId: string): number {
+  return blocks.findIndex((block) =>
+    (block.kind === "tool" && block.callId === blockId)
+    || (block.kind === "subagent" && block.runId === blockId),
+  );
+}
+
 export function hasCoveredCompletedText(blocks: TranscriptBlock[], kind: StreamingItem["kind"], text: string): boolean {
   if (!text) return false;
   return blocks.some((block) => (

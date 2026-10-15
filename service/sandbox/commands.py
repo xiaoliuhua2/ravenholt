@@ -6,6 +6,8 @@ from uuid import uuid4
 
 import docker
 
+from core.policy.action_signals import classify_sandbox_command
+from core.policy.enforcer import PolicyDenied, enforce
 from database import get_async_session
 from logger import get_logger
 from model.sandbox.containers import SandboxContainer
@@ -25,10 +27,10 @@ logger = get_logger(__name__)
 
 _COMMAND_CANCEL_JOIN_TIMEOUT_SECONDS = 3
 _COMMAND_TERMINATE_TIMEOUT_SECONDS = 5
-# 沙箱内命令执行的工作目录。改用 Strix 官方沙箱镜像后其 WORKDIR 为 /workspace
-# （用户 pentester）；XuanMu 原镜像为 /root。可用环境变量覆盖，便于两种镜像共存。
+# 沙箱内命令执行的工作目录。改用 ravenholt 官方沙箱镜像后其 WORKDIR 为 /workspace
+# （用户 pentester）；Ravenholt 原镜像为 /root。可用环境变量覆盖，便于两种镜像共存。
 _COMMAND_WORKDIR = os.environ.get("SANDBOX_COMMAND_WORKDIR", "/workspace")
-# 沙箱内命令的 PATH：Strix 镜像里 katana/httpx 在 ~/go/bin、semgrep 在 ~/.local/bin，
+# 沙箱内命令的 PATH：ravenholt 镜像里 katana/httpx 在 ~/go/bin、semgrep 在 ~/.local/bin，
 # 非登录 shell 的默认 PATH 找不到它们，必须显式注入。
 _SANDBOX_PATH = os.environ.get(
     "SANDBOX_COMMAND_PATH",
@@ -359,6 +361,19 @@ async def execute_sandbox_container_command(
     command = command.strip()
     if not command:
         raise ValueError("sandbox container command is required")
+
+    # 红线策略：沙箱内执行命令前先过判定（kill switch / 禁测动作 / 载荷上限 / 全局限速）；
+    # 并按命令特征做粗粒度分级 —— 命中明确的写/利用特征时升级为 write / exploit 类别
+    action, basis = classify_sandbox_command(command)
+    decision = await enforce(
+        action,
+        None,
+        payload_bytes=len(command.encode("utf-8")),
+        detail={"container_id": id, "match": basis},
+    )
+    if not decision.allowed:
+        raise PolicyDenied(decision)
+
     normalized_timeout_seconds = _normalize_command_timeout(timeout_seconds)
 
     async with get_async_session() as session:

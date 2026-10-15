@@ -25,11 +25,10 @@ from schema.work_project.findings import WorkProjectFindingSchema
 from schema.work_project.projects import (
     CreateWorkProjectRequest,
     UpdateWorkProjectMetadataRequest,
-    WorkProjectAgentSummarySchema,
     WorkProjectOwnerSchema,
     WorkProjectSchema,
     WorkProjectStatus,
-    WorkProjectTaskSchema,
+    WorkProjectType,
 )
 from schema.work_project.records import WorkProjectRecordSnapshotSchema, WorkProjectRecordsSchema
 from service.agent.sessions import cancel_sessions, delete_session, ensure_sdk_session_row, list_sessions
@@ -37,9 +36,15 @@ from service.common.pagination import Page, paginate_statement
 from service.sandbox.egress import sandbox_egress_label
 from service.sandbox.records import sandbox_container_schema
 from service.sandbox.types import SandboxContainerRecord
+from service.work_project.activity import ProjectActivity, derive_project_activity_in_tx
 from service.work_project.assets import apply_asset_request
+from service.work_project.source_uploads import purge_stored_sources
 from service.work_project.graph import get_work_project_graph_snapshot_in_tx, purge_edges_touching_asset
-from service.work_project.progress import derive_work_project_status
+from service.work_project.progress import (
+    calculate_work_project_progress,
+    derive_work_project_lifecycle_status,
+    derive_work_project_status,
+)
 
 
 logger = get_logger(__name__)
@@ -102,6 +107,35 @@ async def validate_work_project_metadata(
 async def work_project_exists(id: int) -> bool:
     async with get_async_session() as session:
         return await session.get(WorkProject, id) is not None
+
+
+async def work_project_type_for_project(project_id: int) -> WorkProjectType | None:
+    """项目类型（决定会话走黑盒渗透还是白盒源码审计）；项目不存在时返回 None。"""
+    async with get_async_session() as session:
+        project = await session.get(WorkProject, project_id)
+    return project.type if project is not None else None
+
+
+async def work_project_source_paths(project_id: int) -> list[str]:
+    """项目里 binary 资产声明的源码路径（按 id 有序、去重）。
+
+    源码审计会话据此把宿主目录挂载进沙箱；空白路径被忽略。
+    """
+    async with get_async_session() as session:
+        rows = (await session.exec(
+            select(WorkProjectAsset)
+            .where(
+                WorkProjectAsset.project_id == project_id,
+                WorkProjectAsset.type == WorkProjectAssetType.BINARY,
+            )
+            .order_by(WorkProjectAsset.id)
+        )).all()
+    paths: list[str] = []
+    for row in rows:
+        path = (row.path or "").strip()
+        if path and path not in paths:
+            paths.append(path)
+    return paths
 
 
 async def create_work_project(request: CreateWorkProjectRequest) -> WorkProjectSchema:
@@ -217,6 +251,15 @@ async def delete_work_project(id: int) -> bool:
         session_ids = list((await session.exec(
             select(AgentSessionMeta.session_id).where(AgentSessionMeta.project_id == id)
         )).all())
+        # 删项目会级联删资产行，先在事务里收集「这个项目上传出来的源码目录」。
+        # 只有平台上传区内的路径会被清理，用户手填的任意路径不动（见 purge_stored_sources）。
+        asset_rows = (await session.exec(
+            select(WorkProjectAsset).where(
+                WorkProjectAsset.project_id == id,
+                WorkProjectAsset.type == WorkProjectAssetType.BINARY,
+            )
+        )).all()
+        source_paths = [row.path or "" for row in asset_rows]
 
     for session_id in session_ids:
         await delete_session(
@@ -232,7 +275,8 @@ async def delete_work_project(id: int) -> bool:
         await session.delete(project)
         await session.commit()
 
-    logger.info("work project deleted: %s", id)
+    purged = await purge_stored_sources(source_paths)
+    logger.info("work project deleted: %s (purged source uploads=%s)", id, purged)
     return True
 
 
@@ -382,13 +426,22 @@ async def _project_schema(
     session,
     project: WorkProject,
 ) -> WorkProjectSchema:
+    activity = await _activity_for_project(session, project.id or 0)
     return WorkProjectSchema(**_project_schema_payload(
         project=project,
         owners=await _owners_for_project(session, project.id or 0),
         sandbox_containers=await _sandbox_containers_for_project(session, project.id or 0),
         assets=await _assets_for_project(session, project.id or 0),
         session_count=await _session_count_in_tx(session, project.id or 0),
+        activity=activity,
     ))
+
+
+async def _activity_for_project(session, project_id: int) -> ProjectActivity:
+    if project_id <= 0:
+        return ProjectActivity()
+    activities = await derive_project_activity_in_tx(session, [project_id])
+    return activities.get(project_id, ProjectActivity())
 
 
 async def _session_count_in_tx(session, project_id: int) -> int:
@@ -453,6 +506,7 @@ async def _query_work_projects(
         owners = await _owners_by_project(session, [project.id or 0 for project in projects])
         sandbox_containers = await _sandbox_containers_by_project(session, [project.id or 0 for project in projects])
         assets = await _assets_by_project(session, [project.id or 0 for project in projects])
+        activities = await derive_project_activity_in_tx(session, [project.id or 0 for project in projects])
 
         items = [
             WorkProjectSchema(**_project_schema_payload(
@@ -461,6 +515,7 @@ async def _query_work_projects(
                 sandbox_containers=sandbox_containers.get(project.id or 0, []),
                 assets=assets.get(project.id or 0, []),
                 session_count=counts.get(project.id or 0, 0),
+                activity=activities.get(project.id or 0, ProjectActivity()),
             ))
             for project in projects
         ]
@@ -473,7 +528,19 @@ def _project_schema_payload(
     sandbox_containers: list[SandboxContainerSchema],
     assets: list[WorkProjectAsset],
     session_count: int,
+    activity: ProjectActivity,
 ) -> dict[str, object]:
+    # 任务与 agent 摘要没有写入方，按真实事件日志重建；状态按会话运行终态判定
+    # （任务勾选比例只作为进度，不作收尾判据），进度收尾后记满，使展示与
+    # can_cancel / can_retry 等动作开关出自同一份真实状态。
+    tasks = activity.tasks
+    status = derive_work_project_lifecycle_status(
+        current_status=project.status,
+        has_sessions=activity.has_sessions,
+        any_session_running=activity.any_session_running,
+        all_sessions_finished_cleanly=activity.all_sessions_finished_cleanly,
+    )
+    progress = 100 if status == WorkProjectStatus.COMPLETED else calculate_work_project_progress(tasks)
     return {
         "id": project.id or 0,
         "name": project.name,
@@ -483,18 +550,14 @@ def _project_schema_payload(
         "sandbox_container_ids": [container.id for container in sandbox_containers],
         "sandbox_containers": sandbox_containers,
         "assets": assets,
-        "tasks": [WorkProjectTaskSchema.model_validate(item) for item in project.tasks],
-        "agent_summaries": [
-            WorkProjectAgentSummarySchema.model_validate(summary)
-            for summary in (project.agent_summaries or {}).values()
-            if isinstance(summary, dict)
-        ],
-        "progress": project.progress,
+        "tasks": tasks,
+        "agent_summaries": activity.agent_summaries,
+        "progress": progress,
         "session_count": session_count,
-        "status": project.status,
-        "can_create_session": can_create_work_project_session(project.status),
-        "can_cancel": can_cancel_work_project(project.status),
-        "can_retry": can_retry_work_project(project.status),
+        "status": status,
+        "can_create_session": can_create_work_project_session(status),
+        "can_cancel": can_cancel_work_project(status),
+        "can_retry": can_retry_work_project(status),
         "type": project.type,
         "created_at": project.created_at,
         "updated_at": project.updated_at,

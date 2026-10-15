@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Cookie, Depends, File, Form, Query, UploadFile, WebSocket
+from fastapi import APIRouter, Cookie, Depends, File, Form, Query, Request, UploadFile, WebSocket
 from starlette.responses import StreamingResponse
 
 from handler.sandbox.containers import (
     create_sandbox_container_handler,
     delete_sandbox_container_handler,
+    handle_caido_http_proxy,
+    handle_caido_root_redirect,
     handle_container_shell_stream,
     handle_copy_files,
     handle_delete_files,
@@ -356,4 +358,37 @@ async def container_novnc_http(
         path=path,
         token=token,
         cookie_token=sandbox_novnc_access,
+    )
+
+
+# Caido 抓包入口：路径前缀反代，不改写响应体。
+# 入口必须带结尾斜杠，否则 Caido 前端的相对路径会退化到上一层前缀。
+
+
+@router.api_route("/{id}/caido", methods=["GET"], include_in_schema=False)
+async def container_caido_entry(
+    id: int,
+    token: str = Query(default=""),
+):
+    return await handle_caido_root_redirect(id=id, token=token)
+
+
+@router.api_route(
+    "/{id}/caido/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
+)
+async def container_caido_http(
+    request: Request,
+    id: int,
+    path: str,
+    token: str = Query(default=""),
+    sandbox_caido_access: str = Cookie(default=""),
+):
+    return await handle_caido_http_proxy(
+        request=request,
+        id=id,
+        path=path,
+        token=token,
+        cookie_token=sandbox_caido_access,
     )

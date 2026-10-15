@@ -28,7 +28,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-class XuanMuModel(Model):
+class RavenholtModel(Model):
     def __init__(self, cfg: AgentConfig) -> None:
         self.model = cfg.model
         self._input_adapter = ModelInputAdapter()
@@ -109,5 +109,5 @@ class XuanMuModel(Model):
         await self._client.close()
 
 
-def build_openai_model(cfg: AgentConfig) -> XuanMuModel:
-    return XuanMuModel(cfg)
+def build_openai_model(cfg: AgentConfig) -> RavenholtModel:
+    return RavenholtModel(cfg)

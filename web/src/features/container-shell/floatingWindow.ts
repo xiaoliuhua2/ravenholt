@@ -15,8 +15,6 @@ export type WindowStateBase = Rect & {
   dockState: DockState;
 };
 
-export type DockSlot = "shell" | "novnc" | "filemanager";
-
 export type FlightState = {
   direction: "minimize" | "restore";
   title: string;
@@ -33,21 +31,13 @@ export type DragState = {
 };
 
 export type ResizeState = {
-  target: "shell" | "filemanager";
+  target: "filemanager";
   width: number;
   height: number;
   startX: number;
   startY: number;
 };
 
-export const DEFAULT_WINDOW_WIDTH = 760;
-export const DEFAULT_WINDOW_HEIGHT = 460;
-export const WINDOW_HEADER_HEIGHT = 42;
-export const WINDOW_BORDER_WIDTH = 1;
-export const NOVNC_SCREEN_WIDTH = 1280;
-export const NOVNC_SCREEN_HEIGHT = 720;
-export const NOVNC_DEFAULT_WIDTH = NOVNC_SCREEN_WIDTH + (WINDOW_BORDER_WIDTH * 2);
-export const NOVNC_DEFAULT_HEIGHT = NOVNC_SCREEN_HEIGHT + WINDOW_HEADER_HEIGHT + (WINDOW_BORDER_WIDTH * 2);
 export const MIN_WINDOW_WIDTH = 420;
 export const MIN_WINDOW_HEIGHT = 260;
 export const MAXIMIZED_MARGIN = 12;
@@ -80,19 +70,8 @@ export function clampWindowToViewport<T extends Rect>(rect: T): T {
   };
 }
 
-export function clamp(value: number, min: number, max: number) {
+function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
-}
-
-export function getInitialNoVNCRect(): Rect {
-  const width = Math.min(NOVNC_DEFAULT_WIDTH, Math.max(420, window.innerWidth - 24));
-  const height = Math.min(NOVNC_DEFAULT_HEIGHT, Math.max(300, window.innerHeight - 24));
-  return {
-    x: Math.max(12, Math.round((window.innerWidth - width) / 2)),
-    y: Math.max(72, Math.round((window.innerHeight - height) / 2)),
-    width,
-    height,
-  };
 }
 
 export function getInitialFileManagerRect(): Rect {
@@ -127,11 +106,10 @@ export function getMaximizedRect(): Rect {
 export function buildFlight(
   state: WindowStateBase,
   direction: FlightState["direction"],
-  slot: DockSlot,
   meta: string,
 ): FlightState {
   const rect = getWindowRect(state);
-  const dockRect = getDockRect(slot);
+  const dockRect = getDockRect();
   return {
     direction,
     title: state.title,
@@ -141,13 +119,11 @@ export function buildFlight(
   };
 }
 
-export function getDockRect(slot: DockSlot): Rect {
-  let yOffset = 0;
-  if (slot === "novnc") yOffset = DOCK_BUTTON_GAP;
-  else if (slot === "filemanager") yOffset = DOCK_BUTTON_GAP * 2;
+// 目前只有一个可停靠的悬浮窗（文件管理器），停靠位保留原有偏移以免视觉跳位。
+function getDockRect(): Rect {
   return {
     x: window.innerWidth - DOCK_BUTTON_RIGHT - DOCK_BUTTON_SIZE,
-    y: (window.innerHeight / 2) + yOffset,
+    y: (window.innerHeight / 2) + (DOCK_BUTTON_GAP * 2),
     width: DOCK_BUTTON_SIZE,
     height: DOCK_BUTTON_SIZE,
   };

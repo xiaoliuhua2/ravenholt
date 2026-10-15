@@ -5,35 +5,49 @@ editLink: true
 
 # Quick Start
 
-Z3r0's core philosophy is to pursue extreme simplicity as much as possible, so Z3r0's deployment also keeps the steps as simple as possible.
+Ravenholt's core philosophy is to pursue extreme simplicity as much as possible, so Ravenholt's deployment also keeps the steps as simple as possible.
 
 > :warning: Iteration Notice
 >
-> Z3r0 is currently in a phase of rapid iteration and may undergo major structural or contract changes. To ensure code quality, forward compatibility is not considered for now. When using it in production, proper version control is recommended, and historical data may require additional migration measures.
+> Ravenholt is currently in a phase of rapid iteration and may undergo major structural or contract changes. To ensure code quality, forward compatibility is not considered for now. When using it in production, proper version control is recommended, and historical data may require additional migration measures.
 
 ## Before You Start
 
 ### Basic Configuration
 
-Z3r0 requires only the following core content and infrastructure to run:
+Ravenholt requires only the following core content and infrastructure to run:
 
 | Item | Description |
 | --- | --- |
-| `.xuanmu/config.json` | System runtime configuration |
-| `.xuanmu/agents/*` | Agent configuration information |
-| `Sandbox` | Customized sandbox environment |
-| `Docker` | Sandbox environment runtime |
+| `.ravenholt/config.json` | System runtime configuration |
+| `.ravenholt/policy.yaml` | Red-line policy (**fail-closed**: missing or invalid will cause the platform to refuse to start) |
+| `Docker` | Runtime for the sandbox environment (penetration/audit execution depends on it) |
 | `PostgreSQL` | Persistent data storage |
+| `Sandbox` | Customized sandbox image `sandbox-runtime:latest` |
 
 Get the latest code from GitHub:
 
 ```bash
-git clone https://github.com/yv1ing/Z3r0.git && cd Z3r0
+git clone https://github.com/xiaoliuhua2/ravenholt.git && cd ravenholt
 ```
+
+### One-Click Deployment (Recommended)
+
+The project ships with a one-click deployment script covering "environment check → system dependencies → configuration initialization → database → Python dependencies → frontend build → sandbox image → self-check":
+
+```bash
+# Check only, without modifying any files
+bash setup.sh --check
+
+# Check + install + deploy
+bash setup.sh
+```
+
+The script generates `.ravenholt/config.json` (a random `encrypt_key`, database password, and administrator password — **the administrator password is printed only once, so save it immediately**) and `policy.yaml`. For details, see the [installation section of the README](https://github.com/xiaoliuhua2/ravenholt#五安装部署).
 
 ### Build the Sandbox
 
-Z3r0's capabilities are deeply tied to the sandbox environment, so you need to build the corresponding sandbox image:
+Ravenholt's capabilities are deeply tied to the sandbox environment, so you need to build the corresponding sandbox image:
 
 > :warning: Architecture Limitation
 >
@@ -43,7 +57,7 @@ Z3r0's capabilities are deeply tied to the sandbox environment, so you need to b
 cd sandbox && bash build.sh
 ```
 
-After a short wait, you will get `sandbox-runtime:latest`. On first use, you also need to add the corresponding image record to the system.
+After a short wait, you will get `sandbox-runtime:latest`. The runtime provisions the image record automatically per session, so there is **no need** to add it manually in the system.
 
 ## Production Environment
 
@@ -52,21 +66,24 @@ When deploying to production, follow these steps one by one.
 ### Prepare Configuration
 
 ```bash
-cp .xuanmu/config.json.example .xuanmu/config.json
+cp .ravenholt/config.json.example .ravenholt/config.json
+cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
 ```
 
-Edit the system runtime configuration in `.xuanmu/config.json`, mainly updating the following items:
+Edit the system runtime configuration in `.ravenholt/config.json`, mainly updating the following items:
 
 | Item | Description |
 | --- | --- |
 | `system.encrypt_key` | System data encryption key. This must be changed. A random string of at least 32 bytes is recommended. |
-| `system.bootstrap_admin` | Default system administrator information. This must be changed. A strong password is recommended. |
+| `system.bootstrap_admin` | Default system administrator information. This must be changed; a strong password is recommended (the email is used for login). |
 | `database` | System database connection information. When deploying with Docker Compose, set `host` to the corresponding service name. |
 | `agents.*` | LLM API configuration for each agent. Different providers and models can be configured separately as needed. |
 
+> `.ravenholt/policy.yaml` is the **red-line policy**, and the platform is fail-closed toward it: a missing file, a YAML syntax error, or a validation failure will all **refuse to start**; the `enabled` flags of the `rate_limit`, `sandbox`, `kill_switch`, and `audit` sections must all be `true`.
+
 ### Start Containers
 
-Once everything is ready, start Z3r0 with one command:
+Once everything is ready, start Ravenholt with one command:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
@@ -162,20 +179,24 @@ docker compose -f docker-compose.dev.yml up -d
 
 Visit `127.0.0.1:5433`, log in with the configured pgAdmin username and password, enter the PostgreSQL connection information, and connect to the service.
 
-Create the `z3r0` database. The database name must match the value configured in `config.json`.
+Create the `ravenholt` database. The database name must match the value configured in `config.json`.
 
 ### Start the Project
 
-Create `.xuanmu/config.json` and fill in the relevant information based on the example in `.xuanmu/config.json.example`.
+Create `.ravenholt/config.json` and `.ravenholt/policy.yaml`, filling in the relevant information based on the corresponding `.example` files.
 
 Start the project with the following command:
 
 ```bash
 python main.py
+# Or run as a background daemon:
+bash serve.sh start
 ```
 
 By default, the service listens on `0.0.0.0:8000`. Visit `http://127.0.0.1:8000/` to access it.
 
+> Tip: the frontend pages are **fixed at build time** — after changing `web/src` you must re-run `cd web && npm run build` and then hard-refresh the browser.
+
 ## Next Step
 
-Follow the instructions in [First Use](./first-use) to officially start working with Z3r0.
+Follow the instructions in [First Use](./first-use) to officially start working with Ravenholt.

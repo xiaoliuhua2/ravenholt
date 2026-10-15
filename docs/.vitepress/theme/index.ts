@@ -3,7 +3,7 @@ import DefaultTheme from 'vitepress/theme'
 import mediumZoom from 'medium-zoom'
 import type { Zoom } from 'medium-zoom'
 import MermaidDiagram from './MermaidDiagram.vue'
-import './styles/z3r0-theme.css'
+import './styles/ravenholt-theme.css'
 
 let zoom: Zoom | undefined
 

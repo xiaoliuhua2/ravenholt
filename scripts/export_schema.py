@@ -6,6 +6,7 @@ from typing import Any
 
 ROOT_PATH = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = ROOT_PATH / "web" / "openapi.json"
+ROOT_OUTPUT_PATH = ROOT_PATH / "openapi.json"
 FRONTEND_CONTRACT_CONSTANTS_PATH = ROOT_PATH / "web" / "src" / "shared" / "api" / "generated" / "constants.ts"
 
 if str(ROOT_PATH) not in sys.path:
@@ -21,11 +22,12 @@ def export_openapi_schema() -> Path:
     _patch_validation_contracts(schema)
     _patch_error_contracts(schema)
     _register_extra_schemas(schema)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(
-        json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
+    payload = json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True)
+    # 两处都写、内容一致：setup.sh 会用根目录那份，并把 web/openapi.json 指向它，
+    # 若只写 web/ 侧，根目录会长期停留在旧版本。
+    for target in (OUTPUT_PATH, ROOT_OUTPUT_PATH):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(payload, encoding="utf-8")
     export_frontend_contract_constants(schema)
     return OUTPUT_PATH
 
@@ -62,6 +64,8 @@ def export_frontend_contract_constants(schema: dict[str, Any]) -> Path:
         f"export const SANDBOX_CONTAINER_EGRESS_MODE = {_enum_object_ts(schema, 'SandboxContainerEgressMode')} as const;\n"
         f"export const SANDBOX_CONTAINER_STATUSES = {_enum_values_ts(schema, 'SandboxContainerStatus')} as const;\n"
         f"export const SANDBOX_CONTAINER_STATUS = {_enum_object_ts(schema, 'SandboxContainerStatus')} as const;\n"
+        f"export const SANDBOX_CONTAINER_SOURCES = {_enum_values_ts(schema, 'SandboxContainerSource')} as const;\n"
+        f"export const SANDBOX_CONTAINER_SOURCE = {_enum_object_ts(schema, 'SandboxContainerSource')} as const;\n"
         f"export const SESSION_TYPES = {_enum_values_ts(schema, 'SessionType')} as const;\n\n"
         f"export const ACCESS_TOKEN_HEADER = {json.dumps(_get_access_token_header())};\n",
         encoding="utf-8",

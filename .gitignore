@@ -14,11 +14,14 @@ cache
 node_modules
 
 *.log
-.xuanmu/app.log
-.xuanmu/app.log.*
-.xuanmu/tiktoken_cache
-.xuanmu/config.json
-.xuanmu/outputs/
+/logs/
+.ravenholt/app.log
+.ravenholt/app.log.*
+.ravenholt/tiktoken_cache
+.ravenholt/config.json
+.ravenholt/policy.yaml
+.ravenholt/skill_routes.yaml
+.ravenholt/outputs/
 
 web/node_modules
 web/dist

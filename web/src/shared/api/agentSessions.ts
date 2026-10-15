@@ -1,15 +1,13 @@
 import { apiDelete, apiGet, apiPatch, apiPost, buildAuthenticatedWebSocketUrl } from "./client";
 import type {
-  AgentTurnRequest,
   CancelAllAgentSessionTasksResponse,
-  CreateAgentSessionTurnResponse,
+  CreateAgentSessionStrixTurnResponse,
   DeleteAgentSessionResponse,
   InterruptAgentSessionResponse,
   ListAgentEventsResponse,
   ListAgentSessionsResponse,
-  SubmitAgentSessionTurnResponse,
-  UpdateAgentSessionSandboxContainerRequest,
-  UpdateAgentSessionSandboxContainerResponse,
+  StrixTurnRequest,
+  SubmitAgentSessionStrixTurnResponse,
   UpdateAgentSessionTitleRequest,
   UpdateAgentSessionTitleResponse,
 } from "./types";
@@ -20,13 +18,17 @@ export function listAgentSessions(limit = 100) {
   return apiGet<ListAgentSessionsResponse>(`${AGENT_SESSIONS_PATH}?limit=${limit}`);
 }
 
-export function createAgentSessionTurn(payload: AgentTurnRequest) {
-  return apiPost<CreateAgentSessionTurnResponse>(`${AGENT_SESSIONS_PATH}/turns`, payload);
+// strix 轨道：root 在运行时经 create_agent 动态派生子代理（主线引擎）
+export function createAgentSessionStrixTurn(payload: StrixTurnRequest) {
+  return apiPost<CreateAgentSessionStrixTurnResponse>(
+    `${AGENT_SESSIONS_PATH}/strix-turns`,
+    payload,
+  );
 }
 
-export function submitAgentSessionTurn(sessionId: string, payload: AgentTurnRequest) {
-  return apiPost<SubmitAgentSessionTurnResponse>(
-    `${AGENT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/turns`,
+export function submitAgentSessionStrixTurn(sessionId: string, payload: StrixTurnRequest) {
+  return apiPost<SubmitAgentSessionStrixTurnResponse>(
+    `${AGENT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/strix-turn`,
     payload,
   );
 }
@@ -59,16 +61,6 @@ export function listAgentEvents(
 export function updateAgentSessionTitle(sessionId: string, payload: UpdateAgentSessionTitleRequest) {
   return apiPatch<UpdateAgentSessionTitleResponse>(
     `${AGENT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/title`,
-    payload,
-  );
-}
-
-export function updateAgentSessionSandboxContainer(
-  sessionId: string,
-  payload: UpdateAgentSessionSandboxContainerRequest,
-) {
-  return apiPatch<UpdateAgentSessionSandboxContainerResponse>(
-    `${AGENT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/sandbox-container`,
     payload,
   );
 }

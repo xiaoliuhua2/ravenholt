@@ -29,10 +29,14 @@ async def cancel_ws_task(task: asyncio.Task | None) -> None:
         pass
 
 
-async def close_ws_silently(websocket: WebSocket, code: int = ws_status.WS_1011_INTERNAL_ERROR) -> None:
+async def close_ws_silently(
+    websocket: WebSocket,
+    code: int = ws_status.WS_1011_INTERNAL_ERROR,
+    reason: str = "",
+) -> None:
     """Best-effort WebSocket close that never raises."""
     try:
-        await websocket.close(code=code)
+        await websocket.close(code=code, reason=reason)
     except Exception:
         pass
 

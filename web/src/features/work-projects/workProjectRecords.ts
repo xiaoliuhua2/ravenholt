@@ -23,7 +23,7 @@ export const EMPTY_WORK_PROJECT_RECORDS: WorkProjectRecords = {
 
 export async function loadWorkProjectRecordSnapshot(projectId: number): Promise<WorkProjectRecordSnapshot> {
   const response = await getWorkProjectRecordSnapshot(projectId);
-  if (!response.data) throw new Error("Work project snapshot is empty");
+  if (!response.data) throw new Error("工作项目快照为空");
   return response.data;
 }
 

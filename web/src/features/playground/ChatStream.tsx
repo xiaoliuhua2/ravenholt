@@ -1,6 +1,11 @@
-import { AtSign, Sparkles } from "lucide-react";
-import { useMemo, useState, type RefObject } from "react";
-import type { AgentImageInputPart, AgentInfo, AgentInputPart } from "../../shared/api/types";
+import { Button, Toast } from "@douyinfe/semi-ui";
+import { AtSign, Box, ShieldAlert, Sparkles } from "lucide-react";
+import { useCallback, useMemo, useState, type RefObject } from "react";
+import { showApiError } from "../../shared/api/feedback";
+import { approvePolicyConfirmation, rejectPolicyConfirmation } from "../../shared/api/policyConfirmations";
+import type { AgentImageInputPart, AgentInfo, AgentInputPart, DecidePolicyConfirmationRequest } from "../../shared/api/types";
+import { useAuth } from "../../shared/auth/AuthProvider";
+import { cx } from "../../shared/lib/className";
 import { formatDateTime } from "../../shared/lib/date";
 import { ImagePreview, imageDataUrl, type ImagePreviewState } from "./ImagePreview";
 import type { AgentTranscript, ChatNode } from "./chatState";
@@ -19,7 +24,9 @@ type ChatStreamProps = {
 
 type RenderedChatNode =
   | { kind: "user"; node: Extract<ChatNode, { kind: "user" }>; targetName: string }
-  | { kind: "agent"; node: Extract<ChatNode, { kind: "agent" }>; agentName: string; live: boolean };
+  | { kind: "agent"; node: Extract<ChatNode, { kind: "agent" }>; agentName: string; live: boolean }
+  | { kind: "sandbox"; node: Extract<ChatNode, { kind: "sandbox" }> }
+  | { kind: "approval"; node: Extract<ChatNode, { kind: "approval" }> };
 
 export function ChatStream({
   nodes,
@@ -64,6 +71,12 @@ export function ChatStream({
             />
           );
         }
+        if (item.kind === "sandbox") {
+          return <SandboxNotice key={item.node.id} node={item.node} />;
+        }
+        if (item.kind === "approval") {
+          return <ApprovalNotice key={item.node.id} node={item.node} />;
+        }
         return (
           <AgentBlock
             key={item.node.id}
@@ -91,17 +104,102 @@ export function ChatStream({
   );
 }
 
+function SandboxNotice({ node }: { node: Extract<ChatNode, { kind: "sandbox" }> }) {
+  const label = node.phase === "ready"
+    ? (node.containerName ? `沙箱已就绪 · ${node.containerName}` : "沙箱已就绪")
+    : (node.message || "正在准备沙箱环境");
+  return (
+    <div className="chat-sandbox-notice">
+      <Box size={14} />
+      <span>{label}</span>
+      {node.containerHash ? <small>{node.containerHash.slice(0, 12)}</small> : null}
+    </div>
+  );
+}
+
+const APPROVAL_PHASE_LABEL: Record<string, string> = {
+  pending: "待确认",
+  approved: "已批准",
+  rejected: "已拒绝",
+  timeout: "已超时",
+  cancelled: "已作废",
+};
+
+/** 风险审批卡片：命中未放行的审批项时出现，用户可直接在对话流里决定是否执行。
+ *
+ * 阶段变化由后端推同一条确认的新事件驱动（时间线 key 为 `approval:<id>`），
+ * 因此这里不做本地乐观更新，只负责发决策与提示。
+ * 审批接口仅管理员可调，非管理员只读提示（避免点了才吃 403）。 */
+function ApprovalNotice({ node }: { node: Extract<ChatNode, { kind: "approval" }> }) {
+  const { user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const pending = node.phase === "pending";
+  const canDecide = user?.role === "admin";
+
+  const decide = useCallback(
+    async (approve: boolean) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const payload: DecidePolicyConfirmationRequest = { mode: "once", note: "" };
+        if (approve) {
+          await approvePolicyConfirmation(node.confirmationId, payload);
+          Toast.success("已批准，本次动作将继续执行");
+        } else {
+          await rejectPolicyConfirmation(node.confirmationId, payload);
+          Toast.success("已拒绝，本次动作不会执行");
+        }
+      } catch (error) {
+        showApiError(error);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, node.confirmationId],
+  );
+
+  return (
+    <div className={cx("chat-approval-card", `is-${node.phase}`)}>
+      <div className="chat-approval-head">
+        <ShieldAlert size={14} />
+        <span className="chat-approval-title">
+          {pending ? "需要你确认才执行" : APPROVAL_PHASE_LABEL[node.phase] ?? node.phase}
+        </span>
+        {node.label ? <span className="chat-approval-tag">{node.label}</span> : null}
+      </div>
+      <div className="chat-approval-body">
+        <code>{node.action}</code>
+        {node.target ? <span className="chat-approval-target">{node.target}</span> : null}
+      </div>
+      {node.message ? <p className="chat-approval-message">{node.message}</p> : null}
+      {pending && canDecide ? (
+        <div className="chat-approval-actions">
+          <Button size="small" type="primary" theme="solid" loading={busy} onClick={() => void decide(true)}>
+            批准执行
+          </Button>
+          <Button size="small" type="tertiary" theme="borderless" disabled={busy} onClick={() => void decide(false)}>
+            拒绝
+          </Button>
+        </div>
+      ) : null}
+      {pending && !canDecide ? (
+        <p className="chat-approval-message">该动作需要管理员在「策略审批」中确认后才会执行。</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatEmptyState() {
   return (
     <div className="chat-empty">
       <div className="chat-empty-mark">
         <Sparkles size={28} />
       </div>
-      <h2>Start a new conversation</h2>
+      <h2>开始新的对话</h2>
       <p>
-        Ask the security operations agent anything
+        向安全运营智能体提出任何问题
         <br />
-        - penetration tests, code audits, or threat triage.
+        —— 渗透测试、代码审计或威胁研判。
       </p>
     </div>
   );
@@ -120,6 +218,14 @@ function buildRenderedChatNodes(
     if (node.kind === "user") {
       lastTargetName = resolveAgentName(agentNameByCode, node.targetAgentCode);
       rendered.push({ kind: "user", node, targetName: lastTargetName });
+      return;
+    }
+    if (node.kind === "sandbox") {
+      rendered.push({ kind: "sandbox", node });
+      return;
+    }
+    if (node.kind === "approval") {
+      rendered.push({ kind: "approval", node });
       return;
     }
 
@@ -183,7 +289,7 @@ function UserBubble({
                   <img
                     className="user-bubble-image"
                     src={imageDataUrl(part)}
-                    alt="User attachment"
+                    alt="用户附件"
                   />
                 </button>
               ))}

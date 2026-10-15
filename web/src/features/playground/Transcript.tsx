@@ -1,11 +1,13 @@
-import { AlertOctagon, Brain, ChevronDown, ChevronRight } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Toast } from "@douyinfe/semi-ui";
+import { AlertOctagon, Brain, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   AgentTranscript,
   ErrorItem,
   ThinkingItem,
 } from "./chatState";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { renderThinkingInline } from "./thinkingInline";
 import { normalizeMarkdownForRender } from "./markdown";
 import type { SubagentSelection } from "./subagentView";
 import { cx } from "../../shared/lib/className";
@@ -15,6 +17,8 @@ import {
   activeThinkingItemId,
   buildTranscriptSegments,
   isTranscriptEmpty,
+  thinkingSegmentDuration,
+  thinkingSegmentSummary,
   type ContentBlock,
   type TranscriptRenderSegment,
 } from "./transcriptView";
@@ -167,22 +171,16 @@ function ThinkingGroup({
   activeItemId: string;
   live: boolean;
 }) {
-  const [open, setOpen] = useState(active);
-  const wasActive = useRef(active);
+  // 默认折叠：思考链平时只占一行摘要，用户点击后才展开全文。
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const bodyRef = useRef<HTMLPreElement | null>(null);
   const text = useMemo(
     () => items.map((item) => item.text.trim()).filter(Boolean).join("\n\n"),
     [items],
   );
-
-  useEffect(() => {
-    if (active) {
-      setOpen(true);
-    } else if (wasActive.current) {
-      setOpen(false);
-    }
-    wasActive.current = active;
-  }, [active]);
+  const duration = useMemo(() => thinkingSegmentDuration(items), [items]);
+  const summary = useMemo(() => thinkingSegmentSummary(items), [items]);
 
   useEffect(() => {
     if (open && bodyRef.current) {
@@ -190,20 +188,51 @@ function ThinkingGroup({
     }
   }, [text, open]);
 
+  const copyText = useCallback(async () => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      Toast.error("复制失败，请手动选择文本");
+    }
+  }, [text]);
+
   return (
     <div className={cx("thinking-block", live && "transcript-panel-live", active && "thinking-block-active")}>
       <PanelHeader
         icon={<Brain size={13} />}
-        title={active ? "Thinking..." : "Thought"}
+        title={active ? "思考中" : "思考"}
         count={items.length > 1 ? items.length : undefined}
         open={open}
         onToggle={() => setOpen((next) => !next)}
+        meta={
+          <>
+            {duration ? <span className="transcript-panel-meta">{duration}</span> : null}
+            {text ? (
+              <button
+                type="button"
+                className={cx("transcript-panel-copy", copied && "is-copied")}
+                title="复制本段思考"
+                aria-label="复制本段思考"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void copyText();
+                }}
+              >
+                <Copy size={11} />
+              </button>
+            ) : null}
+          </>
+        }
       />
+      {!open && summary ? <p className="thinking-summary">{summary}</p> : null}
       {open ? (
         <div className="thinking-body">
           <div className="thinking-fade thinking-fade-top" />
           <pre ref={bodyRef} className="thinking-text">
-            {text || (activeItemId ? " " : "(empty)")}
+            {text ? renderThinkingInline(text) : (activeItemId ? " " : "（暂无思考内容）")}
           </pre>
           <div className="thinking-fade thinking-fade-bottom" />
         </div>
@@ -218,22 +247,35 @@ function PanelHeader({
   count,
   open,
   onToggle,
+  meta,
 }: {
   icon: ReactNode;
   title: string;
   count?: number;
   open: boolean;
   onToggle: () => void;
+  meta?: ReactNode;
 }) {
   return (
-    <button type="button" className="transcript-panel-header" onClick={onToggle}>
+    <div
+      className="transcript-panel-header"
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onToggle();
+      }}
+    >
       {icon}
       <span>{title}</span>
       {count ? <span className="transcript-panel-count">{count}</span> : null}
+      {meta ? <span className="transcript-panel-meta-group">{meta}</span> : null}
       <span className="transcript-panel-toggle">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </span>
-    </button>
+    </div>
   );
 }
 

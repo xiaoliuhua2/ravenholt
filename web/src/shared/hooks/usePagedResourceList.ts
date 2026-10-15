@@ -24,6 +24,8 @@ const DEFAULT_PAGE_SIZE = 10;
 export function usePagedResourceList<Item>({ pageSize = DEFAULT_PAGE_SIZE, query }: UsePagedResourceListOptions<Item>) {
   const [items, setItems] = useState<Item[]>([]);
   const [page, setPage] = useState(1);
+  // 每页条数可被调用方（下拉选择）改；默认沿用入参。
+  const [size, setSize] = useState(pageSize);
   const [keyword, setKeyword] = useState("");
   const [activeKeyword, setActiveKeyword] = useState("");
   const [total, setTotal] = useState(0);
@@ -41,7 +43,7 @@ export function usePagedResourceList<Item>({ pageSize = DEFAULT_PAGE_SIZE, query
     requestIdRef.current = requestId;
     setLoading(true);
     try {
-      const response = await query({ page, size: pageSize, keyword: activeKeyword });
+      const response = await query({ page, size, keyword: activeKeyword });
       if (!mountedRef.current || requestIdRef.current !== requestId) return;
       const nextItems = response.data?.items || [];
       if (nextItems.length === 0 && page > 1) {
@@ -59,7 +61,7 @@ export function usePagedResourceList<Item>({ pageSize = DEFAULT_PAGE_SIZE, query
         setLoading(false);
       }
     }
-  }, [activeKeyword, page, pageSize, query]);
+  }, [activeKeyword, page, query, size]);
 
   useEffect(() => {
     void loadItems();
@@ -78,21 +80,48 @@ export function usePagedResourceList<Item>({ pageSize = DEFAULT_PAGE_SIZE, query
     setPage((current) => current + 1);
   }, []);
 
+  // 筛选条件变化时由调用方主动归位到第 1 页，避免停在越界页码上。
+  const resetPage = useCallback(() => {
+    setPage(1);
+  }, []);
+
+  // 改每页条数后回到第 1 页，避免停在越界页码上。
+  const changePageSize = useCallback((nextSize: number) => {
+    if (!Number.isFinite(nextSize) || nextSize < 1) return;
+    setSize(Math.floor(nextSize));
+    setPage(1);
+  }, []);
+
+  // 跳到指定页（页码越界时夹到 [1, 总页数]）。
+  const jumpToPage = useCallback(
+    (target: number) => {
+      if (!Number.isFinite(target)) return;
+      const pageCount = Math.max(1, Math.ceil(total / size));
+      setPage(Math.min(Math.max(1, Math.floor(target)), pageCount));
+    },
+    [size, total],
+  );
+
   return {
     items,
     page,
-    pageSize,
+    pageSize: size,
+    pageCount: Math.max(1, Math.ceil(total / size)),
     keyword,
+    activeKeyword,
     total,
-    rangeStart: total === 0 ? 0 : (page - 1) * pageSize + 1,
-    rangeEnd: Math.min(page * pageSize, total),
+    rangeStart: total === 0 ? 0 : (page - 1) * size + 1,
+    rangeEnd: Math.min(page * size, total),
     loading,
     loadItems,
     setKeyword,
     search,
+    resetPage,
+    changePageSize,
+    jumpToPage,
     previous,
     next,
     canGoBack: page > 1,
-    canGoNext: page * pageSize < total,
+    canGoNext: page * size < total,
   };
 }

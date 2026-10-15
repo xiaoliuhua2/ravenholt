@@ -1,229 +1,391 @@
-<p align="center">
-  <strong>English</strong> ·
-  <a href="README_zh.md">中文</a>
-</p>
+<div align="center">
 
-<p align="center">
-  <strong>Open-source red-team multi-agent collaboration platform with Blackboard-style shared reasoning graph.</strong>
-</p>
+<img src="docs/public/ravenholt-logo.png" alt="Ravenholt" width="120" />
 
-<p align="center">
-  <a href="#overview">Overview</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#blackboard">Blackboard</a> ·
-  <a href="#quick-start">Quick Start</a>
-</p>
+# Ravenholt · 红队智能体协作平台
+
+> 面向**授权**渗透测试、漏洞挖掘、代码审计与安全研究的开源红队多智能体协作平台
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](./CHANGELOG.md)
+[![Docs](https://img.shields.io/badge/docs-online-2ea44f.svg)](https://xiaoliuhua2.github.io/ravenholt/)
+
+**中文** · [English](./README.en.md)
+
+</div>
+
+Ravenholt 以 [strix](https://github.com/usestrix/strix) 作为渗透执行引擎（已 vendor 进本仓库，见 `.strix-vendor.json`），并在其上叠加平台控制面、策略治理层与证据面：多智能体编排、Docker 沙箱执行、红线策略审批、审计日志、WorkProject 证据沉淀与可回放时间线。
+
+- 许可：MIT（见 [LICENSE](./LICENSE)）
+- 变更历史：[CHANGELOG.md](./CHANGELOG.md)
+- 完整文档：<https://xiaoliuhua2.github.io/ravenholt/>
+- 仓库：<https://github.com/xiaoliuhua2/ravenholt>
 
 ---
 
-> **Security Notice**
+> ### 安全声明
 >
-> This project is intended only for authorized security testing, risk assessment, and academic research.
-> Unauthorized use against any system, network, or data is prohibited.
-> **The authors are not responsible for any misuse or damages.**
+> 本项目仅限在**合法且获得明确授权**的范围内用于安全测试、风险评估、代码审计与研究。
+> 不授予测试、扫描、访问或影响任何第三方系统、网络、服务、账户或数据的权限。
+> **作者不对任何误用及由此造成的后果负责。**
 
 ---
 
-## Overview
+## 目录
 
-XuanMu (玄幕) is a **control-plane-oriented red-team multi-agent platform** built for authorized penetration testing, vulnerability discovery, code auditing, and security research.
-
-It combines:
-- A **React operator console** (Playground + project workspace)
-- A **FastAPI control plane** (REST + WebSocket)
-- A **session-based multi-agent runtime** (lead + specialist agents)
-- A **structured evidence plane** (assets, findings, graph, attack paths)
-- A **Blackboard shared reasoning graph** (Cairn-inspired Fact-Intent coordination)
-
-The design goal is to make agent-assisted security work **operationally bounded and fully reviewable**. Conversations are not the only source of truth — project scope, assets, findings, relationship graphs, attack paths, replayable timelines, and **the agent's reasoning process** are all persisted as explicit application data.
+1. [项目简介](#一项目简介)
+2. [功能特性](#二功能特性)
+3. [技术架构](#三技术架构)
+4. [环境要求](#四环境要求)
+5. [安装部署](#五安装部署)
+6. [配置说明](#六配置说明)
+7. [启动与运维](#七启动与运维)
+8. [快速上手](#八快速上手)
+9. [目录结构](#九目录结构)
+10. [常见问题](#十常见问题)
+11. [许可](#十一许可)
 
 ---
 
-## Architecture
+## 一、项目简介
+
+Ravenholt 是一个**以控制平面为中心**的红队多智能体平台：把 agent 辅助的安全工作做成**可管控、可复核**的工程流程——会话不是唯一的事实来源，项目范围、资产、发现、关系图、攻击路径、可回放时间线，以及 agent 的推理过程，都会作为显式数据被持久化。
+
+三块拼在一起构成平台：
+
+| 组成 | 作用 |
+| --- | --- |
+| **strix 运行时**（vendor） | 渗透/审计执行引擎：agent 编排、技能库（skills）、沙箱工具链、Caido 抓包、报告 |
+| **平台控制面**（本仓库） | 会话/项目/用户/主机/系统配置的统一入口，REST + WebSocket，权限与资源边界 |
+| **策略治理与证据面** | 红线策略（fail-closed）、动作审批、审计日志、WorkProject 证据、可回放时间线 |
+
+![Ravenholt 落地页](docs/public/images/landing.png)
+
+![操作台](docs/public/images/playground.png)
+
+![工作项目](docs/public/images/work-projects.png)
+
+---
+
+## 二、功能特性
+
+- **操作台（Playground）**：多智能体会话、流式对话、子智能体面板、思考过程内联展示、可回放时间线。
+- **沙箱执行面**：基于 Docker 的定制沙箱容器，提供终端、文件管理、noVNC 远程画面与 Caido 抓包/重放；容器按会话自动 provision。
+- **工作项目（WorkProject）**：项目元数据、负责人、范围资产、会话、记录、关系图与攻击路径；发现携带证据与影响。
+- **源码审计通道（白盒）**：上传源码包后可走白盒分轨，技能路由与提示词随之切换。
+- **出口代理**：受控网络出口的配置与管理（代理出口链路）。
+- **策略审批**：红线策略判定动作是否放行；高风险动作进入审批队列，由管理员批准/拒绝。
+- **审计日志**：关键动作与事件的审计追踪（动作、判定、拦截原因等）。
+- **系统用户 / 系统配置**：账号与角色权限、运行参数与集成配置。
+- **可回放时间线**：所有来源按时间归并为唯一顺序视图，支持事后逐条复核。
+
+---
+
+## 三、技术架构
 
 ```
-                     ┌─────────────────────────────────────┐
-                     │         React Operator Console       │
-                     │    Playground  ·  Project Workspace  │
-                     └──────────────┬──────────────────────┘
-                                    │ REST + WebSocket
-                     ┌──────────────▼──────────────────────┐
-                     │        FastAPI Control Plane         │
-                     │    System · Users · Agents · Projects │
-                     └──────────────┬──────────────────────┘
-                                    │
-         ┌──────────────────────────┼──────────────────────────┐
-         │                          │                          │
-   ┌─────▼──────┐           ┌───────▼───────┐          ┌──────▼──────┐
-   │ Agent      │           │  Blackboard   │          │  Evidence   │
-   │ Runtime    │◄──────────►  Reasoning    │          │  Plane      │
-   │ Session +  │   read /  │  Graph        │          │  Assets     │
-   │ Delegation │   write   │  Fact/Intent  │          │  Findings   │
-   │ CSO + 5    │           │  /Hint        │          │  GraphEdge  │
-   │ Specialists│           │               │          │  AttackPath │
-   └─────┬──────┘           └───────────────┘          └──────┬──────┘
-         │                                                    │
-         └──────────────────────┬─────────────────────────────┘
-                                │
-                     ┌──────────▼──────────┐
-                     │      PostgreSQL     │
-                     └─────────────────────┘
+┌──────────────────────────────────────────────┐
+│  前端控制台（React 19 + Semi UI + Vite）      │
+│  Landing · Login · 操作台 · 工作项目 · 审计…  │
+└───────────────────────┬──────────────────────┘
+                        │ REST + WebSocket
+┌───────────────────────▼──────────────────────┐
+│  控制平面（FastAPI，/api）                    │
+│  用户 · 会话 · 项目 · 策略 · 审计 · 配置       │
+└───────┬───────────────────────┬──────────────┘
+        │                       │
+┌───────▼────────┐      ┌───────▼──────────────┐
+│ 会话运行时      │      │ 证据面（WorkProject） │
+│ strix 引擎      │      │ 资产/发现/关系图/路径 │
+│ 动态派生 agent  │      │ 证据链 + 验证器       │
+└───────┬────────┘      └──────────────────────┘
+        │
+┌───────▼──────────────────────────────────────┐
+│  沙箱执行面（Docker）                         │
+│  sandbox-runtime 镜像 · Kali 工具链 · Caido   │
+└───────┬──────────────────────────────────────┘
+        │
+┌───────▼──────────┐
+│  PostgreSQL 16   │
+└──────────────────┘
 ```
 
-### Agent Team
+**技术栈**
 
-| Code | Name | Role |
-|------|------|------|
-| `cso` | XuanMu (玄幕) | Security Lead — task decomposition, coordination, reasoning |
-| `cae` | ShouZhuo (守拙) | Code Audit Engineer |
-| `cie` | GuanXing (观星) | Intelligence & Recon Engineer |
-| `cpe` | PoJun (破军) | Penetration Testing Engineer |
-| `cre` | SuYuan (溯源) | Reverse Analysis Engineer |
-| `cce` | PoZhen (破阵) | Cryptography Engineer |
-
-### Execution
-
-Commands run directly on the host via Python asyncio subprocess — **no Docker required**. The execution layer supports:
-
-- Synchronous command execution with timeout
-- Background async job management with notification on completion
-- Output file reading by line range
-- Skill system (reusable tool definitions in `.xuanmu/agents/skills/`)
-- Knowledge base (structured methodology documents)
+| 层 | 技术 |
+| --- | --- |
+| 前端 | React 19、TypeScript、Vite 8、Semi UI、CodeMirror、xterm、Cytoscape、Mermaid |
+| 后端 | Python 3.13、FastAPI、SQLModel/SQLAlchemy、asyncpg、Uvicorn、WebSocket |
+| 执行引擎 | strix（vendor）、Docker 沙箱、Caido、Kali 工具链 |
+| 数据库 | PostgreSQL 16 |
+| 部署 | venv 直跑 / Docker Compose |
 
 ---
 
-## Blackboard
+## 四、环境要求
 
-The Blackboard is a **Cairn-inspired shared reasoning graph** that enables Stigmergy — agents coordinate through a shared board instead of talking over each other.
-
-### Node Types
-
-| Type | Meaning | Lifecycle |
-|------|---------|-----------|
-| **Fact** | A confirmed, objective finding | proposed → confirmed / rejected |
-| **Intent** | A declared exploration direction | proposed → in_progress → confirmed / rejected / superseded |
-| **Hint** | Human or agent guidance | persisted |
-
-### How Agents Use It
-
-```
-1. read_blackboard()    — see the full picture
-2. create_intent()      — declare direction before acting
-3. [execute tools]
-4. create_fact()        — record findings, link to parent intent
-5. update_node_status() — mark dead ends as rejected
-```
-
-The Blackboard layer complements the existing evidence plane (Asset / Finding / GraphEdge): evidence records **what was found**, the blackboard records **why we looked, what we found, what's next**.
-
-### REST API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `GET /api/blackboard/{project_id}` | Read | Full blackboard graph snapshot |
-| `POST /api/blackboard/{project_id}/nodes` | Create | New fact / intent / hint node |
-| `PUT /api/blackboard/{project_id}/nodes/{node_id}` | Update | Change status / description |
-| `DELETE /api/blackboard/{project_id}/nodes/{node_id}` | Delete | Remove a node |
+| 项目 | 要求 | 说明 |
+| --- | --- | --- |
+| 操作系统 | **Linux x64**（推荐 Kali / Debian） | 沙箱镜像仅支持 x64/amd64，不支持 arm64 |
+| Python | **≥ 3.12**（推荐 3.13） | 需 `venv` 模块 |
+| Node.js | **≥ 20.19**（推荐 22+） | Vite 8 要求；仓库 Dockerfile 使用 node:22 |
+| PostgreSQL | **16+** | 数据持久化 |
+| Docker | 建议安装 | 渗透/审计沙箱的运行时；缺失则执行面不可用 |
+| 磁盘 | 建议 ≥ 2 GB（沙箱镜像另需 3+ GB） | 沙箱镜像含 Ghidra/Jadx 等工具链 |
 
 ---
 
-## Technical Highlights
+## 五、安装部署
 
-| Feature | Description |
-|---------|-------------|
-| Multi-agent orchestration | Lead agent coordinates specialists via delegation + blackboard |
-| Structured evidence plane | Assets, findings, relationship graph, attack paths — all persisted |
-| Blackboard reasoning graph | Cairn-style Fact-Intent graph for traceable agent reasoning |
-| Replayable timeline | Normalized timeline events streamed live or loaded as history |
-| No Docker required | Commands run directly on host via asyncio subprocess |
-| Knowledge base | Structured methodology documents agents can reference |
-| Full web UI | Chat playground + project workspace with graph visualization |
-| Local-first LLM | Direct OpenAI-compatible API calls — works with DeepSeek, Qwen, GLM, etc. |
+提供三种方式，任选其一。**一键脚本推荐用于首次部署**。
 
----
-
-## Quick Start
-
-### Prerequisites
-
-- **Linux** (Kali / Debian recommended)
-- **Python ≥ 3.12**
-- **PostgreSQL** (installed automatically by setup script)
-- **Node.js ≥ 18** (for frontend build)
-
-### One-command setup
+### 5.1 一键部署（推荐）
 
 ```bash
-git clone https://github.com/guaidao2/XuanMu-RedTeam-Agent.git
-cd XuanMu-RedTeam-Agent
+git clone https://github.com/xiaoliuhua2/ravenholt.git
+cd ravenholt
+
+# 1) 先体检：只检测环境，不改动任何文件
+bash setup.sh --check
+
+# 2) 正式部署：检测 -> 装系统依赖 -> 初始化配置 -> 建库
+#    -> 装 Python 依赖 -> 构建前端 -> 自检
 bash setup.sh
+
+# 可选：一并自动构建渗透沙箱镜像（下载量大、耗时长）
+bash setup.sh --with-sandbox
 ```
 
-> 📖 **New user? Read the [Getting Started Guide](GUIDE.md)** — from installation to your first project.
+脚本共 8 段，逐段打印结果：
 
-This will:
-1. Install system dependencies (PostgreSQL, Node.js)
-2. Configure the database
-3. Create a Python virtual environment and install dependencies
-4. Build the frontend
-5. Create start/stop scripts
+| 段 | 内容 |
+| --- | --- |
+| 1/8 环境检测 | 系统/架构/Python/Node/Docker/PostgreSQL/权限/端口/磁盘，逐项给出结论与修复命令 |
+| 2/8 系统依赖 | 缺什么装什么（apt），装完复检 Python/venv 等硬性依赖 |
+| 3/8 配置初始化 | 生成 `.ravenholt/config.json`（随机 `encrypt_key`、数据库口令、管理员口令）与 **`policy.yaml`** |
+| 4/8 PostgreSQL | 启动服务、建角色与数据库，口令与 config.json 对齐 |
+| 5/8 Python 依赖 | 建 `.venv` 并 `pip install -r requirements.txt` |
+| 6/8 前端构建 | `web/` 下 `npm install` + `npm run build`，产出 `web/dist-app` |
+| 7/8 沙箱镜像 | 检测 Docker/架构；提示或按 `--with-sandbox` 自动构建 |
+| 8/8 安装后自检 | 语法编译、config/policy 加载、`create_app` 装配冒烟 |
 
-### Configure
+脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖。
+
+> **重要**：管理员口令由脚本随机生成，**只在终端打印一次**，请立即保存。
+> 若忘记，删除 `.ravenholt/config.json` 后重跑 `bash setup.sh` 可重新生成（会重建数据库口令，需同步更新数据库角色）。
+
+### 5.2 手动分步部署
+
+适合需要逐项控制的环境。
+
+**第 1 步：系统依赖**
 
 ```bash
-vi .xuanmu/config.json
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip \
+                    postgresql postgresql-client \
+                    curl openssl ca-certificates
+# Node.js（Debian/Kali 自带版本可能过旧，推荐 nodesource）
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+# Docker（可选，沙箱执行面需要）
+sudo apt install -y docker.io && sudo systemctl enable --now docker
 ```
 
-Fill in LLM API keys, base URLs, and model names for each agent role.
-Example configuration uses DeepSeek — works with any OpenAI-compatible API.
+校验：`python3 -V`（≥3.12）、`node -v`（≥20.19）、`psql --version`、`docker -v`。
 
-You can also use the interactive config tool:
+**第 2 步：数据库**
 
 ```bash
-bash config-tool.sh
+sudo systemctl start postgresql
+sudo -u postgres psql -c "CREATE USER root WITH PASSWORD '你的数据库口令';"
+sudo -u postgres psql -c "CREATE DATABASE ravenholt OWNER root;"
 ```
 
-It walks you through setting API keys, base URLs, and models for each agent without manually editing JSON.
+> 口令须与第 3 步 `config.json` 的 `database.password` 保持一致。
 
-### Start
+**第 3 步：配置文件（关键，别漏）**
 
 ```bash
-bash start.sh
+cp .ravenholt/config.json.example .ravenholt/config.json
+cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
 ```
 
-Open **http://localhost:8000** — login with `admin@admin.com` / `admin123`.
+- `.ravenholt/config.json`：编辑 `system.encrypt_key`（≥32 位随机串，必改）、`system.bootstrap_admin`（管理员邮箱与强口令）、`database`（本机则 `host=127.0.0.1`）、`agents.*`（LLM 的 `api_key` / `base_url` / `model`）。
+- `.ravenholt/policy.yaml`：**红线策略，平台对它是 fail-closed**——文件缺失 / YAML 语法错误 / 校验失败，平台会**拒绝启动**。`rate_limit`、`sandbox`、`kill_switch`、`audit` 四节的 `enabled` 必须为 `true`。
+- `.ravenholt/skill_routes.yaml`（**可选**）：技能路由表的实例覆盖层。缺失时使用工厂默认（`core/strix_runtime/skill_routes.default.yaml`）。如需自定义：`cp .ravenholt/skill_routes.yaml.example .ravenholt/skill_routes.yaml` 后编辑。
+
+**第 4 步：Python 依赖**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**第 5 步：前端构建**
+
+```bash
+cd web
+npm install
+npm run build      # 内部依次执行 generate:api -> tsc -> vite build
+cd ..
+```
+
+产出 `web/dist-app`，后端会自动挂载托管。
+
+**第 6 步：沙箱镜像（可选，执行面需要）**
+
+```bash
+cd sandbox && bash build.sh      # 产出 sandbox-runtime:latest（仅 x64）
+cd ..
+```
+
+沙箱容器在首次使用时由平台按会话自动 provision 镜像记录，无需手工登记。
+
+**第 7 步：启动**
+
+```bash
+python main.py                   # 前台（Ctrl+C 停止）
+# 或后台常驻：
+bash serve.sh start
+```
+
+访问 <http://127.0.0.1:8000>。
+
+### 5.3 Docker Compose 部署
+
+适合把控制面与数据库一起容器化。
+
+```bash
+# 前置：1) 已准备 .ravenholt/config.json 与 .ravenholt/policy.yaml
+#       2) 已构建沙箱镜像 sandbox-runtime:latest
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+该编排包含三个服务：
+
+| 服务 | 说明 |
+| --- | --- |
+| `app` | 构建镜像 `ravenholt:latest`；`network_mode: host`；挂载 `./.ravenholt` 与 `/var/run/docker.sock`（用于创建沙箱容器） |
+| `postgres` | `postgres:16-alpine`，数据落在 `./.postgres-data` |
+| `pgadmin` | <http://127.0.0.1:5433>，用于图形化连接数据库 |
+
+> 注意：`app` 使用 host 网络并挂载 Docker socket（需要创建沙箱容器），请仅在受控主机上使用。
+> 开发环境也可用 `docker compose -f docker-compose.dev.yml up -d` 只起数据库。
 
 ---
 
-## Repository Layout
+## 六、配置说明
+
+### `.ravenholt/config.json`
+
+| 段 | 关键项 | 说明 |
+| --- | --- | --- |
+| `system` | `listen_addr` / `listen_port` | 监听地址与端口（默认 `0.0.0.0:8000`） |
+| | `encrypt_key` | 数据加密密钥，**必须改**为 ≥32 位随机串 |
+| | `bootstrap_admin` | 首次启动自动创建的管理员（`username` / `email` / `password`）；登录用邮箱 |
+| `database` | `host` / `port` / `database` / `username` / `password` | PostgreSQL 连接；Compose 部署时 `host` 填服务名 |
+| `agent_runtime` | `main_max_turns` / 上下文压缩相关 | 运行时回合上限与上下文压缩阈值 |
+| `agent_pool` | `max_size` / `ttl_seconds` | 智能体会话池 |
+| `agents` | `cso` … | 各 agent 的 LLM 配置：`api_key` / `base_url` / `model` / `context_window` |
+| `integrations` | `web_search_provider` 等 | 联网检索后端（如 SearXNG / Exa / Perplexity） |
+
+> 智能体列表由本配置的 `agents` 段决定（默认只含 `cso` 一条预设），非固定静态角色表。
+
+### 管理 LLM API Key
+
+```bash
+bash config-tool.sh list                                  # 查看各 agent 配置摘要
+bash config-tool.sh set sk-xxxx --url https://api.deepseek.com/v1 --model deepseek-v4-flash
+bash config-tool.sh clear                                 # 清空所有 Key
+```
+
+### 策略与技能路由
+
+- `.ravenholt/policy.yaml`：红线策略（fail-closed）。控制台的改动即时生效并写回本文件。
+- `.ravenholt/skill_routes.yaml`：技能路由实例覆盖层（可选）。
+
+---
+
+## 七、启动与运维
+
+```bash
+bash start.sh            # 前台运行（Ctrl+C 停止）
+bash serve.sh start      # 后台常驻（带 PID 文件、端口健康检查、日志落盘）
+bash serve.sh status     # 查看进程 / 端口 / 健康检查
+bash serve.sh logs 40    # 查看启动日志（-f 持续跟踪）
+bash serve.sh restart    # 重启
+bash serve.sh stop       # 停止（SIGTERM 优雅退出）
+```
+
+- 应用日志：`.ravenholt/app.log`
+- 服务日志：`logs/serve.log`
+- 访问地址：<http://127.0.0.1:8000>；API 文档：<http://127.0.0.1:8000/docs>
+
+---
+
+## 八、快速上手
+
+1. 打开 <http://127.0.0.1:8000>，用管理员邮箱与口令登录。
+2. 进入**系统配置**填好 `agents` 的 LLM API Key（或提前用 `config-tool.sh set` 设置）。
+3. 进入**工作项目**新建一个项目，填写范围与目标。
+4. 在**操作台**新建会话并与智能体协作；沙箱容器会按需自动创建，可在容器面板中使用终端、文件管理与 Caido。
+5. 过程中产生的资产、发现、证据与攻击路径会沉淀到项目；结束后可查看可回放时间线与报告。
+6. 高风险动作会被**红线策略**拦截并进入**策略审批**队列；所有关键动作可在**审计日志**中复核。
+
+---
+
+## 九、目录结构
 
 ```
-core/           Agent specs, runtime, delegation, context, tools
-service/        Domain services (agents, users, projects, blackboard)
-router/         FastAPI route declarations
-handler/        HTTP and WebSocket request handling
-model/          SQLModel database models
-schema/         Pydantic API contracts
-blackboard/     Shared reasoning graph module
-  model/        Database model
-  schema/       API contracts
-  service/      Business logic
-  handler/      HTTP handling
-  router/       API routes
-web/            React frontend (Playground + admin console)
-.xuanmu/        Runtime config, agent prompts, knowledge files
+ravenholt/
+├── app.py / main.py / config.py / database.py    # 应用装配、入口、配置、数据库
+├── core/            # 运行时核心：agent、会话池、策略引擎、strix 运行时、事件归档
+├── service/ handler/ router/ schema/ model/       # 分层：逻辑 / 处理 / 路由 / 契约 / 模型
+├── middleware/ utils/                             # 鉴权、统一响应等中间件与工具
+├── strix/           # vendor 的 strix 运行时与技能库（由 .strix-vendor.json 校验）
+├── sandbox/         # 沙箱镜像构建（Dockerfile / build.sh / 工具链技能）
+├── web/             # 前端（src / dist-app 构建产物 / openapi.json）
+├── docs/            # VitePress 文档站（en / zh）
+├── scripts/         # 工具与自检脚本（export_schema、verify_*_selftest 等）
+├── .ravenholt/      # 运行时配置：config.json / policy.yaml / skill_routes.yaml（均不入库）
+├── setup.sh         # 一键部署脚本
+├── start.sh         # 前台启动
+├── serve.sh         # 后台常驻服务管理
+├── config-tool.sh   # LLM API Key 管理
+├── docker-compose.prod.yml / .dev.yml
+└── requirements.txt
 ```
 
 ---
 
-## License
+## 十、常见问题
 
-This project is licensed under the [MIT License](LICENSE).
+**Q：启动即退出，日志显示策略相关报错？**
+A：`.ravenholt/policy.yaml` 缺失或非法。平台对红线策略是 **fail-closed**，必须存在且合法：
+`cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml`。
+
+**Q：`npm run build` 失败？**
+A：检查 Node 版本（需 ≥ 20.19）与 `web/node_modules` 是否残缺；删除 `web/node_modules` 后重跑 `npm install`。
+
+**Q：页面还是旧内容？**
+A：landing 等页面是**构建期固化**的——改源码后必须重新 `cd web && npm run build`，再硬刷新浏览器（Ctrl+F5）。
+
+**Q：无法创建沙箱容器？**
+A：确认 Docker 守护进程在运行，且部署方式下平台进程能访问 Docker Socket（Compose 已挂载 `/var/run/docker.sock`）。
+
+**Q：沙箱镜像构建失败？**
+A：确认 x64 架构与足够磁盘；构建过程需联网下载 Ghidra / JADX 等工具链。
+
+**Q：Docker 未安装可以运行吗？**
+A：可以启动平台并使用控制面，但渗透/代码审计的沙箱执行面不可用。
 
 ---
 
-## Acknowledgments
+## 十一、许可
 
-- [Cairn](https://github.com/oritera/Cairn) — Fact-graph based collaborative exploration protocol, which inspired the Blackboard architecture
-- [Z3r0](https://github.com/yv1ing/Z3r0) — The original open-source red-team collaboration workbench this project was forked from
+本项目基于 **MIT License** 发布，版权归 2026 `yv1ing` 与 `xiaoliuhua2`。详见 [LICENSE](./LICENSE)。
+
+内部 vendor 的 strix 运行时按其原始许可（Apache-2.0）保留版权声明；使用本平台进行任何测试前，请确保已获得目标系统的明确授权。

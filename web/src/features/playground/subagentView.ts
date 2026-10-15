@@ -2,6 +2,7 @@ import type { ChatNode, NestedTranscript, SubagentExecutionItem, TranscriptBlock
 
 export type SubagentTab = {
   agentCode: string;
+  agentName: string;
   status: SubagentExecutionItem["status"];
   runIds: string[];
 };
@@ -19,16 +20,18 @@ export type SubagentTarget = {
 };
 
 export function collectSubagentTabs(nodes: ChatNode[]): SubagentTab[] {
-  const tabs = new Map<string, { status: SubagentExecutionItem["status"]; runIds: Set<string> }>();
+  const tabs = new Map<string, { status: SubagentExecutionItem["status"]; name: string; runIds: Set<string> }>();
   for (const { task } of subagentRuns(nodes)) {
     const current = tabs.get(task.agentCode);
     tabs.set(task.agentCode, {
       status: mergeSubagentStatus(current?.status, task.status),
+      name: current?.name || task.agentName || "",
       runIds: new Set([...(current?.runIds ?? []), task.runId]),
     });
   }
   return Array.from(tabs, ([agentCode, tab]) => ({
     agentCode,
+    agentName: tab.name,
     status: tab.status,
     runIds: Array.from(tab.runIds),
   }));
@@ -52,13 +55,13 @@ export function subagentStatusColor(status: SubagentExecutionItem["status"]): "r
 export function subordinateStatusLabel(status: SubagentExecutionItem["status"]) {
   switch (status) {
     case "running":
-      return "Running";
+      return "运行中";
     case "completed":
-      return "Completed";
+      return "已完成";
     case "canceled":
-      return "Canceled";
+      return "已取消";
     case "failed":
-      return "Failed";
+      return "失败";
   }
 }
 
@@ -91,9 +94,13 @@ function* subagentRunsFromBlocks(blocks: TranscriptBlock[], reverse: boolean): G
     const block = blocks[i];
     const task = subagentTask(block);
     if (!task?.agentCode || !task.runId) continue;
+    // 子代理自身的思考 / 正文 / 工具流由其 run_id 归集到块上的 nested：
+    // 既可能挂在 create_agent 工具块，也可能挂在独立的子代理块（strix 路径）。
+    // 两者都要取出，否则侧栏会退化成只剩 PROGRESS 的占位。
+    const transcript = block.kind === "tool" || block.kind === "subagent" ? block.nested : undefined;
     yield {
       task,
-      transcript: block.kind === "tool" ? block.nested : undefined,
+      transcript,
       live: task.status === "running",
     };
   }

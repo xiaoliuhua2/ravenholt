@@ -64,8 +64,8 @@ export function WorkProjectsPage() {
   }, [loadProjects]);
 
   useAdminResourceHeader({
-    createLabel: "Create Project",
-    refreshLabel: "Refresh work projects",
+    createLabel: "创建项目",
+    refreshLabel: "刷新工作项目",
     loading,
     onCreate: () => {
       setEditingProject(null);
@@ -131,7 +131,7 @@ export function WorkProjectsPage() {
 
   const columns: ResourceColumn<WorkProject>[] = [
     {
-      key: "project", header: "Project", width: "minmax(210px, 0.9fr)",
+      key: "project", header: "项目", width: "minmax(210px, 0.9fr)",
       render: (project) => (
         <ResourceIdentity
           before={(
@@ -141,38 +141,38 @@ export function WorkProjectsPage() {
               type="tertiary"
               size="small"
               onClick={() => toggleProject(project)}
-              aria-label={`${expandedId === project.id ? "Collapse" : "Expand"} ${project.name}`}
+              aria-label={`${expandedId === project.id ? "折叠" : "展开"} ${project.name}`}
             />
           )}
           icon={<FolderKanban size={18} />}
           title={project.name}
-          detail={`${workProjectOwnerNames(project)} · ${project.session_count} sessions`}
+          detail={`${workProjectOwnerNames(project)} · ${project.session_count} 个会话`}
         />
       ),
     },
-    { key: "type", header: "Type", width: "132px", render: (project) => <WorkProjectTypeTag project={project} /> },
-    { key: "status", header: "Status", width: "104px", render: (project) => <WorkProjectStatusTag project={project} /> },
+    { key: "type", header: "类型", width: "132px", render: (project) => <WorkProjectTypeTag project={project} /> },
+    { key: "status", header: "状态", width: "104px", render: (project) => <WorkProjectStatusTag project={project} /> },
     {
-      key: "records", header: "Records", width: "minmax(170px, 0.5fr)",
-      render: (project) => <ResourceText>{project.assets.length} assets · {project.tasks.length} tasks</ResourceText>,
+      key: "records", header: "记录", width: "minmax(170px, 0.5fr)",
+      render: (project) => <ResourceText>{project.assets.length} 个资产 · {project.tasks.length} 个任务</ResourceText>,
     },
-    { key: "updated", header: "Updated", width: "minmax(150px, 0.4fr)", render: (p) => formatDateTime(p.updated_at) },
+    { key: "updated", header: "更新时间", width: "minmax(150px, 0.4fr)", render: (p) => formatDateTime(p.updated_at) },
     {
-      key: "actions", header: "Actions", width: "132px",
+      key: "actions", header: "操作", width: "132px",
       render: (project) => (
         <RowActions>
           <Button
             icon={<FolderOpen size={15} />}
             theme="borderless"
             type="tertiary"
-            aria-label={`Open workspace for ${project.name}`}
+            aria-label={`打开 ${project.name} 的工作区`}
             onClick={() => navigate(`/work-projects/${project.id}`)}
           />
           <Button
             icon={<Edit3 size={15} />}
             theme="borderless"
             type="tertiary"
-            aria-label={`Edit ${project.name}`}
+            aria-label={`编辑 ${project.name}`}
             onClick={() => { setEditingProject(project); setModalOpen(true); }}
           />
           <Button
@@ -181,7 +181,7 @@ export function WorkProjectsPage() {
             type="danger"
             disabled={!project.can_cancel}
             loading={adminAction?.id === project.id && adminAction.type === "cancel"}
-            aria-label={`Cancel ${project.name}`}
+            aria-label={`取消 ${project.name}`}
             onClick={() => void handleAdminProjectAction(project, "cancel")}
           />
           <Button
@@ -190,16 +190,16 @@ export function WorkProjectsPage() {
             type="tertiary"
             disabled={!project.can_retry}
             loading={adminAction?.id === project.id && adminAction.type === "retry"}
-            aria-label={`Retry ${project.name}`}
+            aria-label={`重试 ${project.name}`}
             onClick={() => void handleAdminProjectAction(project, "retry")}
           />
-          <Popconfirm title="Delete project" content={`Delete ${project.name} and all project sessions?`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void handleAdminProjectAction(project, "delete")}>
+          <Popconfirm title="删除项目" content={`删除 ${project.name} 及其所有项目会话？`} okType="danger" cancelText={UI_TEXT.cancel} onConfirm={() => void handleAdminProjectAction(project, "delete")}>
             <Button
               icon={<Trash2 size={15} />}
               theme="borderless"
               type="danger"
               loading={adminAction?.id === project.id && adminAction.type === "delete"}
-              aria-label={`Delete ${project.name}`}
+              aria-label={`删除 ${project.name}`}
             />
           </Popconfirm>
         </RowActions>
@@ -212,18 +212,18 @@ export function WorkProjectsPage() {
   return (
     <>
       <ResourcePageShell
-        searchPlaceholder="Search project name, type, description, or status"
+        searchPlaceholder="搜索项目名称、类型、描述或状态"
         keyword={keyword}
         loading={loading}
         metrics={[
-          { label: "Total", value: total },
-          { label: "Working", value: summary.working },
-          { label: "Project sessions", value: summary.sessions },
-          { label: "Assets", value: summary.assets },
+          { label: "总数", value: total },
+          { label: "进行中", value: summary.working },
+          { label: "项目会话", value: summary.sessions },
+          { label: "资产", value: summary.assets },
         ]}
         empty={projects.length === 0}
         emptyIcon={<FolderKanban size={42} />}
-        emptyTitle="No projects found"
+        emptyTitle="暂无项目"
         page={page}
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
@@ -236,7 +236,7 @@ export function WorkProjectsPage() {
         onNext={next}
       >
         <ResourceTable<WorkProject>
-          ariaLabel="Work projects"
+          ariaLabel="工作项目"
           className="work-projects-table"
           columns={columns}
           rows={projects}
@@ -267,27 +267,27 @@ function WorkProjectExpanded({
     <div className="work-project-expanded">
       <section className="work-project-meta">
         <div>
-          <span>Owner</span>
+          <span>负责人</span>
           <strong>{workProjectOwnerNames(project)}</strong>
         </div>
         <div>
-          <span>Sandboxes</span>
+          <span>沙箱</span>
           <strong>{project.sandbox_container_ids.length || "-"}</strong>
         </div>
         <div>
-          <span>Task Progress</span>
+          <span>任务进度</span>
           <Progress percent={project.progress} size="small" showInfo />
         </div>
       </section>
 
       <section className="work-project-detail-grid">
-        <WorkProjectPanel title="Assets" empty={project.assets.length === 0 ? "No assets." : ""}>
+        <WorkProjectPanel title="资产" empty={project.assets.length === 0 ? "暂无资产。" : ""}>
           <WorkProjectAssets project={project} />
         </WorkProjectPanel>
-        <WorkProjectPanel title="Tasks" empty={project.tasks.length === 0 ? "No tasks." : ""}>
+        <WorkProjectPanel title="任务" empty={project.tasks.length === 0 ? "暂无任务。" : ""}>
           <WorkProjectTasks project={project} />
         </WorkProjectPanel>
-        <WorkProjectPanel title="Agent Summaries" empty={project.agent_summaries.length === 0 ? "No summaries." : ""}>
+        <WorkProjectPanel title="Agent 摘要" empty={project.agent_summaries.length === 0 ? "暂无摘要。" : ""}>
           <WorkProjectSummaries project={project} />
         </WorkProjectPanel>
       </section>

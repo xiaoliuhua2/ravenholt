@@ -1,69 +1,92 @@
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f8fafc;
-  background: #090d16;
+  color-scheme: light;
+  /* 中英文混排字体栈：优先系统中文字体，保证中文观感 */
+  font-family:
+    "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans SC", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #232935;
+  background: #f7f8fa;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --z-bg: #090d16;
-  --z-bg-mid: #141926;
-  --z-bg-deep: #0b1018;
-  --z-bg-blackout: #05070b;
-  --z-surface: rgba(14, 20, 31, 0.72);
-  --z-surface-strong: rgba(14, 20, 31, 0.88);
-  --z-surface-soft: rgba(22, 31, 46, 0.72);
-  --z-surface-muted: rgba(255, 255, 255, 0.06);
-  --z-control-bg: rgba(255, 255, 255, 0.1);
-  --z-control-bg-hover: rgba(255, 255, 255, 0.14);
-  --z-line: rgba(255, 255, 255, 0.12);
-  --z-line-strong: rgba(156, 199, 203, 0.46);
-  --z-line-soft: rgba(255, 255, 255, 0.08);
-  --z-grid-line: rgba(255, 255, 255, 0.05);
-  --z-scanline: rgba(255, 255, 255, 0.06);
-  --z-text: #f8fafc;
-  --z-text-strong: #ffffff;
-  --z-text-muted: #b7c6d7;
-  --z-text-subtle: #9fb2c7;
-  --z-accent: #9cc7cb;
+  /* 等宽字体栈：用于元数据、编号、键值对（方向 A 的层级主要靠它承担） */
+  --z-font-mono: ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, "PingFang SC", monospace;
+
+  /* ---------- 背景层 ---------- */
+  --z-bg: #f7f8fa;
+  --z-bg-mid: #ffffff;
+  --z-bg-deep: #eef1f5;
+  /* 终端 / noVNC / 图片查看器保持深色，避免浅色下命令行内容不可读 */
+  --z-bg-blackout: #0e1219;
+  --z-terminal: #0b1018;
+
+  /* ---------- 表面层 ---------- */
+  --z-surface: #ffffff;
+  --z-surface-strong: #ffffff;
+  --z-surface-soft: #f3f5f8;
+  --z-surface-muted: rgba(17, 24, 39, 0.045);
+  --z-control-bg: #ffffff;
+  --z-control-bg-hover: #f8f9fb;
+
+  /* ---------- 线条层 ---------- */
+  --z-line: #e6e9ef;
+  --z-line-strong: #cbd2dd;
+  --z-line-soft: #eef1f5;
+  --z-grid-line: rgba(17, 24, 39, 0.045);
+  --z-scanline: rgba(17, 24, 39, 0);
+
+  /* ---------- 文本层 ---------- */
+  --z-text: #232935;
+  --z-text-strong: #10141d;
+  --z-text-muted: #5a6473;
+  --z-text-subtle: #8b93a3;
+  /* 主题色实底之上的文字色 */
+  --z-on-brand: #ffffff;
+
+  /* ---------- 主题色（默认「绯红」，可被 themes.css 覆盖） ---------- */
   --z-brand: #d92d3a;
-  --z-brand-strong: #dc1f2d;
-  --z-brand-dark: #b91824;
-  --z-brand-tint: rgba(217, 45, 58, 0.12);
-  --z-brand-glow: rgba(217, 45, 58, 0.16);
-  --z-danger: #ff9aa3;
-  --z-danger-strong: #ef4444;
+  --z-brand-strong: #c8202d;
+  --z-brand-dark: #a9161f;
+  --z-brand-tint: rgba(217, 45, 58, 0.1);
+  --z-brand-glow: rgba(217, 45, 58, 0.18);
+  --z-accent: #c8202d;
+
+  /* ---------- 语义色（浅色底） ---------- */
+  --z-danger: #d92d3a;
+  --z-danger-strong: #dc2626;
   --z-danger-dark: #b91c1c;
-  --z-danger-bg: rgba(239, 68, 68, 0.18);
-  --z-danger-border: rgba(239, 68, 68, 0.42);
-  --z-warning: #f8c56a;
-  --z-warning-bg: rgba(245, 158, 11, 0.16);
-  --z-warning-border: rgba(245, 158, 11, 0.36);
-  --z-success: #82e6a0;
-  --z-success-bg: rgba(22, 163, 74, 0.16);
-  --z-success-border: rgba(22, 163, 74, 0.36);
-  --z-info: #93c5fd;
-  --z-info-bg: rgba(59, 130, 246, 0.16);
-  --z-info-border: rgba(59, 130, 246, 0.36);
-  --z-cyan: #7ddbd3;
-  --z-cyan-bg: rgba(20, 184, 166, 0.16);
-  --z-cyan-border: rgba(20, 184, 166, 0.36);
-  --z-violet: #c4b5fd;
-  --z-violet-bg: rgba(139, 92, 246, 0.16);
-  --z-violet-border: rgba(139, 92, 246, 0.36);
-  --z-neutral-bg: rgba(148, 163, 184, 0.14);
-  --z-neutral-border: rgba(148, 163, 184, 0.28);
-  --z-code-bg: #0f1626;
-  --z-overlay: rgba(14, 20, 31, 0.96);
-  --z-scrollbar: rgba(183, 198, 215, 0.34);
-  --z-scrollbar-hover: rgba(156, 199, 203, 0.56);
-  --z-shadow: 0 22px 60px rgba(0, 0, 0, 0.2);
+  --z-danger-bg: rgba(220, 38, 38, 0.1);
+  --z-danger-border: rgba(220, 38, 38, 0.26);
+  --z-warning: #b45309;
+  --z-warning-bg: rgba(217, 119, 6, 0.1);
+  --z-warning-border: rgba(217, 119, 6, 0.26);
+  --z-success: #15803d;
+  --z-success-bg: rgba(22, 163, 74, 0.1);
+  --z-success-border: rgba(22, 163, 74, 0.26);
+  --z-info: #1d4ed8;
+  --z-info-bg: rgba(37, 99, 235, 0.1);
+  --z-info-border: rgba(37, 99, 235, 0.26);
+  --z-cyan: #0f766e;
+  --z-cyan-bg: rgba(13, 148, 136, 0.1);
+  --z-cyan-border: rgba(13, 148, 136, 0.26);
+  --z-violet: #6d28d9;
+  --z-violet-bg: rgba(124, 58, 237, 0.1);
+  --z-violet-border: rgba(124, 58, 237, 0.26);
+  --z-neutral-bg: rgba(17, 24, 39, 0.05);
+  --z-neutral-border: rgba(17, 24, 39, 0.12);
+
+  /* ---------- 其它 ---------- */
+  --z-code-bg: #f4f6f9;
+  --z-overlay: #ffffff;
+  --z-scrollbar: rgba(17, 24, 39, 0.16);
+  --z-scrollbar-hover: rgba(17, 24, 39, 0.3);
+  --z-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 10px 28px rgba(17, 24, 39, 0.06);
   --z-select-prefix-padding: 12px;
   --z-select-prefix-size: 16px;
   --z-select-prefix-gap: 10px;
   --z-page-bg:
-    radial-gradient(circle at 12% 14%, rgba(190, 64, 78, 0.16), transparent 30%),
-    radial-gradient(circle at 82% 18%, rgba(88, 156, 160, 0.14), transparent 32%),
-    linear-gradient(145deg, var(--z-bg) 0%, var(--z-bg-mid) 44%, var(--z-bg-deep) 100%);
+    radial-gradient(circle at 14% 0%, var(--z-brand-tint), transparent 42%),
+    linear-gradient(180deg, #ffffff 0%, var(--z-bg) 100%);
   --motion-fast: 140ms;
   --motion-normal: 220ms;
   --motion-slow: 320ms;
@@ -93,75 +116,75 @@ button, input {
 body {
   color: var(--z-text);
   background: var(--z-bg);
-  --semi-color-bg-0: var(--z-bg);
-  --semi-color-bg-1: var(--z-surface-strong);
-  --semi-color-bg-2: var(--z-surface-strong);
-  --semi-color-bg-3: var(--z-overlay);
+  --semi-color-bg-0: var(--z-surface);
+  --semi-color-bg-1: #ffffff;
+  --semi-color-bg-2: var(--z-surface-soft);
+  --semi-color-bg-3: #ffffff;
   --semi-color-bg-4: var(--z-surface-soft);
-  --semi-color-fill-0: var(--z-surface-muted);
-  --semi-color-fill-1: var(--z-control-bg);
-  --semi-color-fill-2: var(--z-control-bg-hover);
+  --semi-color-fill-0: rgba(17, 24, 39, 0.04);
+  --semi-color-fill-1: rgba(17, 24, 39, 0.06);
+  --semi-color-fill-2: rgba(17, 24, 39, 0.09);
   --semi-color-border: var(--z-line);
-  --semi-color-focus-border: var(--z-line-strong);
+  --semi-color-focus-border: var(--z-brand);
   --semi-color-text-0: var(--z-text);
   --semi-color-text-1: var(--z-text-muted);
   --semi-color-text-2: var(--z-text-subtle);
-  --semi-color-text-3: rgba(159, 178, 199, 0.52);
+  --semi-color-text-3: rgba(17, 24, 39, 0.35);
   --semi-color-primary: var(--z-brand);
   --semi-color-primary-hover: var(--z-brand-strong);
   --semi-color-primary-active: var(--z-brand-dark);
   --semi-color-primary-light-default: var(--z-brand-tint);
   --semi-color-primary-light-hover: var(--z-brand-glow);
-  --semi-color-primary-light-active: rgba(217, 45, 58, 0.24);
+  --semi-color-primary-light-active: var(--z-brand-tint);
   --semi-color-secondary: var(--z-info);
-  --semi-color-secondary-hover: #bfdbfe;
-  --semi-color-secondary-active: #60a5fa;
+  --semi-color-secondary-hover: #1e40af;
+  --semi-color-secondary-active: #1e3a8a;
   --semi-color-secondary-light-default: var(--z-info-bg);
-  --semi-color-secondary-light-hover: rgba(59, 130, 246, 0.22);
-  --semi-color-secondary-light-active: rgba(59, 130, 246, 0.3);
+  --semi-color-secondary-light-hover: rgba(37, 99, 235, 0.16);
+  --semi-color-secondary-light-active: rgba(37, 99, 235, 0.22);
   --semi-color-tertiary: var(--z-text-muted);
   --semi-color-tertiary-hover: var(--z-text-strong);
-  --semi-color-tertiary-active: var(--z-accent);
+  --semi-color-tertiary-active: var(--z-brand);
   --semi-color-tertiary-light-default: var(--z-surface-muted);
-  --semi-color-tertiary-light-hover: var(--z-control-bg);
-  --semi-color-tertiary-light-active: var(--z-control-bg-hover);
-  --semi-color-default: var(--z-surface-muted);
-  --semi-color-default-hover: var(--z-control-bg);
-  --semi-color-default-active: var(--z-control-bg-hover);
+  --semi-color-tertiary-light-hover: rgba(17, 24, 39, 0.07);
+  --semi-color-tertiary-light-active: rgba(17, 24, 39, 0.1);
+  --semi-color-default: rgba(17, 24, 39, 0.05);
+  --semi-color-default-hover: rgba(17, 24, 39, 0.08);
+  --semi-color-default-active: rgba(17, 24, 39, 0.12);
   --semi-color-info: var(--z-info);
-  --semi-color-info-hover: #bfdbfe;
-  --semi-color-info-active: #60a5fa;
+  --semi-color-info-hover: #1e40af;
+  --semi-color-info-active: #1e3a8a;
   --semi-color-info-light-default: var(--z-info-bg);
-  --semi-color-info-light-hover: rgba(59, 130, 246, 0.22);
-  --semi-color-info-light-active: rgba(59, 130, 246, 0.3);
+  --semi-color-info-light-hover: rgba(37, 99, 235, 0.16);
+  --semi-color-info-light-active: rgba(37, 99, 235, 0.22);
   --semi-color-success: var(--z-success);
-  --semi-color-success-hover: #a7f3d0;
-  --semi-color-success-active: #4ade80;
+  --semi-color-success-hover: #166534;
+  --semi-color-success-active: #14532d;
   --semi-color-success-light-default: var(--z-success-bg);
-  --semi-color-success-light-hover: rgba(22, 163, 74, 0.22);
-  --semi-color-success-light-active: rgba(22, 163, 74, 0.3);
+  --semi-color-success-light-hover: rgba(22, 163, 74, 0.16);
+  --semi-color-success-light-active: rgba(22, 163, 74, 0.22);
   --semi-color-danger: var(--z-danger-strong);
-  --semi-color-danger-hover: #f87171;
-  --semi-color-danger-active: var(--z-danger-dark);
+  --semi-color-danger-hover: #b91c1c;
+  --semi-color-danger-active: #991b1b;
   --semi-color-danger-light-default: var(--z-danger-bg);
-  --semi-color-danger-light-hover: rgba(239, 68, 68, 0.24);
-  --semi-color-danger-light-active: rgba(239, 68, 68, 0.32);
+  --semi-color-danger-light-hover: rgba(220, 38, 38, 0.16);
+  --semi-color-danger-light-active: rgba(220, 38, 38, 0.22);
   --semi-color-warning: var(--z-warning);
-  --semi-color-warning-hover: #fbd38d;
-  --semi-color-warning-active: #d97706;
+  --semi-color-warning-hover: #92400e;
+  --semi-color-warning-active: #78350f;
   --semi-color-warning-light-default: var(--z-warning-bg);
-  --semi-color-warning-light-hover: rgba(245, 158, 11, 0.22);
-  --semi-color-warning-light-active: rgba(245, 158, 11, 0.3);
-  --semi-color-disabled-text: rgba(159, 178, 199, 0.42);
+  --semi-color-warning-light-hover: rgba(217, 119, 6, 0.16);
+  --semi-color-warning-light-active: rgba(217, 119, 6, 0.22);
+  --semi-color-disabled-text: rgba(17, 24, 39, 0.32);
   --semi-color-disabled-border: var(--z-line-soft);
-  --semi-color-disabled-bg: rgba(255, 255, 255, 0.045);
-  --semi-color-disabled-fill: rgba(255, 255, 255, 0.035);
-  --semi-color-link: var(--z-accent);
-  --semi-color-link-hover: #c1e2e6;
-  --semi-color-link-active: #7fb2b8;
-  --semi-color-link-visited: var(--z-accent);
-  --semi-color-overlay-bg: rgba(2, 6, 13, 0.72);
-  --semi-color-shadow: rgba(0, 0, 0, 0.32);
+  --semi-color-disabled-bg: rgba(17, 24, 39, 0.04);
+  --semi-color-disabled-fill: rgba(17, 24, 39, 0.03);
+  --semi-color-link: var(--z-brand);
+  --semi-color-link-hover: var(--z-brand-strong);
+  --semi-color-link-active: var(--z-brand-dark);
+  --semi-color-link-visited: var(--z-brand);
+  --semi-color-overlay-bg: rgba(17, 24, 39, 0.45);
+  --semi-color-shadow: rgba(17, 24, 39, 0.12);
   --semi-shadow-elevated: var(--z-shadow);
 }
 
@@ -278,8 +301,9 @@ a,
 .semi-tooltip-wrapper {
   color: var(--z-text);
   background: var(--z-overlay);
-  border: 1px solid var(--z-line);
-  box-shadow: var(--z-shadow);
+  border: 1px solid var(--z-line-strong);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 .semi-tooltip-wrapper .semi-tooltip-icon-arrow {
@@ -347,7 +371,7 @@ a,
 
 .semi-select-option-selected {
   color: var(--z-text-strong);
-  background: rgba(156, 199, 203, 0.1);
+  background: var(--z-brand-tint);
 }
 
 .semi-select-option-selected .semi-select-option-icon,
@@ -391,7 +415,7 @@ a,
 }
 
 .semi-button-primary:not(.semi-button-borderless):not(.semi-button-light):not(.semi-button-outline) {
-  color: var(--z-text-strong);
+  color: var(--z-on-brand);
   background: var(--z-brand);
 }
 
@@ -450,7 +474,7 @@ a,
 .semi-textarea-wrapper-focus {
   background: var(--z-control-bg-hover);
   border-color: var(--z-line-strong);
-  box-shadow: 0 0 0 4px rgba(156, 199, 203, 0.08);
+  box-shadow: 0 0 0 4px var(--z-brand-tint);
 }
 
 .semi-input,
@@ -661,7 +685,7 @@ a,
 .semi-tag-white-ghost,
 .semi-tag-white-solid {
   --z-tag-bg: var(--z-neutral-bg);
-  --z-tag-text: #cbd5e1;
+  --z-tag-text: var(--z-text-muted);
   --z-tag-border: var(--z-neutral-border);
 }
 
@@ -724,7 +748,7 @@ a,
 .route-fallback-spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid rgba(216, 225, 236, 0.16);
+  border: 3px solid var(--z-line-strong);
   border-top-color: var(--z-brand);
   border-radius: 999px;
   animation: routeFallbackSpin 720ms linear infinite;
@@ -746,7 +770,7 @@ a,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-panel,
+  .lgn-col,
   .session-row,
   .chat-row,
   .agent-picker,

@@ -1,10 +1,11 @@
 import type {
   AgentContentEvent,
   AgentInputPart,
+  SandboxPhase,
 } from "../../shared/api/types";
 import {
   contentSignature,
-  findToolBlockIndex,
+  findExecutionBlockIndex,
   hasToolCall,
   transcriptHasEvent,
 } from "./transcriptIdentity";
@@ -15,13 +16,18 @@ import {
   subagentExecutionItemFromEvent,
 } from "./transcriptReducer";
 import type {
+  AgentTranscript,
+  ApprovalNode,
   ChatNode,
   ChatState,
+  SandboxNode,
+  SubagentExecutionItem,
   ToolExecutionItem,
 } from "./transcriptTypes";
 
 export type {
   AgentTranscript,
+  ApprovalNode,
   ChatNode,
   ChatState,
   ErrorItem,
@@ -121,6 +127,12 @@ function applyContentEvent(state: ChatState, event: AgentContentEvent): ChatStat
   if (event.type === "turn_boundary") {
     return event.nested_call_id ? state : finishChatTurn(state);
   }
+  if (event.type === "sandbox") {
+    return appendSandboxNode(state, event);
+  }
+  if (event.type === "approval") {
+    return appendApprovalNode(state, event);
+  }
   const nestedCallId = "nested_call_id" in event ? event.nested_call_id : "";
   return nestedCallId ? routeToNested(state, event, nestedCallId) : routeToTopLevel(state, event);
 }
@@ -154,6 +166,10 @@ function routeToTopLevel(state: ChatState, event: AgentContentEvent): ChatState 
   if (event.type === "tool_call" || event.type === "tool_result") {
     return drainPendingNested(nextState, event.call_id);
   }
+  // 子代理任务块建立后，把先前按 run_id 排队的子代理流事件补落到位。
+  if (event.type === "subagent_task") {
+    return drainPendingNested(nextState, event.run_id);
+  }
   if (event.type === "error") return clearPendingNested(nextState);
   return nextState;
 }
@@ -181,30 +197,34 @@ function routeToNested(state: ChatState, event: AgentContentEvent, nestedCallId:
 
 function routeToNestedNow(state: ChatState, event: AgentContentEvent, nestedCallId: string): ChatState | null {
   if (event.type === "subagent_task") {
-    return updateNestedTool(state, nestedCallId, (tool) => {
-      tool.subagentTask = subagentExecutionItemFromEvent(event);
+    return updateNestedBlock(state, nestedCallId, (block) => {
+      if (block.kind === "tool") block.subagentTask = subagentExecutionItemFromEvent(event);
     });
   }
-  return updateNestedTool(state, nestedCallId, (tool) => {
-    const nested = tool.nested ? cloneTranscript(tool.nested) : createTranscript(event.created_at);
+  return updateNestedBlock(state, nestedCallId, (block) => {
+    const nested = block.nested ? cloneTranscript(block.nested) : createTranscript(event.created_at);
     if (!nested.createdAt) nested.createdAt = event.created_at;
     applyEventToTranscript(nested, event);
-    tool.nested = nested;
+    block.nested = nested;
   });
 }
 
-function updateNestedTool(state: ChatState, callId: string, update: (tool: ToolExecutionItem) => void): ChatState | null {
+type NestedHostBlock = ToolExecutionItem | SubagentExecutionItem;
+
+// nested_call_id 既能命中父级工具调用（callId），也能命中子代理执行块（runId）——
+// strix 路径下子代理的流事件以自身 run_id 作为 nested_call_id 下发。
+function updateNestedBlock(state: ChatState, blockId: string, update: (block: NestedHostBlock) => void): ChatState | null {
   const nodes = state.nodes.slice();
   for (let index = nodes.length - 1; index >= 0; index -= 1) {
     const node = nodes[index];
     if (node.kind !== "agent") continue;
-    const blockIndex = findToolBlockIndex(node.blocks, callId);
+    const blockIndex = findExecutionBlockIndex(node.blocks, blockId);
     if (blockIndex === -1) continue;
 
     const agent = cloneAgentNode(node);
-    const tool = { ...(agent.blocks[blockIndex] as ToolExecutionItem) };
-    update(tool);
-    agent.blocks[blockIndex] = tool;
+    const block = { ...agent.blocks[blockIndex] } as NestedHostBlock;
+    update(block);
+    agent.blocks[blockIndex] = block;
     nodes[index] = agent;
     return { ...state, nodes };
   }
@@ -238,6 +258,56 @@ function prunePendingNested(state: ChatState): ChatState["pendingNested"] {
     if (!hasToolCall(state.nodes, callId)) pendingNested[callId] = events;
   }
   return pendingNested;
+}
+
+// 沙箱生命周期事件在对话流里落成一条独立提示（不并入 agent 气泡）：
+// id 取自事件 seq，保证 live 重建与历史重放得到同一个 React key。
+function appendSandboxNode(
+  state: ChatState,
+  event: Extract<AgentContentEvent, { type: "sandbox" }>,
+): ChatState {
+  const node: SandboxNode = {
+    kind: "sandbox",
+    id: `sandbox:${event.seq}`,
+    createdAt: event.created_at,
+    phase: event.phase,
+    containerId: event.container_id ?? null,
+    containerName: event.container_name,
+    containerHash: event.container_hash,
+    imageName: event.image_name,
+    message: event.message,
+  };
+  return { ...state, nodes: [...state.nodes, node] };
+}
+
+// 审批事件同样落成一条独立提示（不并入 agent 气泡）。与 sandbox 不同，这里按
+// ``confirmation_id`` 定位**同一张卡片**：pending → approved/rejected 原地更新，
+// 而不是每换一个阶段就多出一条。
+function appendApprovalNode(
+  state: ChatState,
+  event: Extract<AgentContentEvent, { type: "approval" }>,
+): ChatState {
+  const node: ApprovalNode = {
+    kind: "approval",
+    id: `approval:${event.confirmation_id}`,
+    createdAt: event.created_at,
+    confirmationId: event.confirmation_id,
+    approvalKey: event.approval_key,
+    label: event.label,
+    action: event.action,
+    target: event.target,
+    phase: event.phase,
+    message: event.message,
+  };
+  const index = state.nodes.findIndex(
+    (item) => item.kind === "approval" && item.confirmationId === event.confirmation_id,
+  );
+  if (index === -1) {
+    return { ...state, nodes: [...state.nodes, node] };
+  }
+  const nodes = state.nodes.slice();
+  nodes[index] = node;
+  return { ...state, nodes };
 }
 
 // Node id is derived from the seq of the event that opened the node so the

@@ -2,9 +2,12 @@ import { lazy, Suspense, type ComponentType } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useOutletContext } from "react-router-dom";
 import { AuthProvider, useAuth } from "../shared/auth/AuthProvider";
 import {
+  loadAuditEventsPage,
+  loadEgressProxiesPage,
   loadLandingPage,
   loadLoginPage,
   loadPlaygroundPage,
+  loadPolicyConfirmationsPage,
   loadProtectedAdminShell,
   loadSystemConfigPage,
   loadSystemUsersPage,
@@ -27,6 +30,9 @@ const WorkProjectWorkspacePage = lazyRoute(loadWorkProjectWorkspacePage, "WorkPr
 const SystemUsersPage = lazyRoute(loadSystemUsersPage, "SystemUsersPage");
 const SystemConfigPage = lazyRoute(loadSystemConfigPage, "SystemConfigPage");
 const WorkProjectsPage = lazyRoute(loadWorkProjectsPage, "WorkProjectsPage");
+const EgressProxiesPage = lazyRoute(loadEgressProxiesPage, "EgressProxiesPage");
+const PolicyConfirmationsPage = lazyRoute(loadPolicyConfirmationsPage, "PolicyConfirmationsPage");
+const AuditEventsPage = lazyRoute(loadAuditEventsPage, "AuditEventsPage");
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth();
@@ -70,8 +76,13 @@ export function App() {
                 <Route element={<AdminOnlyRoute />}>
                   <Route path="/work-projects" element={<WorkProjectsPage />} />
                   <Route path="/work-projects/:projectId" element={<WorkProjectWorkspacePage />} />
+                  <Route path="/egress-proxies" element={<EgressProxiesPage />} />
+                  <Route path="/policy-confirmations" element={<PolicyConfirmationsPage />} />
+                  <Route path="/audit-events" element={<AuditEventsPage />} />
                   <Route path="/system-users" element={<SystemUsersPage />} />
                   <Route path="/system-config" element={<SystemConfigPage />} />
+                  {/* 「快捷导入」已并入「系统配置」：旧链接重定向，避免书签失效 */}
+                  <Route path="/quick-import" element={<Navigate to="/system-config" replace />} />
                 </Route>
               </Route>
             </Route>

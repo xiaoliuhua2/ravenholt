@@ -7,7 +7,7 @@ import io
 from urllib3.response import HTTPResponse
 
 
-_PATCHED_ATTR = "_z3r0_closed_file_close_patch"
+_PATCHED_ATTR = "_ravenholt_closed_file_close_patch"
 
 
 def install_urllib3_closed_file_close_patch() -> None:

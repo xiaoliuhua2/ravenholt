@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
-# Z3r0 - 停止脚本
+# Ravenholt - 停止脚本
 # ============================================================
 set -e
 
 cd "$(dirname "$0")"
 
-echo "停止 Z3r0 后端..."
+echo "停止 Ravenholt 后端..."
 pkill -f "python main.py" 2>/dev/null && echo "  ✅ 已停止" || echo "  ℹ️  未在运行"
 
 # 可选：停止 PostgreSQL
