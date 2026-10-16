@@ -188,9 +188,15 @@ docker compose -f docker-compose.dev.yml up -d
 使用以下命令启动项目：
 
 ```bash
-python main.py
-# 或后台常驻：
+# 后台常驻（推荐；启动时打印管理员账号与口令）
 bash serve.sh start
+
+# 其余子命令
+bash serve.sh run      # 前台运行（调试用，Ctrl+C 停止）
+bash serve.sh status   # 查看进程 / 端口 / 健康检查
+bash serve.sh logs 40  # 查看日志（-f 持续跟踪）
+bash serve.sh restart  # 重启
+bash serve.sh stop     # 停止（SIGTERM 优雅退出）
 ```
 
 服务默认监听在 `0.0.0.0:8000` 上，使用 `http://127.0.0.1:8000/` 即可访问。

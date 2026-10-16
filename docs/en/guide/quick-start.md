@@ -188,9 +188,15 @@ Create `.ravenholt/config.json` and `.ravenholt/policy.yaml`, filling in the rel
 Start the project with the following command:
 
 ```bash
-python main.py
-# Or run as a background daemon:
+# Background daemon (recommended; prints the admin account and password on start)
 bash serve.sh start
+
+# Other subcommands
+bash serve.sh run      # foreground (debug; Ctrl+C to stop)
+bash serve.sh status   # show process / port / health check
+bash serve.sh logs 40  # show log (-f to follow)
+bash serve.sh restart  # restart
+bash serve.sh stop     # stop (graceful SIGTERM)
 ```
 
 By default, the service listens on `0.0.0.0:8000`. Visit `http://127.0.0.1:8000/` to access it.
