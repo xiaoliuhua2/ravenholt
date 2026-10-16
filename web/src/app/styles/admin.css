@@ -27,9 +27,9 @@
   grid-template-columns: 60px var(--admin-context-w) minmax(0, 1fr);
 }
 
-/* 折叠态：会话列整列收起（宽度归零），仅留图标栏 */
+/* 折叠态：会话列整列收起（不渲染），主区落到第 2 列占满剩余宽度 */
 .admin-shell-context-collapsed {
-  grid-template-columns: 60px 0 minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
 }
 
 .admin-shell-context-collapsed .admin-context {
