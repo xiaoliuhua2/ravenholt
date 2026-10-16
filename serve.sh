@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Ravenholt - 后台常驻服务管理脚本
+# Ravenholt - 服务管理脚本（已合并原 start.sh）
 #
 #   ./serve.sh start     后台启动（默认动作）
 #   ./serve.sh stop      停止
@@ -9,8 +9,11 @@
 #   ./serve.sh logs [N]  查看日志（默认 40 行；用 -f 持续跟踪）
 #   ./serve.sh run       前台运行（调试用，Ctrl+C 停止）
 #
-# 与 start.sh 的区别：start.sh 是前台一次性启动，关掉终端就中断；
-# 本脚本后台常驻，带 PID 文件、端口健康检查与日志落盘，可反复启停。
+# 行为：
+#   - 启动时打印管理员账号与口令（读自 .ravenholt/config.json，便于首次登录）；
+#   - 虚拟环境缺失时自动创建并安装依赖（首次较慢）；
+#   - Postgres 启动按已安装的主版本号动态探测，不再硬编码版本。
+# 后台常驻带 PID 文件、端口健康检查与日志落盘，可反复启停；
 # 停止时发 SIGTERM，让 uvicorn 走完整关闭流程（不会留下半途的会话状态）。
 # ============================================================
 set -uo pipefail
@@ -18,6 +21,7 @@ set -uo pipefail
 cd "$(dirname "$0")"
 PROJECT_DIR="$(pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
+PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/serve.log"
 PID_FILE="$LOG_DIR/serve.pid"
@@ -38,15 +42,23 @@ pid_of() {
   printf '%s' "$pid"
 }
 
-ensure_postgres() {
+start_postgres() {
   if pg_isready -q 2>/dev/null; then
     info "  PostgreSQL 已在运行"
     return 0
   fi
+  # 动态探测已安装的 PostgreSQL 主版本号（如 16、18）
+  local ver
+  ver="$(ls /etc/postgresql 2>/dev/null | sort -n | tail -1)"
   info "  启动 PostgreSQL..."
-  systemctl start postgresql 2>/dev/null \
-    || pg_ctlcluster 18 main start 2>/dev/null \
-    || service postgresql start 2>/dev/null
+  if [ -n "$ver" ]; then
+    systemctl start postgresql 2>/dev/null \
+      || pg_ctlcluster "$ver" main start 2>/dev/null \
+      || service postgresql start 2>/dev/null
+  else
+    systemctl start postgresql 2>/dev/null \
+      || service postgresql start 2>/dev/null
+  fi
   sleep 2
   if pg_isready -q 2>/dev/null; then
     info "  PostgreSQL 启动成功"
@@ -57,12 +69,21 @@ ensure_postgres() {
 }
 
 ensure_venv() {
-  if [ ! -x "$VENV_DIR/bin/python" ]; then
-    fail "  找不到虚拟环境：$VENV_DIR/bin/python"
-    fail "  请先执行：cd $PROJECT_DIR && bash setup.sh"
+  if [ -x "$VENV_DIR/bin/python" ]; then
+    return 0
+  fi
+  info "  未找到虚拟环境，正在创建并安装依赖（首次可能较慢）..."
+  if ! python3 -m venv "$VENV_DIR"; then
+    fail "  创建虚拟环境失败（请确认已安装 python3-venv）"
     return 1
   fi
-  return 0
+  "$VENV_DIR/bin/pip" install -i "$PIP_INDEX" --upgrade pip -q 2>&1 | tail -1
+  if "$VENV_DIR/bin/pip" install -i "$PIP_INDEX" -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -3; then
+    info "  依赖安装完成"
+    return 0
+  fi
+  fail "  依赖安装失败，请检查网络/镜像后重试"
+  return 1
 }
 
 ensure_sandbox_network() {
@@ -77,6 +98,33 @@ ensure_sandbox_network() {
   return 0
 }
 
+print_admin_credentials() {
+  [ -f "$PROJECT_DIR/.ravenholt/config.json" ] || return 0
+  local creds email pwd
+  creds="$(python3 - <<'PYEOF'
+import json
+import sys
+
+try:
+    with open(".ravenholt/config.json", encoding="utf-8") as fh:
+        cfg = json.load(fh)
+except Exception:
+    sys.exit(0)
+
+adm = (cfg.get("system") or {}).get("bootstrap_admin") or {}
+if adm.get("enabled", True):
+    print(adm.get("email") or adm.get("username") or "-")
+    print(adm.get("password") or "-")
+PYEOF
+)"
+  email="$(printf '%s' "$creds" | sed -n '1p')"
+  pwd="$(printf '%s' "$creds" | sed -n '2p')"
+  if [ -n "$email" ]; then
+    info "  管理员账号：$email"
+    info "  管理员口令：$pwd"
+  fi
+}
+
 do_start() {
   local pid
   if pid="$(pid_of)"; then
@@ -84,7 +132,7 @@ do_start() {
     return 0
   fi
 
-  ensure_postgres || return 1
+  start_postgres || return 1
   ensure_venv || return 1
   ensure_sandbox_network
 
@@ -105,6 +153,7 @@ do_start() {
     fi
     if curl -sf -m 2 -o /dev/null "$HEALTH_URL"; then
       info "  服务已就绪"
+      print_admin_credentials
       do_status
       return 0
     fi
@@ -180,6 +229,19 @@ do_logs() {
   fi
 }
 
+do_run() {
+  start_postgres || exit 1
+  ensure_venv || exit 1
+  ensure_sandbox_network
+  info ""
+  info "  前台运行：http://127.0.0.1:8000"
+  info "  API 文档：http://127.0.0.1:8000/docs"
+  print_admin_credentials
+  info ""
+  info "  按 Ctrl+C 停止服务"
+  exec "$VENV_DIR/bin/python" main.py
+}
+
 case "${1:-start}" in
   start)
     do_start
@@ -198,9 +260,7 @@ case "${1:-start}" in
     do_logs "${2:-40}"
     ;;
   run)
-    ensure_postgres || exit 1
-    ensure_venv || exit 1
-    exec "$VENV_DIR/bin/python" main.py
+    do_run
     ;;
   *)
     info "用法：./serve.sh {start|stop|restart|status|logs [行数|-f]|run}"

@@ -77,7 +77,7 @@ else:
     print(f"\n  ✅ 已清除 {count} 个智能体的 API Key")
 PYEOF
         echo ""
-        echo "  重启服务生效: bash start.sh"
+        echo "  重启服务生效: bash serve.sh restart"
         echo "========================================"
         ;;
 
@@ -163,7 +163,7 @@ PYEOF
             log "模型名称: $MODEL"
         fi
         echo ""
-        echo "  重启服务生效: bash start.sh"
+        echo "  重启服务生效: bash serve.sh restart"
         echo "========================================"
         ;;
 

@@ -313,8 +313,8 @@ bash config-tool.sh clear                                 # 清空所有 Key
 ## 七、启动与运维
 
 ```bash
-bash start.sh            # 前台运行（启动时在屏幕打印管理员账号与口令；Ctrl+C 停止）
-bash serve.sh start      # 后台常驻（带 PID 文件、端口健康检查、日志落盘）
+bash serve.sh start      # 后台常驻（默认动作；带 PID 文件、端口健康检查、日志落盘）
+bash serve.sh run        # 前台运行（调试用；启动时在屏幕打印管理员账号与口令，Ctrl+C 停止）
 bash serve.sh status     # 查看进程 / 端口 / 健康检查
 bash serve.sh logs 40    # 查看启动日志（-f 持续跟踪）
 bash serve.sh restart    # 重启
@@ -322,7 +322,7 @@ bash serve.sh stop       # 停止（SIGTERM 优雅退出）
 ```
 
 > [!TIP]
-> `bash start.sh` 会从 `.ravenholt/config.json` 读出并打印管理员邮箱与口令，方便首次登录；若 `bootstrap_admin` 未启用则提示相应信息。
+> 启动时（`serve.sh start` / `run`）会从 `.ravenholt/config.json` 读出并打印管理员邮箱与口令，方便首次登录；若 `bootstrap_admin` 未启用则提示相应信息。
 
 - 应用日志：`.ravenholt/app.log`
 - 服务日志：`logs/serve.log`
@@ -373,8 +373,7 @@ ravenholt/
 ├── scripts/         # 工具与自检脚本（export_schema、verify_*_selftest 等）
 ├── .ravenholt/      # 运行时配置：config.json / policy.yaml / skill_routes.yaml（均不入库）
 ├── setup.sh         # 一键部署脚本
-├── start.sh         # 前台启动（打印管理员账号口令）
-├── serve.sh         # 后台常驻服务管理
+├── serve.sh         # 服务管理（start/stop/restart/status/logs/run；启动打印账号口令）
 ├── config-tool.sh   # LLM API Key 管理
 ├── docker-compose.prod.yml / .dev.yml
 └── requirements.txt

@@ -316,8 +316,8 @@ bash config-tool.sh clear                                 # clear all keys
 ## 7. Running & Operations
 
 ```bash
-bash start.sh            # foreground (prints the admin account and password; Ctrl+C to stop)
-bash serve.sh start      # background service (PID file, port health check, logs to disk)
+bash serve.sh start      # background service (default action; PID file, port health check, logs to disk)
+bash serve.sh run        # foreground (debug; prints the admin account and password, Ctrl+C to stop)
 bash serve.sh status     # show process / port / health check
 bash serve.sh logs 40    # show startup log (-f to follow)
 bash serve.sh restart    # restart
@@ -325,7 +325,7 @@ bash serve.sh stop       # stop (graceful SIGTERM)
 ```
 
 > [!TIP]
-> `bash start.sh` reads `.ravenholt/config.json` and prints the admin email and password to the screen for the first login; if `bootstrap_admin` is disabled it says so instead.
+> On start/run (`serve.sh start` / `run`) the script reads `.ravenholt/config.json` and prints the admin email and password for the first login; if `bootstrap_admin` is disabled it says so instead.
 
 - Application log: `.ravenholt/app.log`
 - Service log: `logs/serve.log`
@@ -376,8 +376,7 @@ ravenholt/
 ├── scripts/         # tooling and self-test scripts (export_schema, verify_*_selftest, etc.)
 ├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (all untracked)
 ├── setup.sh         # one-command deployment script
-├── start.sh         # foreground start (prints admin account & password)
-├── serve.sh         # background service management
+├── serve.sh         # service management (start/stop/restart/status/logs/run; prints admin credentials on start)
 ├── config-tool.sh   # LLM API key management
 ├── docker-compose.prod.yml / .dev.yml
 └── requirements.txt
