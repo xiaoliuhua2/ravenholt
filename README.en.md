@@ -6,27 +6,24 @@
 
 > An open-source, authorization-scoped red-team multi-agent platform for penetration testing, vulnerability discovery, code auditing, and security research
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](./CHANGELOG.md)
-[![Docs](https://img.shields.io/badge/docs-online-2ea44f.svg)](https://xiaoliuhua2.github.io/ravenholt/)
+<a href="https://github.com/xiaoliuhua2/ravenholt"><img src="https://img.shields.io/badge/Release-v0.2.1-blue" alt="Version"></a>
+<a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License"></a>
+<a href="https://xiaoliuhua2.github.io/ravenholt/"><img src="https://img.shields.io/badge/Docs-online-2ea44f" alt="Docs"></a>
+<a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/Changelog-CHANGELOG.md-6f42c1" alt="Changelog"></a>
 
-[中文](./README.md) · **English**
+<br/>
+
+<img src="docs/public/images/landing.png" alt="Ravenholt landing page" width="880" />
+
+[中文](./README.md) · **English** · [Online docs](https://xiaoliuhua2.github.io/ravenholt/)
 
 </div>
 
-Ravenholt uses [strix](https://github.com/usestrix/strix) as its penetration-testing execution engine (vendored in this repository, verified by `.strix-vendor.json`), and layers a control plane, a policy-governance layer, and an evidence plane on top of it: multi-agent orchestration, Docker sandbox execution, red-line policy approvals, audit logging, WorkProject evidence retention, and replayable timelines.
-
-- License: MIT (see [LICENSE](./LICENSE))
-- Changelog: [CHANGELOG.md](./CHANGELOG.md)
-- Documentation: <https://xiaoliuhua2.github.io/ravenholt/>
-- Repository: <https://github.com/xiaoliuhua2/ravenholt>
-
 ---
 
-> ### Security Notice
->
-> This project is intended **only** for security testing, risk assessment, code auditing, and research within legally authorized scope.
-> It grants no permission to test, scan, access, or affect any third-party system, network, service, account, or data.
+> [!WARNING]
+> **Authorized use only.** This project may be used for security testing, risk assessment, code auditing, and research **only within a legally authorized scope for which you hold explicit written permission**.
+> It does not, and must not, grant any right to test, scan, access, or affect any unauthorized third-party system, network, service, account, or data. Unauthorized testing is illegal in most jurisdictions.
 > **The authors are not responsible for any misuse or the damages it causes.**
 
 ---
@@ -37,13 +34,14 @@ Ravenholt uses [strix](https://github.com/usestrix/strix) as its penetration-tes
 2. [Features](#2-features)
 3. [Architecture](#3-architecture)
 4. [Requirements](#4-requirements)
-5. [Installation](#5-installation)
+5. [Download & Installation](#5-download--installation)
 6. [Configuration](#6-configuration)
 7. [Running & Operations](#7-running--operations)
 8. [Getting Started](#8-getting-started)
-9. [Project Layout](#9-project-layout)
-10. [FAQ](#10-faq)
-11. [License](#11-license)
+9. [UI Gallery](#9-ui-gallery)
+10. [Project Layout](#10-project-layout)
+11. [FAQ](#11-faq)
+12. [License](#12-license)
 
 ---
 
@@ -51,7 +49,7 @@ Ravenholt uses [strix](https://github.com/usestrix/strix) as its penetration-tes
 
 Ravenholt is a **control-plane-oriented** red-team multi-agent platform: it turns agent-assisted security work into a **governed, reviewable** engineering process. Conversations are not the only source of truth — project scope, assets, findings, relationship graphs, attack paths, replayable timelines, and the agent's own reasoning process are all persisted as explicit application data.
 
-Three parts make up the platform:
+At its core it uses [strix](https://github.com/usestrix/strix) as the penetration-testing execution engine (vendored in this repository, verified by `.strix-vendor.json`), and layers a control plane, a policy-governance layer, and an evidence plane on top of it:
 
 | Part | Role |
 | --- | --- |
@@ -59,17 +57,9 @@ Three parts make up the platform:
 | **Platform control plane** (this repo) | Unified entry for sessions / projects / users / hosts / system config; REST + WebSocket; permission and resource boundaries |
 | **Policy governance & evidence plane** | Red-line policy (fail-closed), action approvals, audit log, WorkProject evidence, replayable timelines |
 
-![Ravenholt landing page](docs/public/images/landing.png)
-
-![Playground](docs/public/images/playground.png)
-
-![Work Projects](docs/public/images/work-projects.png)
-
----
-
 ## 2. Features
 
-- **Playground**: multi-agent sessions, streaming chat, subagent panel, inline reasoning display, replayable timeline.
+- **Playground**: multi-agent sessions, streaming chat, subagent panel, inline reasoning display, replayable timeline; the session column can be drag-resized and collapsed with one click.
 - **Sandbox execution plane**: custom Docker sandbox containers providing a terminal, file management, noVNC remote view, and Caido capture/replay; containers are provisioned automatically per session.
 - **WorkProject**: project metadata, owners, scope assets, sessions, records, relationship graph, and attack paths; findings carry evidence and impact.
 - **Source-audit (white-box) channel**: upload a source archive to switch to the white-box track, with skill routing and prompts adjusted accordingly.
@@ -78,8 +68,6 @@ Three parts make up the platform:
 - **Audit log**: auditable trail of key actions and events (action, verdict, block reason, etc.).
 - **System users / System config**: accounts and role permissions, runtime parameters, and integration settings.
 - **Replayable timeline**: all sources merged into a single ordered view for item-by-item post-mortem review.
-
----
 
 ## 3. Architecture
 
@@ -121,8 +109,6 @@ Three parts make up the platform:
 | Database | PostgreSQL 16 |
 | Deployment | venv (direct) / Docker Compose |
 
----
-
 ## 4. Requirements
 
 | Item | Requirement | Notes |
@@ -134,18 +120,22 @@ Three parts make up the platform:
 | Docker | Recommended | Runtime for pentest/audit sandboxes; the execution plane is unavailable without it |
 | Disk | ≥ 2 GB recommended (sandbox image needs 3+ GB more) | Sandbox image bundles Ghidra/Jadx and other toolchains |
 
----
-
-## 5. Installation
+## 5. Download & Installation
 
 Three ways — pick one. **The one-command script is recommended for first-time deployment.**
 
-### 5.1 One-command deployment (recommended)
+### 5.1 Download the source
 
 ```bash
 git clone https://github.com/xiaoliuhua2/ravenholt.git
 cd ravenholt
+```
 
+> You can also download and unzip the ZIP archive. The repository vendors the complete `strix/` runtime and ships a **prebuilt frontend** under `web/dist-app`, so it is ready to use out of the box.
+
+### 5.2 One-command deployment (recommended)
+
+```bash
 # 1) Preflight: check the environment only, no files are modified
 bash setup.sh --check
 
@@ -172,10 +162,11 @@ The script runs in 8 stages, printing results as it goes:
 
 The script is **idempotent**: existing `config.json` / `policy.yaml` are never overwritten.
 
-> **Important**: the admin password is randomly generated and **printed only once** — save it immediately.
+> [!IMPORTANT]
+> The admin password is randomly generated and **printed only once** — save it immediately.
 > If you lose it, delete `.ravenholt/config.json` and re-run `bash setup.sh` to regenerate it (the DB password is regenerated too, so the database role must be updated to match).
 
-### 5.2 Manual step-by-step deployment
+### 5.3 Manual step-by-step deployment
 
 For environments where you want to control each step.
 
@@ -214,7 +205,7 @@ cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
 
 - `.ravenholt/config.json`: edit `system.encrypt_key` (≥32 random chars, required), `system.bootstrap_admin` (admin email and a strong password), `database` (`host=127.0.0.1` for a local DB), and `agents.*` (LLM `api_key` / `base_url` / `model`).
 - `.ravenholt/policy.yaml`: the **red-line policy, fail-closed** — if the file is missing, the YAML is invalid, or validation fails, the platform **refuses to start**. The `enabled` flag of the `rate_limit`, `sandbox`, `kill_switch`, and `audit` sections must be `true`.
-- `.ravenholt/skill_routes.yaml` (**optional**): an instance override layer for the skill routing table. When absent, the factory default is used (`core/strix_runtime/skill_routes.default.yaml`). To customize: `cp .ravenholt/skill_routes.yaml.example .ravenholt/skill_routes.yaml` and edit.
+- `.ravenholt/skill_routes.yaml` (**optional**): an instance override layer for the skill routing table. When absent, the factory default is used (`core/strix_runtime/skill_routes.default.yaml`).
 
 **Step 4: Python dependencies**
 
@@ -236,6 +227,9 @@ cd ..
 
 This produces `web/dist-app`, which the backend serves automatically.
 
+> [!NOTE]
+> A prebuilt `web/dist-app` already ships in the repository, so you can skip this step to start the platform; rebuild only after changing frontend source.
+
 **Step 6: Sandbox image (optional; needed by the execution plane)**
 
 ```bash
@@ -255,15 +249,28 @@ bash serve.sh start
 
 Open <http://127.0.0.1:8000>.
 
-### 5.3 Docker Compose deployment
+### 5.4 Docker Compose deployment
 
 For containerizing the control plane together with the database.
 
 ```bash
 # Prerequisites: 1) .ravenholt/config.json and .ravenholt/policy.yaml are ready
+#                   (a missing/invalid policy.yaml makes the platform fail-closed and refuse to start)
 #                2) the sandbox-runtime:latest image has been built
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+> The application image (`Dockerfile`) already ships the vendored `strix/` runtime and the built frontend `web/dist-app`, so nothing else needs to be mounted; `./.ravenholt` is mounted into the container by Compose as the runtime config.
+
+> [!CAUTION]
+> **Config source for Compose (important — don't mix it up)**: the bundled `postgres` service uses the fixed password `123456` (see `docker-compose.prod.yml`), which matches the repository's `.ravenholt/config.json.example`. For Compose, **copy the examples directly**:
+>
+> ```bash
+> cp .ravenholt/config.json.example .ravenholt/config.json
+> cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
+> ```
+>
+> **Do not reuse the `config.json` generated by `bash setup.sh` (5.2)**: that script generates a **random DB password**, which does not match the Compose `postgres` password, so the app will fail to connect to the database and refuse to start.
 
 The stack has three services:
 
@@ -276,8 +283,6 @@ The stack has three services:
 > Note: `app` uses host networking and mounts the Docker socket (it needs to create sandbox containers) — use it only on a trusted host.
 > For development you can also start just the database with `docker compose -f docker-compose.dev.yml up -d`.
 
----
-
 ## 6. Configuration
 
 ### `.ravenholt/config.json`
@@ -287,7 +292,7 @@ The stack has three services:
 | `system` | `listen_addr` / `listen_port` | Listen address and port (default `0.0.0.0:8000`) |
 | | `encrypt_key` | Data encryption key — **must be changed** to a ≥32-char random string |
 | | `bootstrap_admin` | Admin auto-created on first start (`username` / `email` / `password`); log in with the email |
-| `database` | `host` / `port` / `database` / `username` / `password` | PostgreSQL connection; for Compose, `host` is the service name |
+| `database` | `host` / `port` / `database` / `username` / `password` | PostgreSQL connection; for Compose, `host` is `127.0.0.1` |
 | `agent_runtime` | `main_max_turns` / context-compaction settings | Turn limits and context compaction thresholds |
 | `agent_pool` | `max_size` / `ttl_seconds` | Agent session pool |
 | `agents` | `cso` … | Per-agent LLM config: `api_key` / `base_url` / `model` / `context_window` |
@@ -308,12 +313,10 @@ bash config-tool.sh clear                                 # clear all keys
 - `.ravenholt/policy.yaml`: the red-line policy (fail-closed). Changes made in the console take effect immediately and are written back to this file.
 - `.ravenholt/skill_routes.yaml`: instance override layer for skill routing (optional).
 
----
-
 ## 7. Running & Operations
 
 ```bash
-bash start.sh            # foreground (Ctrl+C to stop)
+bash start.sh            # foreground (prints the admin account and password; Ctrl+C to stop)
 bash serve.sh start      # background service (PID file, port health check, logs to disk)
 bash serve.sh status     # show process / port / health check
 bash serve.sh logs 40    # show startup log (-f to follow)
@@ -321,24 +324,44 @@ bash serve.sh restart    # restart
 bash serve.sh stop       # stop (graceful SIGTERM)
 ```
 
+> [!TIP]
+> `bash start.sh` reads `.ravenholt/config.json` and prints the admin email and password to the screen for the first login; if `bootstrap_admin` is disabled it says so instead.
+
 - Application log: `.ravenholt/app.log`
 - Service log: `logs/serve.log`
 - URL: <http://127.0.0.1:8000>; API docs: <http://127.0.0.1:8000/docs>
 
----
-
 ## 8. Getting Started
 
 1. Open <http://127.0.0.1:8000> and log in with the admin email and password.
+
+   <img src="docs/public/images/login.png" alt="Login page" width="820" />
+
 2. Go to **System Config** and fill in the `agents` LLM API key (or set it beforehand with `config-tool.sh set`).
 3. Go to **Work Projects**, create a project, and fill in scope and targets.
 4. In the **Playground**, start a session and work with the agents; sandbox containers are created on demand, and you can use the terminal, file manager, and Caido from the container panel.
 5. Assets, findings, evidence, and attack paths produced along the way are retained in the project; afterwards you can review the replayable timeline and reports.
 6. High-risk actions are blocked by the **red-line policy** and routed to the **Policy Approvals** queue; every key action can be reviewed in the **Audit Log**.
 
----
+## 9. UI Gallery
 
-## 9. Project Layout
+| Playground | Work Projects |
+| --- | --- |
+| <img src="docs/public/images/playground.png" alt="Playground" width="420" /> | <img src="docs/public/images/work-projects.png" alt="Work Projects" width="420" /> |
+
+| System Config | System Users |
+| --- | --- |
+| <img src="docs/public/images/system-config.png" alt="System Config" width="420" /> | <img src="docs/public/images/system-users.png" alt="System Users" width="420" /> |
+
+| Policy Approvals | Audit Log |
+| --- | --- |
+| <img src="docs/public/images/policy-confirmations.png" alt="Policy Approvals" width="420" /> | <img src="docs/public/images/audit-events.png" alt="Audit Log" width="420" /> |
+
+| Egress Proxies | Landing page |
+| --- | --- |
+| <img src="docs/public/images/egress-proxies.png" alt="Egress Proxies" width="420" /> | <img src="docs/public/images/landing.png" alt="Landing page" width="420" /> |
+
+## 10. Project Layout
 
 ```
 ravenholt/
@@ -353,16 +376,14 @@ ravenholt/
 ├── scripts/         # tooling and self-test scripts (export_schema, verify_*_selftest, etc.)
 ├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (all untracked)
 ├── setup.sh         # one-command deployment script
-├── start.sh         # foreground start
+├── start.sh         # foreground start (prints admin account & password)
 ├── serve.sh         # background service management
 ├── config-tool.sh   # LLM API key management
 ├── docker-compose.prod.yml / .dev.yml
 └── requirements.txt
 ```
 
----
-
-## 10. FAQ
+## 11. FAQ
 
 **Q: It exits right after startup and the log mentions policy errors?**
 A: `.ravenholt/policy.yaml` is missing or invalid. The platform is **fail-closed** on the red-line policy, so the file must exist and be valid:
@@ -383,9 +404,10 @@ A: Check the x64 architecture and available disk space; the build downloads tool
 **Q: Can it run without Docker?**
 A: Yes — the control plane starts and works, but the pentest/code-audit sandbox execution plane is unavailable.
 
----
+**Q: After Compose deployment the app cannot connect to the database?**
+A: Most likely you reused the `config.json` generated by `setup.sh` (random DB password), which does not match the Compose fixed password `123456`. See the config-source note in [5.4](#54-docker-compose-deployment).
 
-## 11. License
+## 12. License
 
 Released under the **MIT License**, copyright 2026 `yv1ing` and `xiaoliuhua2`. See [LICENSE](./LICENSE).
 
