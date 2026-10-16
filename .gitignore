@@ -22,6 +22,7 @@ node_modules
 .ravenholt/policy.yaml
 .ravenholt/skill_routes.yaml
 .ravenholt/outputs/
+strix_runs/
 
 web/node_modules
 web/dist

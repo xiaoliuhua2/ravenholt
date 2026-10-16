@@ -260,9 +260,21 @@ bash serve.sh start
 
 ```bash
 # 前置：1) 已准备 .ravenholt/config.json 与 .ravenholt/policy.yaml
+#          （policy.yaml 缺失或非法时平台 fail-closed 拒绝启动，容器会启动失败）
 #       2) 已构建沙箱镜像 sandbox-runtime:latest
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+> 应用镜像（`Dockerfile`）已内置 vendor 的 `strix/` 运行时与构建好的前端 `web/dist-app`，无需额外挂载；`./.ravenholt` 由 Compose 挂载进容器作为运行时配置。
+
+> **Compose 的配置来源（重要，别用错来源）**：编排内置的 `postgres` 服务口令固定为 `123456`（见 `docker-compose.prod.yml`），与仓库自带的 `.ravenholt/config.json.example` 一致。因此 Compose 部署请**直接复制示例**：
+>
+> ```bash
+> cp .ravenholt/config.json.example .ravenholt/config.json
+> cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
+> ```
+>
+> **不要复用 `bash setup.sh`（5.1）生成的 `config.json`**：该脚本会为数据库生成**随机口令**，与 Compose 的 `postgres` 固定口令不一致，app 将连不上数据库、启动失败。
 
 该编排包含三个服务：
 

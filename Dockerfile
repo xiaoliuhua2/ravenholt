@@ -31,6 +31,8 @@ COPY router ./router
 COPY schema ./schema
 COPY service ./service
 COPY utils ./utils
+COPY strix ./strix
+COPY .strix-vendor.json ./
 COPY --from=web-builder /app/web/dist-app ./web/dist-app
 
 EXPOSE 8000
