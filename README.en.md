@@ -33,7 +33,7 @@
 1. [Overview](#1-overview)
 2. [Features](#2-features)
 3. [Architecture](#3-architecture)
-4. [Requirements](#4-requirements)
+4. [Requirements & Full Dependency List](#4-requirements--full-dependency-list)
 5. [Download & Installation](#5-download--installation)
 6. [Configuration](#6-configuration)
 7. [Running & Operations](#7-running--operations)
@@ -54,27 +54,60 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 | Part | Role |
 | --- | --- |
 | **strix runtime** (vendored) | Execution engine: agent orchestration, skill library, sandbox toolchain, Caido capture, reporting |
-| **Platform control plane** (this repo) | Unified entry for sessions / projects / users / hosts / system config; REST + WebSocket; permission and resource boundaries |
-| **Policy governance & evidence plane** | Red-line policy (fail-closed), action approvals, audit log, WorkProject evidence, replayable timelines |
+| **Control plane** (this repo) | Unified entry point for sessions / projects / users / hosts / system config; REST + WebSocket, permission and resource boundaries |
+| **Policy governance & evidence plane** | Red-line policy (fail-closed), action approvals, audit log, WorkProject evidence, replayable timeline |
+| **All-in-one sandbox image** | `sandbox-runtime:latest`, built by this repo's `sandbox/`: upstream capabilities (Caido + Kali toolchain) plus the customized toolchain (Ghidra / Jadx / observer_ward / agent-browser), an in-container control plane, and skill resources |
+
+---
 
 ## 2. Features
 
-- **Playground**: multi-agent sessions, streaming chat, subagent panel, inline reasoning display, replayable timeline; the session column can be drag-resized and collapsed with one click.
-- **Sandbox execution plane**: custom Docker sandbox containers providing a terminal, file management, noVNC remote view, and Caido capture/replay; containers are provisioned automatically per session.
-- **WorkProject**: project metadata, owners, scope assets, sessions, records, relationship graph, and attack paths; findings carry evidence and impact.
-- **Source-audit (white-box) channel**: upload a source archive to switch to the white-box track, with skill routing and prompts adjusted accordingly.
-- **Egress proxies**: configuration and management of controlled network egress.
-- **Policy approvals**: red-line policy decides whether an action is allowed; high-risk actions enter an approval queue for an admin to approve or reject.
-- **Audit log**: auditable trail of key actions and events (action, verdict, block reason, etc.).
-- **System users / System config**: accounts and role permissions, runtime parameters, and integration settings.
-- **Replayable timeline**: all sources merged into a single ordered view for item-by-item post-mortem review.
+### 2.1 Feature → Prerequisite Matrix
+
+The table below states, for every feature, what it requires and where to enable it. Following [8.2 Enabling the full capability set](#82-enabling-the-full-capability-set) in order turns everything on.
+
+| Feature | Requires | How to enable |
+| --- | --- | --- |
+| Login, users & roles, system config | PostgreSQL + config files | `bash setup.sh` handles it |
+| Playground sessions (streaming chat with agents) | **LLM API key** (OpenAI-compatible endpoint) | Fill it on the System Config page, or `bash config-tool.sh set ...` |
+| **Pentest / audit execution** inside sessions (sandbox) | Docker + a sandbox image | The upstream image (~4 GB) is pulled automatically on the first session; after building the all-in-one image, sessions use the customized toolchain instead |
+| Platform **sandbox container** console<br/>(terminal / file manager / noVNC) | `sandbox-runtime:latest` + an image record | `cd sandbox && bash build.sh`, then add a record on the Sandbox Images page (Control Port `8000`) |
+| Caido capture / replay / request store | Sandbox execution plane (both images ship it) | Started with the session; no configuration needed |
+| Binary reversing (Ghidra / Jadx / apktool / binwalk) | All-in-one image | Takes effect for sessions automatically once `sandbox-runtime:latest` is built |
+| Browser automation (agent-browser-cli) | All-in-one image | Same as above |
+| Web search (`web_search` / `web_get_contents`) | Local SearXNG **or** Exa / Perplexity key | **Zero config**: the platform auto-starts a local SearXNG container; third-party keys are optional |
+| Egress proxy (controlled network egress) | All-in-one image (in-container control plane) + a proxy entry | Build the image, then configure the chain on the Egress Proxies page |
+| OOB callback (reverse-shell collection) | macvlan network (host must support it) | `bash serve.sh start` runs `sandbox/setup_macvlan.sh`; falls back to bridge otherwise |
+| Work projects / assets / findings / graphs / attack paths | Control plane basics | Available out of the box |
+| Source-code audit track (white box) | LLM key + a source archive | Upload the archive inside a project; skill routing and prompts switch automatically |
+| Policy approvals (high-risk actions parked for review) | `.ravenholt/policy.yaml` | Generated by `setup.sh`; adjustable live from the console |
+| Audit log | `policy.yaml` → `audit.enabled=true` | On by default (Tier-1, cannot be disabled) |
+| Replayable timeline | Control plane basics | Available out of the box |
+| Full event archive (side-car persistence) | `archive` section of `config.json` | On by default |
+| MCP tool integration | MCP server config | Loaded on demand within a session |
+
+> In one line: **the minimum is Python 3.12+ / PostgreSQL / one LLM API key**; **the full capability set adds Docker plus the all-in-one sandbox image**.
+
+### 2.2 Feature Details
+
+- **Playground**: multi-agent sessions, streaming chat, sub-agent panel, inline thinking display, replayable timeline; the session column is drag-resizable and collapsible.
+- **Sandbox execution plane**: Docker sandbox containers providing the Kali toolchain, terminal, file manager, noVNC remote view, and Caido capture/replay; provisioned automatically per session.
+- **WorkProject**: project metadata, owner, scoped assets, sessions, records, relationship graphs, and attack paths; findings carry evidence and impact.
+- **Source-code audit track (white box)**: upload a source archive to switch to the white-box track, with skill routing and prompts adapting accordingly.
+- **Egress proxy**: configuration and management of controlled network egress (proxy chains).
+- **Policy approvals**: the red-line policy decides whether an action is allowed; high-risk actions enter an approval queue for an administrator to approve/reject.
+- **Audit log**: audit trail of critical actions and events (action, decision, blocking reason, etc.).
+- **System users / system config**: accounts and role permissions, runtime parameters, and integration config.
+- **Replayable timeline**: all sources merged into a single chronological view for post-hoc review, item by item.
+
+---
 
 ## 3. Architecture
 
 ```
 ┌──────────────────────────────────────────────┐
-│  Web console (React 19 + Semi UI + Vite)      │
-│  Landing · Login · Playground · Projects · …  │
+│  Frontend console (React 19 + Semi UI + Vite) │
+│  Landing · Login · Playground · Projects …    │
 └───────────────────────┬──────────────────────┘
                         │ REST + WebSocket
 ┌───────────────────────▼──────────────────────┐
@@ -83,15 +116,14 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 └───────┬───────────────────────┬──────────────┘
         │                       │
 ┌───────▼────────┐      ┌───────▼──────────────┐
-│ Session        │      │ Evidence plane        │
-│ runtime        │      │ (WorkProject)         │
+│ Session runtime│      │ Evidence plane        │
 │ strix engine   │      │ assets/findings/graph │
-│ dynamic agents │      │ evidence + verifier   │
+│ dynamic agents │      │ evidence chain        │
 └───────┬────────┘      └──────────────────────┘
         │
 ┌───────▼──────────────────────────────────────┐
-│  Sandbox execution plane (Docker)             │
-│  sandbox-runtime image · toolchain · Caido    │
+│  Sandbox execution plane (Docker, one image)  │
+│  Caido · Kali toolchain · Ghidra/Jadx · noVNC │
 └───────┬──────────────────────────────────────┘
         │
 ┌───────▼──────────┐
@@ -99,76 +131,157 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 └──────────────────┘
 ```
 
-**Tech stack**
-
 | Layer | Technology |
 | --- | --- |
 | Frontend | React 19, TypeScript, Vite 8, Semi UI, CodeMirror, xterm, Cytoscape, Mermaid |
 | Backend | Python 3.13, FastAPI, SQLModel/SQLAlchemy, asyncpg, Uvicorn, WebSocket |
 | Execution engine | strix (vendored), Docker sandbox, Caido, Kali toolchain |
+| Sandbox image | `sandbox/build.sh` → `sandbox-runtime:latest` (upstream strix image + customized layers) |
 | Database | PostgreSQL 16 |
-| Deployment | venv (direct) / Docker Compose |
+| Deployment | plain venv / Docker Compose |
 
-## 4. Requirements
+### Sandbox Execution Plane: One Image, Two Uses
 
-| Item | Requirement | Notes |
+Two things decide all sandbox behavior:
+
+| Aspect | Handled by | What it uses |
 | --- | --- | --- |
-| OS | **Linux x64** (Kali / Debian recommended) | Sandbox image is x64/amd64 only; arm64 unsupported |
-| Python | **≥ 3.12** (3.13 recommended) | `venv` module required |
-| Node.js | **≥ 20.19** (22+ recommended) | Required by Vite 8; the repo Dockerfile uses node:22 |
-| PostgreSQL | **16+** | Data persistence |
-| Docker | Recommended | Runtime for pentest/audit sandboxes; the execution plane is unavailable without it |
-| Disk | ≥ 2 GB recommended (sandbox image needs 3+ GB more) | Sandbox image bundles Ghidra/Jadx and other toolchains |
+| **What is inside the container** | The image | By default `ghcr.io/usestrix/strix-sandbox:1.3.0` (upstream: Caido + Kali toolchain); after building, `sandbox-runtime:latest` (all-in-one) |
+| **Who creates the container, how commands run** | The platform | Session containers are provisioned on demand by the strix SDK; commands are executed through [service/sandbox/commands.py](service/sandbox/commands.py) via Docker `exec` — **no in-container control plane required** |
+
+Capability comparison:
+
+| Capability | Upstream `strix-sandbox:1.3.0` | All-in-one `sandbox-runtime:latest` |
+| --- | --- | --- |
+| Caido capture / request store / replay | ✅ | ✅ |
+| Kali toolchain (nmap / sqlmap / nuclei / ffuf / katana / httpx / semgrep / trivy / chromium / node / python / uv) | ✅ | ✅ |
+| Ghidra / Jadx / apktool / binwalk | ❌ | ✅ |
+| observer_ward / agent-browser-cli | ❌ | ✅ |
+| In-container Go control plane (terminal / files / noVNC / live egress refresh) | ❌ | ✅ |
+| In-container skill resources `.agents/skills` | ❌ | ✅ |
+| Desktop stack Xvfb + x11vnc + noVNC, tor | ❌ | ✅ |
+
+**How the all-in-one image is built**: `sandbox/Dockerfile` takes `ghcr.io/usestrix/strix-sandbox:1.3.0` as its **base image** (`FROM ${STRIX_SANDBOX_IMAGE}`) and layers the increments above on top, reusing the upstream `ENTRYPOINT` (`/ravenholt-entrypoint.sh` first detaches the extra services, then `exec`s the upstream script to start Caido) — so nothing upstream is lost.
+
+- **Without building it**: sessions still run on the upstream image (Caido + Kali toolchain), missing only the customized tools and the platform container console.
+- **After building it**: `setup.sh --with-sandbox` writes the image name into `config.json`'s `sandbox.image`, so **both** sessions and platform containers use it.
+- For a manual deployment, just set `"sandbox": { "image": "sandbox-runtime:latest" }` in `.ravenholt/config.json` (see [6.1](#61-ravenholtconfigjson)).
+
+---
+
+## 4. Requirements & Full Dependency List
+
+> For a first deployment, install 4.1 through 4.4. If you only need "log in and chat", 4.1 is enough.
+
+### 4.1 Core (mandatory)
+
+| Item | Requirement | Verify with |
+| --- | --- | --- |
+| OS | **Linux x64** (Kali Rolling / Debian recommended) | `uname -m` |
+| Python | **≥ 3.12** (3.13 recommended), with `venv` | `python3 -V` |
+| PostgreSQL | **16+**, service running | `psql --version`, `pg_isready` |
+| LLM API key | OpenAI-compatible endpoint (DeepSeek / OpenAI / self-hosted) | — |
+| Network | Reachable PyPI and npm mirrors, LLM endpoint | `curl -I https://pypi.org` |
+| Disk | ≥ 2 GB (platform + frontend artifacts) | `df -h .` |
+
+### 4.2 Full-Feature Dependencies (by capability)
+
+| Component | Version / size | Provides | Consequence of skipping |
+| --- | --- | --- | --- |
+| **Docker** | 24+, daemon running | Sandbox execution plane (in-session command execution, Caido capture) | Control plane only; no pentesting |
+| **All-in-one sandbox image** | `sandbox-runtime:latest` (~5 GB+ to build) | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser, container console, live egress refresh, skill resources | Sessions still run on the upstream image, but the items above are missing |
+| **Upstream sandbox image** | `ghcr.io/usestrix/strix-sandbox:1.3.0` (~4 GB) | Caido + Kali toolchain | Pulled automatically on the first session; pre-pull for offline hosts |
+| **Node.js** | ≥ 20.19 (22 recommended) | Rebuilding the frontend (a prebuilt `web/dist-app` ships with the repo) | No impact unless you change frontend sources |
+| **Docker Compose** | v2 | The Compose deployment route | No impact if you use `serve.sh` |
+| **SearXNG container** | `searxng/searxng:latest` (~265 MB) | Zero-config web search | Auto-started by the platform; offline hosts should use Exa/Perplexity keys |
+| **macvlan support** | Host NIC allows multiple L2 MACs | Target-initiated callbacks (OOB exfil / reverse-shell collection) | Falls back to bridge; OOB uses the in-container interactsh |
+| **JRE** | Bundled in the all-in-one image (`openjdk-21-jdk-headless`) | Running Ghidra / Jadx | Nothing to install when using the all-in-one image |
+
+### 4.3 System Packages
+
+`setup.sh` installs the following Debian/Kali packages automatically; install them manually for a hand-rolled deployment.
+
+| Purpose | Packages |
+| --- | --- |
+| Running the platform | `python3`, `python3-venv`, `python3-pip` |
+| Database | `postgresql`, `postgresql-client` |
+| Basics | `curl`, `openssl`, `ca-certificates`, `git` |
+| Sandbox runtime | `docker.io` (plus `systemctl enable --now docker`) |
+| Frontend build (optional) | `nodejs` (≥ 20.19; nodesource 22.x recommended) |
+
+> The system packages the all-in-one sandbox image needs (apktool, binwalk, 7zip, make, sqlite3, openjdk-21-jdk-headless, xvfb, x11vnc, novnc, websockify, tor, supervisor, ...) are declared in `sandbox/Dockerfile` and installed by `docker build` — they do **not** need to be installed on the host.
+
+### 4.4 Python & Frontend Dependencies
+
+| Source | Content |
+| --- | --- |
+| `requirements.txt` | All backend dependencies (FastAPI, SQLModel, asyncpg, docker, openai-agents[litellm], caido-sdk-client, jinja2, pydantic, ...) |
+| `web/package.json` | Frontend dependencies (React 19, Semi UI, Vite 8, CodeMirror, xterm, Cytoscape, Mermaid, ...), installed only when rebuilding the frontend |
+
+### 4.5 Port Reference
+
+| Port | Purpose | Default binding |
+| --- | --- | --- |
+| `8000` | Control-plane HTTP + WebSocket; the **in-sandbox** Go control plane also listens on 8000 | `0.0.0.0` (host) / in-container |
+| `5432` | PostgreSQL | `127.0.0.1` (published to the host under Compose) |
+| `8888` | Local SearXNG (web-search backend) | `0.0.0.0`, narrowable via `searxng_bind_addr` |
+| `5433` | pgAdmin (Compose stack only) | `0.0.0.0` |
+| `30000–60999` | Control proxy of platform sandbox containers (allocated dynamically) | On demand |
+| `48080` | Caido proxy inside sandbox containers | In-container |
+| `5900` / `8080` | x11vnc / noVNC inside sandbox containers (all-in-one image) | In-container |
+
+> If you deploy on an internet-reachable host, narrow SearXNG's binding (see [6.5](#65-web-search-configuration)) and consider a firewall or reverse proxy in front of the control plane.
+
+---
 
 ## 5. Download & Installation
 
-Three ways — pick one. **The one-command script is recommended for first-time deployment.**
-
-### 5.1 Download the source
+### 5.1 Get the source
 
 ```bash
 git clone https://github.com/xiaoliuhua2/ravenholt.git
 cd ravenholt
 ```
 
-> You can also download and unzip the ZIP archive. The repository vendors the complete `strix/` runtime and ships a **prebuilt frontend** under `web/dist-app`, so it is ready to use out of the box.
+> You can also download and unzip the repository. It vendors the complete `strix/` runtime and **prebuilt frontend artifacts** (`web/dist-app`), so it works out of the box.
 
-### 5.2 One-command deployment (recommended)
+### 5.2 One-click deployment (full feature set, recommended)
 
 ```bash
-# 1) Preflight: check the environment only, no files are modified
+# 1) Check first: inspect the environment without touching any file
 bash setup.sh --check
 
-# 2) Deploy: check -> install system deps -> init config -> create DB
-#    -> install Python deps -> build frontend -> self-check
-bash setup.sh
-
-# Optional: also build the pentest sandbox image (large download, slow)
+# 2) Full deployment: env check -> system deps -> config init -> database
+#    -> Python deps -> frontend build -> all-in-one sandbox image -> self-check
+#    (--with-sandbox also builds sandbox-runtime:latest, required for the full set)
 bash setup.sh --with-sandbox
 ```
 
-The script runs in 8 stages, printing results as it goes:
+The script runs 8 stages and prints results per stage:
 
-| Stage | What it does |
+| Stage | Content |
 | --- | --- |
-| 1/8 Environment check | OS/arch/Python/Node/Docker/PostgreSQL/permissions/port/disk, each with a verdict and a fix command |
-| 2/8 System deps | Installs whatever is missing via apt, then re-checks hard requirements such as Python/venv |
+| 1/8 Env check | OS/arch/Python/Node/Docker/PostgreSQL/permissions/ports/disk, each with a verdict and a fix command |
+| 2/8 System deps | Installs what's missing (apt), then re-checks hard requirements such as Python/venv |
 | 3/8 Config init | Generates `.ravenholt/config.json` (random `encrypt_key`, DB password, admin password) and **`policy.yaml`** |
-| 4/8 PostgreSQL | Starts the service, creates the role and database, aligns the password with config.json |
+| 4/8 PostgreSQL | Starts the service, creates role and database, with credentials aligned to config.json |
 | 5/8 Python deps | Creates `.venv` and runs `pip install -r requirements.txt` |
 | 6/8 Frontend build | `npm install` + `npm run build` under `web/`, producing `web/dist-app` |
-| 7/8 Sandbox image | Detects Docker/arch; prompts, or builds automatically with `--with-sandbox` |
-| 8/8 Post-install self-check | Bytecode compile, config/policy load, `create_app` assembly smoke test |
+| 7/8 Sandbox image | Checks whether the upstream image has been pulled; builds the all-in-one image with `--with-sandbox` and **writes `sandbox.image` into config.json on success** |
+| 8/8 Post-install self-check | Syntax compile, config/policy loading, `create_app` assembly smoke test |
 
-The script is **idempotent**: existing `config.json` / `policy.yaml` are never overwritten.
+The script is **idempotent**: an existing `config.json` / `policy.yaml` is never overwritten, and `sandbox.image` is left alone once set.
 
 > [!IMPORTANT]
-> The admin password is randomly generated and **printed only once** — save it immediately.
-> If you lose it, delete `.ravenholt/config.json` and re-run `bash setup.sh` to regenerate it (the DB password is regenerated too, so the database role must be updated to match).
+> The admin password is randomly generated and printed **only once** — save it immediately.
+> If you lose it, delete `.ravenholt/config.json` and re-run `bash setup.sh` (this regenerates the DB password too, so update the database role accordingly).
 
-### 5.3 Manual step-by-step deployment
+> [!NOTE]
+> `--with-sandbox` builds the all-in-one image (~5 GB; needs network access to download Ghidra / Jadx / observer_ward). **Skipping it does not block pentesting**: sessions pull the upstream image (~4 GB) automatically, missing only the customized tools and the platform container console.
 
-For environments where you want to control each step.
+### 5.3 Manual, step by step
+
+For environments where you want to control every step.
 
 **Step 1: System dependencies**
 
@@ -176,15 +289,15 @@ For environments where you want to control each step.
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip \
                     postgresql postgresql-client \
-                    curl openssl ca-certificates
-# Node.js (versions shipped by Debian/Kali are often too old; use nodesource)
+                    curl openssl ca-certificates git
+# Node.js (only needed to rebuild the frontend; Debian/Kali's bundled version may be too old)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-# Docker (optional; needed by the sandbox execution plane)
+# Docker (required for the full feature set)
 sudo apt install -y docker.io && sudo systemctl enable --now docker
 ```
 
-Verify: `python3 -V` (≥3.12), `node -v` (≥20.19), `psql --version`, `docker -v`.
+Verify: `python3 -V` (≥3.12), `node -v` (≥20.19), `psql --version`, `docker info`.
 
 **Step 2: Database**
 
@@ -194,18 +307,18 @@ sudo -u postgres psql -c "CREATE USER root WITH PASSWORD 'your-db-password';"
 sudo -u postgres psql -c "CREATE DATABASE ravenholt OWNER root;"
 ```
 
-> The password must match `database.password` in `config.json` in step 3.
+> The password must match `database.password` in `config.json` from step 3.
 
-**Step 3: Configuration files (important, don't skip)**
+**Step 3: Config files (critical, don't skip)**
 
 ```bash
 cp .ravenholt/config.json.example .ravenholt/config.json
 cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
 ```
 
-- `.ravenholt/config.json`: edit `system.encrypt_key` (≥32 random chars, required), `system.bootstrap_admin` (admin email and a strong password), `database` (`host=127.0.0.1` for a local DB), and `agents.*` (LLM `api_key` / `base_url` / `model`).
-- `.ravenholt/policy.yaml`: the **red-line policy, fail-closed** — if the file is missing, the YAML is invalid, or validation fails, the platform **refuses to start**. The `enabled` flag of the `rate_limit`, `sandbox`, `kill_switch`, and `audit` sections must be `true`.
-- `.ravenholt/skill_routes.yaml` (**optional**): an instance override layer for the skill routing table. When absent, the factory default is used (`core/strix_runtime/skill_routes.default.yaml`).
+- `.ravenholt/config.json`: edit `system.encrypt_key` (≥32 random chars, mandatory), `system.bootstrap_admin` (admin email and a strong password), `database`, and `agents.*` (LLM `api_key` / `base_url` / `model`).
+- `.ravenholt/policy.yaml`: the **red-line policy; the platform treats it as fail-closed** — a missing file, invalid YAML, or failed validation makes the platform **refuse to start**. The `enabled` flags of `rate_limit`, `sandbox`, `kill_switch`, and `audit` must be `true`.
+- `.ravenholt/skill_routes.yaml` (**optional**): instance override layer for skill routing. When absent, factory defaults are used (`core/strix_runtime/skill_routes.default.yaml`).
 
 **Step 4: Python dependencies**
 
@@ -216,91 +329,165 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Step 5: Frontend build**
+**Step 5: Frontend build (optional)**
 
 ```bash
-cd web
-npm install
-npm run build      # runs generate:api -> tsc -> vite build
-cd ..
+cd web && npm install && npm run build && cd ..
 ```
 
-This produces `web/dist-app`, which the backend serves automatically.
+> A prebuilt `web/dist-app` ships with the repository, so **you can skip this step**; rebuild only after changing frontend sources.
 
-> [!NOTE]
-> A prebuilt `web/dist-app` already ships in the repository, so you can skip this step to start the platform; rebuild only after changing frontend source.
-
-**Step 6: Sandbox image (optional; needed by the execution plane)**
+**Step 6: Build the all-in-one sandbox image (required for the full feature set)**
 
 ```bash
 cd sandbox && bash build.sh      # produces sandbox-runtime:latest (x64 only)
 cd ..
 ```
 
-Sandbox containers are provisioned automatically per session, and the image record is created on first use — no manual registration needed.
+Then make **both sessions and platform containers** use it — set in `.ravenholt/config.json`:
+
+```json
+"sandbox": {
+    "network": "ravenholt-lan",
+    "image": "sandbox-runtime:latest"
+}
+```
+
+and add a record on the console's **Sandbox Images** page (`image_name` = `sandbox-runtime:latest`, `Control Port` = `8000`) before you can create containers with terminal/file/noVNC on the Sandbox Containers page.
+
+> With `sandbox.image` empty, sessions use the upstream `ghcr.io/usestrix/strix-sandbox:1.3.0` (pulled on first use).
 
 **Step 7: Start**
 
 ```bash
-python main.py                   # foreground (Ctrl+C to stop)
-# or as a background service:
-bash serve.sh start
+bash serve.sh start              # background service (recommended)
+# or run in the foreground for debugging:
+bash serve.sh run
 ```
 
 Open <http://127.0.0.1:8000>.
 
 ### 5.4 Docker Compose deployment
 
-For containerizing the control plane together with the database.
+For running the control plane and the database together in containers.
 
 ```bash
 # Prerequisites: 1) .ravenholt/config.json and .ravenholt/policy.yaml are ready
-#                   (a missing/invalid policy.yaml makes the platform fail-closed and refuse to start)
-#                2) the sandbox-runtime:latest image has been built
+#                   (a missing or invalid policy.yaml makes the platform fail closed and the container won't start)
+#                2) the all-in-one image sandbox-runtime:latest is built on the HOST
+#                   (the app container does not contain the sandbox/ directory)
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-> The application image (`Dockerfile`) already ships the vendored `strix/` runtime and the built frontend `web/dist-app`, so nothing else needs to be mounted; `./.ravenholt` is mounted into the container by Compose as the runtime config.
+> The app image (`Dockerfile`) already bundles the vendored `strix/` runtime and the prebuilt frontend `web/dist-app`, so nothing extra needs mounting; `./.ravenholt` is mounted into the container as runtime config; `app` uses sandbox images through the mounted host Docker socket.
 
 > [!CAUTION]
-> **Config source for Compose (important — don't mix it up)**: the bundled `postgres` service uses the fixed password `123456` (see `docker-compose.prod.yml`), which matches the repository's `.ravenholt/config.json.example`. For Compose, **copy the examples directly**:
+> **Where Compose gets its config (important)**: the bundled `postgres` service uses the fixed password `123456` (see `docker-compose.prod.yml`), matching the repo's `.ravenholt/config.json.example`. For Compose, **copy the example directly**:
 >
 > ```bash
 > cp .ravenholt/config.json.example .ravenholt/config.json
 > cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml
 > ```
 >
-> **Do not reuse the `config.json` generated by `bash setup.sh` (5.2)**: that script generates a **random DB password**, which does not match the Compose `postgres` password, so the app will fail to connect to the database and refuse to start.
+> **Do not reuse the `config.json` generated by `bash setup.sh` (5.2)**: that script generates a **random** database password, which will not match Compose's fixed `123456`; the app then cannot reach the database and fails to start.
 
-The stack has three services:
+The stack contains three services:
 
-| Service | Notes |
+| Service | Description |
 | --- | --- |
 | `app` | Builds image `ravenholt:latest`; `network_mode: host`; mounts `./.ravenholt` and `/var/run/docker.sock` (to create sandbox containers) |
 | `postgres` | `postgres:16-alpine`, data in `./.postgres-data` |
-| `pgadmin` | <http://127.0.0.1:5433> for graphical DB access |
+| `pgadmin` | <http://127.0.0.1:5433> for graphical database access |
 
 > Note: `app` uses host networking and mounts the Docker socket (it needs to create sandbox containers) — use it only on a trusted host.
 > For development you can also start just the database with `docker compose -f docker-compose.dev.yml up -d`.
 
+### 5.5 Post-install verification
+
+Run these in order; if all pass, the full feature set is ready:
+
+```bash
+# 1) Service up, health check passing
+bash serve.sh status
+
+# 2) Database reachable
+psql -h 127.0.0.1 -U root -d ravenholt -c '\dt' | head
+
+# 3) Sandbox images present (sandbox-runtime for the full set, strix-sandbox to run sessions)
+docker images | grep -E 'strix-sandbox|sandbox-runtime'
+
+# 4) Sessions are actually configured to use the all-in-one image (should read sandbox-runtime:latest)
+grep -A3 '"sandbox"' .ravenholt/config.json
+
+# 5) Web-search backend reachable
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8888/
+
+# 6) Image and code versions aligned (especially after upgrading the vendor)
+.venv/bin/python scripts/verify_strix_version_alignment.py
+```
+
+Open <http://127.0.0.1:8000> and log in with the admin email and password — installation done.
+
+---
+
 ## 6. Configuration
 
-### `.ravenholt/config.json`
+### 6.1 `.ravenholt/config.json`
 
 | Section | Key fields | Notes |
 | --- | --- | --- |
-| `system` | `listen_addr` / `listen_port` | Listen address and port (default `0.0.0.0:8000`) |
+| `system` | `listen_addr` / `listen_port` | Control-plane listen address and port (the example uses `0.0.0.0:8000`) |
 | | `encrypt_key` | Data encryption key — **must be changed** to a ≥32-char random string |
-| | `bootstrap_admin` | Admin auto-created on first start (`username` / `email` / `password`); log in with the email |
-| `database` | `host` / `port` / `database` / `username` / `password` | PostgreSQL connection; for Compose, `host` is `127.0.0.1` |
-| `agent_runtime` | `main_max_turns` / context-compaction settings | Turn limits and context compaction thresholds |
-| `agent_pool` | `max_size` / `ttl_seconds` | Agent session pool |
-| `agents` | `cso` … | Per-agent LLM config: `api_key` / `base_url` / `model` / `context_window` |
-| `integrations` | `web_search_provider`, etc. | Web-search backends (e.g. SearXNG / Exa / Perplexity) |
+| | `bootstrap_admin` | Admin auto-created on first start (`enabled` / `username` / `email` / `password`); log in with the email |
+| `database` | `host` / `port` / `database` / `username` / `password` | PostgreSQL connection; use `127.0.0.1` for a local deployment |
+| | `pool_size` / `max_overflow` / `pool_timeout_seconds` / `pool_recycle_seconds` / `pool_pre_ping` | Connection-pool parameters |
+| `agents` | `cso` … | Per-agent LLM config: `api_key` / `base_url` / `model` / `use_responses` / `context_window`; the agent list comes from this section |
+| `agent_pool` | `max_size` / `ttl_seconds` / `sweep_interval_seconds` | In-process agent session pool |
+| `agent_runtime` | `main_max_turns` / `subordinate_max_turns` / `model_stream_idle_timeout_seconds` / `context_compression_*` | Turn limits and context compaction |
+| `sandbox` | `network` | Custom Docker network for sandbox containers (e.g. `ravenholt-lan`). Empty => default bridge + port publishing; non-empty => derived and injected as `STRIX_DOCKER_SANDBOX_NETWORK` by `sandbox/setup_macvlan.sh` |
+| | `image` | **Image used by session sandboxes.** Empty = upstream `ghcr.io/usestrix/strix-sandbox:1.3.0`; `sandbox-runtime:latest` = the all-in-one image (customized toolchain included) |
+| `archive` | `enabled` / `capture_*` / `retention_days` / `queue_max`, etc. | Side-car archiving of the event bus |
+| `integrations` | `web_search_provider` | Web-search backend: `auto` / `exa` / `perplexity` / `searxng` |
+| | `exa_api_key` / `perplexity_api_key` | Third-party search keys (may be left empty) |
+| | `searxng_base_url` | Self-hosted SearXNG URL, default `http://127.0.0.1:8888` |
+| | `searxng_auto_provision` | Whether to auto-start the SearXNG container when unreachable; on by default |
+| | `searxng_bind_addr` | Host address the SearXNG container publishes its port on; default `0.0.0.0` |
 
-> The agent list is determined by the `agents` section of this config (by default only the `cso` preset), not by a fixed static roster.
+> **SearXNG and public deployments**: on startup the platform best-effort starts a local SearXNG container (`searxng_auto_provision`, on by default) and publishes its port on `0.0.0.0` by default (`searxng_bind_addr`) — so that both macvlan sandboxes (via the host LAN IP) and bridge-fallback sandboxes (via the docker gateway `172.17.0.1`) can search through it. The service is **unauthenticated** (`limiter: false`, `public_instance: false`); if the platform runs on a host directly reachable from the internet, set `searxng_bind_addr` to `127.0.0.1` (giving up in-sandbox direct access) or to the host's internal IP, or restrict the source via the host firewall — otherwise it can be abused as an open search proxy.
 
-### Managing LLM API keys
+> Config changes take effect after a restart: `bash serve.sh restart`.
+
+### 6.2 `.ravenholt/policy.yaml` (red-line policy, fail-closed)
+
+- **A missing file, invalid YAML, or failed validation makes the platform refuse to start** — by design.
+- `rate_limit`, `sandbox`, `kill_switch`, and `audit` are Tier-1 safety nets whose `enabled` must be `true` (their parameters are freely tunable).
+- `approvals` defines "not done by default, requires your consent" actions (password change, destructive operations, payload execution, target data mutation, logout/revoke, CORS probing, privilege writes); `redline.dos_signals` is the **absolute red line** — DoS-class matches are hard-rejected, and the console offers no override switch.
+- `approval_wait_seconds` controls how long an approval card waits; on timeout the action is treated as **rejected** (fail-closed).
+- `report_gate` is the report structure gate: a finding must meet minimum elements (bound asset, title/description length, impact statement) before leaving draft.
+- Changes made in the console **take effect immediately and are written back to this file** (rewritten wholesale, comments folded); manual edits require a restart.
+
+### 6.3 Environment variables
+
+The platform injects the following variables that strix reads (normally you never set them by hand):
+
+| Variable | Source | Effect |
+| --- | --- | --- |
+| `STRIX_LLM` / `LLM_API_KEY`, etc. | `agents` section | Model and key handed to LiteLLM |
+| `STRIX_WEB_SEARCH_PROVIDER` / `EXA_API_KEY` / `PERPLEXITY_API_KEY` / `STRIX_SEARXNG_BASE_URL` | `integrations` section | Web-search backend and keys |
+| `STRIX_DOCKER_SANDBOX_NETWORK` | `sandbox.network` | Docker network sandbox containers join |
+| `STRIX_IMAGE` | `sandbox.image` | **Image used by session sandboxes**; when empty nothing is injected and strix falls back to its upstream default |
+
+Switches you may export yourself:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `RAVENHOLT_SEARXNG_AUTOPROVISION=0` | on | Disables the SearXNG auto-provision guarantee (takes precedence over the config field) |
+| `SANDBOX_CONTAINER_NAME_PREFIX` | `ravenholt-sandbox` | Container-name prefix for platform sandboxes; an empty string falls back to the image short name |
+| `SANDBOX_COMMAND_WORKDIR` | `/workspace` | Working directory for in-sandbox commands (use it when the two images' WORKDIRs differ) |
+
+> A manual `export STRIX_IMAGE=...` is overridden by `sandbox.image` (config wins), so prefer editing the config file.
+
+### 6.4 Managing LLM API keys
 
 ```bash
 bash config-tool.sh list                                  # show a summary of every agent config
@@ -308,10 +495,37 @@ bash config-tool.sh set sk-xxxx --url https://api.deepseek.com/v1 --model deepse
 bash config-tool.sh clear                                 # clear all keys
 ```
 
-### Policy and skill routing
+You can also fill them in on the console's **System Config** page; the two are equivalent.
 
-- `.ravenholt/policy.yaml`: the red-line policy (fail-closed). Changes made in the console take effect immediately and are written back to this file.
-- `.ravenholt/skill_routes.yaml`: instance override layer for skill routing (optional).
+### 6.5 Web-search configuration
+
+| provider | Requires | Notes |
+| --- | --- | --- |
+| `searxng` (zero-config default) | No key | The platform auto-starts a local SearXNG container (with image-mirror fallbacks) |
+| `exa` | `exa_api_key` | Apply on your own |
+| `perplexity` | `perplexity_api_key` | Apply on your own |
+| `auto` | Nothing | Tries `exa → perplexity → searxng` in order and uses whichever is available |
+
+To reach the local SearXNG from inside a sandbox, use the **host LAN IP** (e.g. `http://192.168.5.139:8888`), not `127.0.0.1`: sandbox containers have their own IP, so `127.0.0.1` points at the container itself. Also note that all in-sandbox egress goes through the Caido proxy, so an unreachable target returns a ~9 KB `<title>Caido</title>` error page — that is the proxy reporting a failure, not the target's response.
+
+### 6.6 Sandbox image: build and enable
+
+```bash
+cd sandbox && bash build.sh        # produces sandbox-runtime:latest
+# Swap the base image (e.g. a mirror):
+# docker build --build-arg STRIX_SANDBOX_IMAGE=<image-ref> -t sandbox-runtime:latest .
+```
+
+Enabling requires **two** places (both are needed, for different purposes):
+
+| Purpose | Where | What to set |
+| --- | --- | --- |
+| agent **session** sandbox | `.ravenholt/config.json` → `sandbox.image` | `sandbox-runtime:latest` |
+| Platform **sandbox container** console | Console → Sandbox Images page (new record) | `image_name` = `sandbox-runtime:latest`, `Control Port` = `8000` |
+
+After changing `sandbox.image`, restart (`bash serve.sh restart`); only **new** sessions pick up the new image (running sessions are unaffected).
+
+---
 
 ## 7. Running & Operations
 
@@ -325,89 +539,153 @@ bash serve.sh stop       # stop (graceful SIGTERM)
 ```
 
 > [!TIP]
-> On start/run (`serve.sh start` / `run`) the script reads `.ravenholt/config.json` and prints the admin email and password for the first login; if `bootstrap_admin` is disabled it says so instead.
+> On start (`serve.sh start` / `run`) the platform reads the admin email and password from `.ravenholt/config.json` and prints them for the first login; if `bootstrap_admin` is disabled it says so instead.
 
 - Application log: `.ravenholt/app.log`
 - Service log: `logs/serve.log`
 - URL: <http://127.0.0.1:8000>; API docs: <http://127.0.0.1:8000/docs>
+- `serve.sh start` also: starts PostgreSQL using the detected major version, creates the venv and installs dependencies if missing, and runs `sandbox/setup_macvlan.sh` to prepare the sandbox network.
+
+---
 
 ## 8. Getting Started
+
+### 8.1 First login
 
 1. Open <http://127.0.0.1:8000> and log in with the admin email and password.
 
    <img src="docs/public/images/login.png" alt="Login page" width="820" />
 
-2. Go to **System Config** and fill in the `agents` LLM API key (or set it beforehand with `config-tool.sh set`).
-3. Go to **Work Projects**, create a project, and fill in scope and targets.
-4. In the **Playground**, start a session and work with the agents; sandbox containers are created on demand, and you can use the terminal, file manager, and Caido from the container panel.
-5. Assets, findings, evidence, and attack paths produced along the way are retained in the project; afterwards you can review the replayable timeline and reports.
-6. High-risk actions are blocked by the **red-line policy** and routed to the **Policy Approvals** queue; every key action can be reviewed in the **Audit Log**.
+2. Go to **System Config** and fill in the `agents` LLM API key (or set it beforehand with `config-tool.sh set`) — **this is what makes agents able to work**.
+
+### 8.2 Enabling the full capability set
+
+Follow these in order to turn everything on:
+
+| Step | Action | Result |
+| --- | --- | --- |
+| 1 | `bash setup.sh --with-sandbox` (or walk through steps 1–6 of 5.3 manually) | Platform, database, frontend, and the all-in-one sandbox image are in place |
+| 2 | Confirm `.ravenholt/config.json`'s `sandbox.image` = `sandbox-runtime:latest` | Sessions use the customized image (Ghidra/Jadx/observer_ward/agent-browser) |
+| 3 | Add a record on the Sandbox Images page (`Control Port` = `8000`) | Sandbox Containers page can create containers with terminal/file/noVNC |
+| 4 | Fill in the LLM API key (System Config page) | Session chat and agent execution work |
+| 5 | Create a **Work Project** and fill in scope and objectives | Assets, findings, evidence, and attack paths have a home |
+| 6 | Start your first session | A sandbox container (with Caido) is created automatically; images are pulled on demand |
+| 7 | Confirm `curl http://127.0.0.1:8888/` returns 200 | Web search works (no key needed) |
+| 8 | (Optional) Configure proxy chains on the Egress Proxies page | Sandbox egress becomes controllable and auditable |
+| 9 | (Optional) Review `policy.yaml`'s `approvals` / `redline` | Approval thresholds and absolute red lines match your expectations |
+
+### 8.3 A typical pentest flow
+
+1. Create a Work Project and fill in the authorized scope (domains/IPs).
+2. Open a new session in the Playground, pick an agent preset, describe the objective.
+3. The agent provisions a sandbox container and runs reconnaissance inside it (nmap / httpx / katana, ...); traffic is captured into Caido.
+4. Inspect terminal output in the container panel and review captured messages with the **request store** (`list_requests` / `view_request` / `repeat_request`).
+5. When a high-risk action is hit, **Policy Approvals** parks it until you click approve in the session.
+6. Findings land in the project (with evidence and impact); at the end export the report and cross-check the **replayable timeline** and the **audit log**.
+
+---
 
 ## 9. UI Gallery
 
 | Playground | Work Projects |
 | --- | --- |
-| <img src="docs/public/images/playground.png" alt="Playground" width="420" /> | <img src="docs/public/images/work-projects.png" alt="Work Projects" width="420" /> |
+| <img src="docs/public/images/playground.png" alt="Playground" width="420" /> | <img src="docs/public/images/work-projects.png" alt="Work projects" width="420" /> |
 
 | System Config | System Users |
 | --- | --- |
-| <img src="docs/public/images/system-config.png" alt="System Config" width="420" /> | <img src="docs/public/images/system-users.png" alt="System Users" width="420" /> |
+| <img src="docs/public/images/system-config.png" alt="System config" width="420" /> | <img src="docs/public/images/system-users.png" alt="System users" width="420" /> |
 
 | Policy Approvals | Audit Log |
 | --- | --- |
-| <img src="docs/public/images/policy-confirmations.png" alt="Policy Approvals" width="420" /> | <img src="docs/public/images/audit-events.png" alt="Audit Log" width="420" /> |
+| <img src="docs/public/images/policy-confirmations.png" alt="Policy approvals" width="420" /> | <img src="docs/public/images/audit-events.png" alt="Audit log" width="420" /> |
 
-| Egress Proxies | Landing page |
+| Egress Proxies | Landing |
 | --- | --- |
-| <img src="docs/public/images/egress-proxies.png" alt="Egress Proxies" width="420" /> | <img src="docs/public/images/landing.png" alt="Landing page" width="420" /> |
+| <img src="docs/public/images/egress-proxies.png" alt="Egress proxies" width="420" /> | <img src="docs/public/images/landing.png" alt="Landing page" width="420" /> |
+
+---
 
 ## 10. Project Layout
 
 ```
 ravenholt/
-├── app.py / main.py / config.py / database.py    # app assembly, entrypoint, config, DB
-├── core/            # runtime core: agents, session pool, policy engine, strix runtime, event archiving
+├── app.py / main.py / config.py / database.py    # app assembly, entry point, config, database
+├── core/            # runtime core: agents, session pool, policy engine, strix runtime, event archive
 ├── service/ handler/ router/ schema/ model/       # layers: logic / handling / routing / contracts / models
-├── middleware/ utils/                             # auth, unified response, and other middleware/helpers
+├── middleware/ utils/                             # auth, unified responses, middleware and helpers
 ├── strix/           # vendored strix runtime and skill library (verified by .strix-vendor.json)
-├── sandbox/         # sandbox image build (Dockerfile / build.sh / toolchain skills)
+├── sandbox/         # all-in-one sandbox image build
+│   ├── Dockerfile           # upstream image + customized layers
+│   ├── entrypoint.sh        # detaches extra services, then hands off to the upstream entrypoint for Caido
+│   ├── supervisord.conf     # Xvfb / x11vnc / noVNC / tor / Go control plane
+│   ├── proxy/               # in-container Go control plane (terminal/files/egress)
+│   ├── .agents/skills/      # in-container skill resources (shipped with the image)
+│   └── setup_macvlan.sh     # sandbox network (derived from the host)
 ├── web/             # frontend (src / dist-app build output / openapi.json)
-├── docs/            # VitePress documentation site (en / zh)
-├── scripts/         # tooling and self-test scripts (export_schema, verify_*_selftest, etc.)
-├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (all untracked)
-├── setup.sh         # one-command deployment script
-├── serve.sh         # service management (start/stop/restart/status/logs/run; prints admin credentials on start)
+├── docs/            # VitePress docs site (en / zh)
+├── scripts/         # tooling and self-check scripts (export_schema, verify_*_selftest, verify_strix_version_alignment, ...)
+├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (never committed)
+├── setup.sh         # one-click deployment script
+├── serve.sh         # service management (start/stop/restart/status/logs/run; prints account on start)
 ├── config-tool.sh   # LLM API key management
 ├── docker-compose.prod.yml / .dev.yml
 └── requirements.txt
 ```
 
+---
+
 ## 11. FAQ
 
-**Q: It exits right after startup and the log mentions policy errors?**
-A: `.ravenholt/policy.yaml` is missing or invalid. The platform is **fail-closed** on the red-line policy, so the file must exist and be valid:
+**Q: It exits right after starting, and the log mentions policy errors?**
+A: `.ravenholt/policy.yaml` is missing or invalid. The platform treats the red-line policy as **fail-closed**, so it must exist and be valid:
 `cp .ravenholt/policy.yaml.example .ravenholt/policy.yaml`.
+
+**Q: Can it run without Docker?**
+A: Yes — the platform and control plane start fine (login, projects, policy, audit, reports all work), but the **pentest/code-audit sandbox execution plane is unavailable**; you only notice when you start a session.
+
+**Q: Can I pentest without building `sandbox-runtime:latest`?**
+A: Yes. Session sandboxes use the upstream image `ghcr.io/usestrix/strix-sandbox:1.3.0` by default (Caido + Kali toolchain), pulled automatically on the first session. Building the all-in-one image adds Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser, in-container skill resources, and the terminal / file / noVNC features of the Sandbox Containers page.
+
+**Q: I built the image — how do I make agent sessions use it?**
+A: `bash setup.sh --with-sandbox` writes the image name into `.ravenholt/config.json`'s `sandbox.image` automatically. For a manual deployment, set `"image": "sandbox-runtime:latest"` yourself and run `bash serve.sh restart`. **Building without configuring leaves sessions on the upstream image.** You also need a record on the Sandbox Images page (`Control Port` = `8000`) to use the Sandbox Containers page.
+
+**Q: Why register the image in two places?**
+A: They serve different purposes — `sandbox.image` in `config.json` selects the image for **agent sessions**; the Sandbox Images page record selects the image for **containers you create by hand** (and needs `Control Port` to reach the in-container control plane).
+
+**Q: On the Sandbox Containers page, the terminal / file / noVNC buttons are missing?**
+A: That container's image lacks the in-container Go control plane (e.g. the upstream image). Containers created from `sandbox-runtime:latest` are the ones that have those buttons.
+
+**Q: Will sandboxes still work after changing subnets / moving to another LAN?**
+A: Yes. `sandbox/setup_macvlan.sh` hard-codes no network range — subnet, gateway, parent interface, container address range, and host shim address are all derived from the host's default route, so after a network change a restart (`bash serve.sh restart`) rebuilds everything.
+
+**Q: Cannot create sandbox containers?**
+A: Confirm the Docker daemon is running and that the platform process can reach the Docker socket (Compose mounts `/var/run/docker.sock`).
+
+**Q: The all-in-one image build fails?**
+A: Confirm x64 architecture and sufficient disk (the build needs network access to download Ghidra / Jadx / observer_ward and to pull the `golang`, `uv`, and `debian` build-stage images). On restricted networks use `--build-arg STRIX_SANDBOX_IMAGE=<reachable-mirror>`.
+
+**Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
+A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.
+
+**Q: Config changes don't take effect?**
+A: `config.json` changes need a restart (`bash serve.sh restart`), and `sandbox.image` only affects **sessions created afterwards**; `policy.yaml` changes via the console are live, manual edits need a restart. Changes to an agent's `approvals.allow` only apply to newly created sessions / new sub-agents (prompts are rendered when the agent is created).
 
 **Q: `npm run build` fails?**
 A: Check the Node version (≥ 20.19) and whether `web/node_modules` is incomplete; delete `web/node_modules` and re-run `npm install`.
 
 **Q: The page still shows old content?**
-A: The landing page and friends are **frozen at build time** — after changing source you must re-run `cd web && npm run build` and then hard-refresh the browser (Ctrl+F5).
+A: Pages such as the landing page are **frozen at build time** — after changing sources you must re-run `cd web && npm run build` and hard-refresh the browser (Ctrl+F5).
 
-**Q: Cannot create sandbox containers?**
-A: Make sure the Docker daemon is running and that the platform process can access the Docker socket (Compose mounts `/var/run/docker.sock`).
+**Q: After Compose deployment, app cannot reach the database?**
+A: Most likely you reused the `config.json` generated by `setup.sh` (random DB password), which does not match Compose's fixed `123456`. See the config-source note in [5.4](#54-docker-compose-deployment).
 
-**Q: The sandbox image build fails?**
-A: Check the x64 architecture and available disk space; the build downloads toolchains such as Ghidra / JADX.
+**Q: What should I watch out for when deploying on the public internet?**
+A: Three things — ① narrow `searxng_bind_addr` (that service is unauthenticated); ② the control plane listens on `0.0.0.0:8000`, so put a reverse proxy with TLS and access control in front; ③ sandbox containers require the Docker socket, so host networking should only be used on a trusted host.
 
-**Q: Can it run without Docker?**
-A: Yes — the control plane starts and works, but the pentest/code-audit sandbox execution plane is unavailable.
-
-**Q: After Compose deployment the app cannot connect to the database?**
-A: Most likely you reused the `config.json` generated by `setup.sh` (random DB password), which does not match the Compose fixed password `123456`. See the config-source note in [5.4](#54-docker-compose-deployment).
+---
 
 ## 12. License
 
-Released under the **MIT License**, copyright 2026 `yv1ing` and `xiaoliuhua2`. See [LICENSE](./LICENSE).
+This project is released under the **MIT License**, copyright 2026 `yv1ing` and `xiaoliuhua2`. See [LICENSE](./LICENSE).
 
-The vendored strix runtime retains its original license (Apache-2.0) and copyright notices. Before running any test with this platform, make sure you have explicit authorization for the target.
+The vendored strix runtime retains its original license and copyright notices (Apache-2.0). The all-in-one sandbox image **redistributes** third-party binaries at runtime (Ghidra / Jadx / observer_ward / agent-browser-cli / the Kali toolchain, ...); comply with each of their licenses when deploying or redistributing it. Before testing anything with this platform, make sure you hold explicit authorization for the target.

@@ -23,7 +23,7 @@ Ravenholt requires only the following core content and infrastructure to run:
 | `.ravenholt/policy.yaml` | Red-line policy (**fail-closed**: missing or invalid will cause the platform to refuse to start) |
 | `Docker` | Runtime for the sandbox environment (penetration/audit execution depends on it) |
 | `PostgreSQL` | Persistent data storage |
-| `Sandbox` | Customized sandbox image `sandbox-runtime:latest` |
+| `Sandbox` | All-in-one sandbox image `sandbox-runtime:latest` (built by `sandbox/build.sh`; the upstream image can serve as a fallback) |
 
 Get the latest code from GitHub:
 
@@ -39,15 +39,15 @@ The project ships with a one-click deployment script covering "environment check
 # Check only, without modifying any files
 bash setup.sh --check
 
-# Check + install + deploy
-bash setup.sh
+# Check + install + deploy (full feature set, including the all-in-one sandbox image)
+bash setup.sh --with-sandbox
 ```
 
 The script generates `.ravenholt/config.json` (a random `encrypt_key`, database password, and administrator password — **the administrator password is printed only once, so save it immediately**) and `policy.yaml`. For details, see the [installation section of the README](https://github.com/xiaoliuhua2/ravenholt#五安装部署).
 
-### Build the Sandbox
+### Build the Sandbox (Full Feature Set)
 
-Ravenholt's capabilities are deeply tied to the sandbox environment, so you need to build the corresponding sandbox image:
+Ravenholt's sandbox image `sandbox-runtime:latest` **takes the upstream strix image as its base** and layers the customized toolchain (Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser), the in-container Go control plane, and the `.agents/skills` resources on top. It therefore serves two purposes at once: the **agent session sandbox** (with Caido capture) and the **platform "sandbox container" console** (terminal / files / noVNC / live egress refresh).
 
 > :warning: Architecture Limitation
 >
@@ -57,7 +57,18 @@ Ravenholt's capabilities are deeply tied to the sandbox environment, so you need
 cd sandbox && bash build.sh
 ```
 
-After a short wait, you will get `sandbox-runtime:latest`. The runtime provisions the image record automatically per session, so there is **no need** to add it manually in the system.
+After a short wait, you will get `sandbox-runtime:latest`. To make sessions actually use it, set `sandbox.image` in `.ravenholt/config.json` (deploying with `bash setup.sh --with-sandbox` does this automatically):
+
+```json
+"sandbox": {
+    "network": "ravenholt-lan",
+    "image": "sandbox-runtime:latest"
+}
+```
+
+In addition, to create containers with terminal / file / noVNC on the console's Sandbox Containers page, you must **add a record on the Sandbox Images page** (`image_name` = `sandbox-runtime:latest`, `Control Port` = `8000`).
+
+> **You can still pentest without building it**: sessions then use the upstream image `ghcr.io/usestrix/strix-sandbox:1.3.0` (Caido + Kali toolchain, pulled automatically on the first session), missing only the customized tools above and the container console.
 
 ## Production Environment
 

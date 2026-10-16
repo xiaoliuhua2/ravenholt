@@ -23,7 +23,7 @@ Ravenholt 的运行只需要以下核心内容和基础设施：
 | `.ravenholt/policy.yaml` | 红线策略（**fail-closed**：缺失或非法会导致平台拒绝启动） |
 | `Docker` | 沙盒环境的运行时（渗透/审计执行依赖它） |
 | `PostgreSQL` | 数据持久化存储 |
-| `Sandbox` | 定制的沙盒镜像 `sandbox-runtime:latest` |
+| `Sandbox` | 一体化沙盒镜像 `sandbox-runtime:latest`（由 `sandbox/build.sh` 构建；上游镜像可作降级选项） |
 
 通过 GitHub 获取最新代码：
 
@@ -39,15 +39,15 @@ git clone https://github.com/xiaoliuhua2/ravenholt.git && cd ravenholt
 # 只体检，不改动任何文件
 bash setup.sh --check
 
-# 检测 + 安装 + 部署
-bash setup.sh
+# 检测 + 安装 + 部署（完整功能：含一体化沙盒镜像）
+bash setup.sh --with-sandbox
 ```
 
 脚本会生成 `.ravenholt/config.json`（随机 `encrypt_key`、数据库口令、管理员口令——**管理员口令只打印一次，请立即保存**）与 `policy.yaml`。详细说明见 [README 的安装章节](https://github.com/xiaoliuhua2/ravenholt#五安装部署)。
 
-### 构建沙盒
+### 构建沙盒（完整功能）
 
-Ravenholt 的能力与沙盒环境深度绑定，因此需要构建对应的沙盒镜像：
+Ravenholt 的沙盒镜像 `sandbox-runtime:latest` **以 strix 上游镜像为基础**，在其上叠加定制工具链（Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser）、容器内 Go 控制面与技能资源 `.agents/skills`。因此它同时服务两种用途：**agent 会话沙箱**（含 Caido 抓包）与**平台「沙箱容器」的人工控制台**（终端 / 文件 / noVNC / egress 动态刷新）。
 
 > :warning: 架构限制
 >
@@ -57,7 +57,18 @@ Ravenholt 的能力与沙盒环境深度绑定，因此需要构建对应的沙�
 cd sandbox && bash build.sh
 ```
 
-稍等片刻即可得到 `sandbox-runtime:latest`。运行时按会话自动 provision 镜像记录，**无需**在系统中手工添加。
+稍等片刻即可得到 `sandbox-runtime:latest`。构建完成后，**让会话真正使用它**：在 `.ravenholt/config.json` 里设置 `sandbox.image`（用 `bash setup.sh --with-sandbox` 部署时这一步会自动完成）：
+
+```json
+"sandbox": {
+    "network": "ravenholt-lan",
+    "image": "sandbox-runtime:latest"
+}
+```
+
+另外，若要在控制台「沙箱容器」页创建带终端 / 文件 / noVNC 的容器，还需在**「沙箱镜像」页新增一条记录**（`image_name` 填 `sandbox-runtime:latest`，`Control Port` 填 `8000`）。
+
+> **不构建也能渗透**：此时会话使用上游镜像 `ghcr.io/usestrix/strix-sandbox:1.3.0`（含 Caido 与 Kali 工具链，首次会话自动拉取），只是缺少上述定制工具与容器控制台。
 
 ## 生产环境
 
