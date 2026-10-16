@@ -79,6 +79,35 @@ psql_super() {
   fi
 }
 
+# 把平台沙箱镜像名写入 .ravenholt/config.json 的 sandbox.image（**仅当该项为空**）。
+# 目的：让「构建了镜像 → 会话就用它」这条链路零手工；已有值一律保留，不覆盖部署者选择。
+pin_sandbox_image() {
+  local image="$1"
+  [ -f "$CONFIG_FILE" ] || return 0
+  python3 - "$CONFIG_FILE" "$image" 2>/dev/null <<'PYEOF' || true
+import json, sys
+
+path, image = sys.argv[1], sys.argv[2]
+try:
+    with open(path, encoding="utf-8") as fh:
+        cfg = json.load(fh)
+except Exception:
+    raise SystemExit(0)
+
+sandbox = cfg.setdefault("sandbox", {})
+current = str(sandbox.get("image", "") or "").strip()
+if current:
+    print(f"  · 保留现有 sandbox.image = {current}")
+else:
+    sandbox["image"] = image
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, ensure_ascii=False, indent=4)
+        fh.write("\n")
+    print(f"  ✓ 已写入 sandbox.image = {image}（之后启动的会话将使用该镜像）")
+PYEOF
+}
+
+
 # 读取 .ravenholt/config.json 的点分路径值（如 system.bootstrap_admin.email），缺失返回空串。
 cfg_get() {
   python3 - "$CONFIG_FILE" "$1" 2>/dev/null <<'PYEOF'
@@ -452,21 +481,44 @@ fi
 # 7. 沙箱镜像（可选）
 # ============================================================
 step "7/8 沙箱镜像"
-if ! have docker; then
-  warn "未安装 Docker，跳过（安装 Docker 后执行：cd sandbox && bash build.sh）"
-elif ! docker info >/dev/null 2>&1; then
-  warn "Docker 守护进程未运行，跳过（启动后执行：cd sandbox && bash build.sh）"
-elif [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
-  warn "架构 $ARCH 不支持沙箱镜像构建（仅 x64）"
-elif docker image inspect sandbox-runtime:latest >/dev/null 2>&1; then
-  ok "沙箱镜像 sandbox-runtime:latest 已存在"
-elif [ "$WITH_SANDBOX" -eq 1 ]; then
-  info "构建沙箱镜像（下载量大、耗时长，请耐心等待）..."
-  ( cd "$PROJECT_DIR/sandbox" && bash build.sh ) && ok "沙箱镜像构建完成" || warn "沙箱镜像构建失败"
+# sandbox/build.sh 产出的是**一体化镜像** sandbox-runtime:latest：以上游 strix-sandbox
+# 镜像为基础，叠加 Ravenholt 的定制能力（Ghidra / Jadx / apktool / binwalk /
+# observer_ward / agent-browser-cli + 容器内 Go 控制面 + .agents/skills 技能资源）。
+# 因此它同时满足两种用途：
+#   A) strix 会话沙箱 —— agent 在渗透/审计会话里执行命令的容器（含 Caido 抓包）
+#   B) 平台「沙箱容器」的人工控制台 —— 终端 / 文件管理 / noVNC / egress 动态刷新
+# 不构建也不影响渗透：会话会退回上游镜像 ghcr.io/usestrix/strix-sandbox:1.3.0
+# （含 Caido 与 Kali 工具链），只是缺少上面那批定制工具与技能资源。
+# 构建成功会自动写入 .ravenholt/config.json 的 sandbox.image，让会话改用一体化镜像。
+STRIX_DEFAULT_IMAGE="ghcr.io/usestrix/strix-sandbox:1.3.0"
+if ! have docker || ! docker info >/dev/null 2>&1; then
+  warn "Docker 不可用，跳过沙箱镜像（安装/启动 Docker 后执行：cd sandbox && bash build.sh）"
 else
-  info "沙箱镜像 sandbox-runtime:latest 未构建 —— 渗透/审计执行依赖它"
-  info "构建：cd sandbox && bash build.sh   （或本次运行加 --with-sandbox 自动构建）"
-  info "运行时按会话自动 provision 镜像记录，无需手工登记"
+  if docker image inspect "$STRIX_DEFAULT_IMAGE" >/dev/null 2>&1; then
+    ok "上游沙箱镜像已存在：$STRIX_DEFAULT_IMAGE"
+  else
+    info "上游沙箱镜像尚未拉取（首次会话自动拉取，约 4GB）：$STRIX_DEFAULT_IMAGE"
+  fi
+
+  if docker image inspect sandbox-runtime:latest >/dev/null 2>&1; then
+    ok "一体化沙箱镜像已存在：sandbox-runtime:latest"
+    pin_sandbox_image "sandbox-runtime:latest"
+  elif [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
+    warn "架构 $ARCH 无法构建一体化镜像（仅 x64）：会话沿用上游镜像；平台「沙箱容器」控制台将无终端/文件/noVNC"
+  elif [ "$WITH_SANDBOX" -eq 1 ]; then
+    info "构建一体化沙箱镜像（下载量大、耗时长，请耐心等待）..."
+    if ( cd "$PROJECT_DIR/sandbox" && bash build.sh ); then
+      ok "一体化沙箱镜像构建完成：sandbox-runtime:latest"
+      pin_sandbox_image "sandbox-runtime:latest"
+    else
+      warn "一体化沙箱镜像构建失败，会话将继续沿用上游镜像"
+    fi
+  else
+    info "一体化沙箱镜像 sandbox-runtime:latest 未构建 —— 本次不影响渗透可用性"
+    info "会话将使用上游镜像（含 Caido 抓包 + Kali 工具链）；构建后额外获得"
+    info "Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser 与技能资源"
+    info "构建：cd sandbox && bash build.sh   （或本次运行加 --with-sandbox 自动构建）"
+  fi
 fi
 
 # ============================================================

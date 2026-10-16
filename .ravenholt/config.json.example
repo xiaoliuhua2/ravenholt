@@ -52,10 +52,15 @@
             "context_window": 1000000
         }
     },
+    "sandbox": {
+        "network": "ravenholt-lan",
+        "image": ""
+    },
     "integrations": {
         "web_search_provider": "auto",
         "exa_api_key": "",
         "perplexity_api_key": "",
-        "searxng_base_url": "http://127.0.0.1:8888"
+        "searxng_base_url": "http://127.0.0.1:8888",
+        "searxng_bind_addr": "0.0.0.0"
     }
 }

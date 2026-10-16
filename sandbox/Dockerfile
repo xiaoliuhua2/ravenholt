@@ -1,11 +1,30 @@
+# syntax=docker/dockerfile:1
+#
+# ============================================================
+# Ravenholt 一体化沙箱镜像
+#
+# 以 strix 上游镜像（自带 Caido + Kali 工具链）为基础，叠加 Ravenholt 的定制能力：
+#   - Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser-cli
+#   - 容器内 Go 控制面 sandbox-proxy（终端 / 文件 / noVNC 转发 / egress 动态刷新）
+#   - 容器内技能资源 .agents/skills（平台的 load_skill 按 /workspace/.agents/skills 解析）
+#   - 桌面栈 Xvfb + x11vnc + noVNC、tor
+#
+# 于是同一个镜像既能当「会话沙箱」（agent 执行面，含 Caido 抓包）也能当
+# 「平台沙箱容器」（人工控制台），不需要在两个镜像之间取舍。
+#
+# 构建：bash build.sh
+# 换基础镜像：docker build --build-arg STRIX_SANDBOX_IMAGE=... -t sandbox-runtime:latest .
+# ============================================================
+
+ARG STRIX_SANDBOX_IMAGE=ghcr.io/usestrix/strix-sandbox:1.3.0
+
 ARG AGENT_BROWSER_VERSION=0.3.4
 ARG GHIDRA_VERSION=12.1
 ARG GHIDRA_BUILD=20260513
 ARG JADX_VERSION=1.5.5
 ARG OBSERVER_WARD_VERSION=2026.4.8
-ARG HTTPX_VERSION=1.9.0
 
-# Build the small HTTP/WebSocket proxy used by the sandbox runtime.
+# ---------- 容器内 Go 控制面 ----------
 FROM golang:1.26-trixie AS proxy-builder
 
 ENV CGO_ENABLED=0
@@ -14,9 +33,10 @@ WORKDIR /src/proxy
 COPY proxy/ ./
 RUN go build -trimpath -ldflags='-s -w' -o /sandbox-proxy .
 
+# ---------- uv（供容器内工具安装用） ----------
 FROM ghcr.io/astral-sh/uv:latest AS uv-bin
 
-# Download and normalize agent-browser assets.
+# ---------- agent-browser ----------
 FROM debian:trixie-slim AS agent-browser-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -48,8 +68,7 @@ RUN set -eux; \
     \) -delete; \
     rm -rf /tmp/* /var/tmp/* /var/lib/apt/lists/* /var/cache/apt/*
 
-# Download and trim Ghidra separately so final image layers do not retain
-# build-only tools or archive caches.
+# ---------- Ghidra ----------
 FROM debian:trixie-slim AS ghidra-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -79,7 +98,7 @@ RUN set -eux; \
     find /opt/ghidra -type f -name '*.so' -exec strip --strip-unneeded '{}' + 2>/dev/null || true; \
     rm -rf /tmp/* /var/tmp/* /var/lib/apt/lists/* /var/cache/apt/*
 
-# Download and trim jadx separately for the same reason.
+# ---------- Jadx ----------
 FROM debian:trixie-slim AS jadx-builder
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -105,8 +124,7 @@ RUN set -eux; \
     chmod 755 /opt/jadx/bin/jadx; \
     rm -rf /tmp/* /var/tmp/* /var/lib/apt/lists/* /var/cache/apt/*
 
-# Validate skills in a build-only stage so lint helpers are not copied into
-# the final sandbox image.
+# ---------- 技能校验（build-only，不进入最终镜像） ----------
 FROM debian:trixie-slim AS skills-validator
 
 WORKDIR /tmp
@@ -122,142 +140,87 @@ RUN set -eux; \
     chmod 755 .agents/validate-skills.sh; \
     .agents/validate-skills.sh .agents/skills
 
-# Final sandbox runtime image.
-FROM debian:trixie-slim
-
-ENV HOME=/root \
-    LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    DISPLAY=:0 \
-    JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
-    GHIDRA_HOME=/opt/ghidra \
-    JADX_HOME=/opt/jadx \
-    UV_TOOL_DIR=/opt/uv/tools \
-    UV_TOOL_BIN_DIR=/usr/local/bin \
-    PATH=/opt/jadx/bin:/opt/ghidra:/opt/ghidra/support:/usr/lib/jvm/java-21-openjdk-amd64/bin:$PATH
-
-WORKDIR /root
+# ---------- 最终镜像：叠加在 strix 上游镜像之上 ----------
+FROM ${STRIX_SANDBOX_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG OBSERVER_WARD_VERSION
-ARG HTTPX_VERSION
 
+USER root
+
+# 上游镜像已自带：python3 / node / npm / uv / chromium / git / gcc / rg / jq / dig /
+# whois / file / unzip / sudo / nmap / sqlmap / nuclei / ffuf / katana / httpx / semgrep /
+# trivy / caido-cli。这里只补它**没有**的那部分。
 RUN set -eux; \
-    printf '%s\n' \
-      'path-exclude=/usr/share/doc/*' \
-      'path-exclude=/usr/share/man/*' \
-      'path-exclude=/usr/share/info/*' \
-      'path-exclude=/usr/share/lintian/*' \
-      'path-exclude=/usr/share/locale/*' \
-      'path-include=/usr/share/locale/locale.alias' \
-      > /etc/dpkg/dpkg.cfg.d/01_nodoc; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-      7zip \
       apktool \
-      ca-certificates \
-      binutils \
       binwalk \
-      chromium \
-      curl \
-      dnsutils \
-      file \
-      fonts-droid-fallback \
-      g++ \
-      gcc \
-      git \
-      jq \
-      libc6-dev \
+      7zip \
       make \
-      netcat-openbsd \
-      nmap \
-      nodejs \
-      novnc \
-      openssl \
-      openjdk-21-jdk \
-      npm \
-      pkg-config \
-      python3 \
-      ripgrep \
-      supervisor \
-      tor \
-      util-linux \
-      unzip \
-      websockify \
-      wget \
-      whois \
+      sqlite3 \
+      openjdk-21-jdk-headless \
+      xvfb \
       x11vnc \
-      xvfb; \
+      novnc \
+      websockify \
+      tor \
+      supervisor \
+      procps \
+      ca-certificates \
+      curl \
+      unzip; \
     observer_ward_deb="/tmp/observer-ward.deb"; \
     curl -fsSL "https://github.com/emo-crab/observer_ward/releases/download/v${OBSERVER_WARD_VERSION}/observer-ward_v${OBSERVER_WARD_VERSION}_x86_64-unknown-linux-musl.deb" -o "$observer_ward_deb"; \
     apt-get install -y --no-install-recommends "$observer_ward_deb"; \
     rm -f "$observer_ward_deb"; \
     observer_ward -u; \
-    httpx_zip="/tmp/httpx.zip"; \
-    curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_amd64.zip" -o "$httpx_zip"; \
-    unzip -q "$httpx_zip" -d /tmp/httpx; \
-    install -m 755 /tmp/httpx/httpx /usr/local/bin/httpx; \
-    rm -rf "$httpx_zip" /tmp/httpx; \
     ln -sf vnc.html /usr/share/novnc/index.html; \
-    mkdir -p /data; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+    GHIDRA_HOME=/opt/ghidra \
+    JADX_HOME=/opt/jadx \
+    DISPLAY=:0 \
+    PATH=/opt/jadx/bin:/opt/ghidra:/opt/ghidra/support:$PATH
 
 COPY --from=uv-bin /uv /usr/local/bin/uv
 COPY --from=uv-bin /uvx /usr/local/bin/uvx
 COPY --from=agent-browser-builder /opt/agent-browser /opt/agent-browser
 COPY --from=ghidra-builder /opt/ghidra /opt/ghidra
 COPY --from=jadx-builder /opt/jadx /opt/jadx
+COPY --from=proxy-builder --chmod=755 /sandbox-proxy /usr/local/bin/sandbox-proxy
+# 平台 load_skill 以 workdir（/workspace）为基准按相对路径 .agents/skills/<name> 解析，
+# 因此技能资源必须落在 /workspace/.agents/skills。
+COPY --from=skills-validator /tmp/.agents/skills /workspace/.agents/skills
+COPY --chmod=755 entrypoint.sh /ravenholt-entrypoint.sh
+COPY supervisord.conf /etc/ravenholt/supervisord.conf
 
 RUN set -eux; \
     ln -sf /opt/ghidra/ghidraRun /usr/local/bin/ghidra; \
     ln -sf /opt/ghidra/support/analyzeHeadless /usr/local/bin/analyzeHeadless; \
     ln -sf /opt/jadx/bin/jadx /usr/local/bin/jadx; \
     ln -sf /opt/agent-browser/bin/agent-browser-cli /usr/local/bin/agent-browser-cli; \
-    uv tool install --python /usr/bin/python3 sqlmap; \
-    uv cache clean; \
-    find /opt/uv/tools -type d -name __pycache__ -prune -exec rm -rf '{}' +; \
-    rm -rf /root/.cache /tmp/* /var/tmp/*
-
-RUN set -eux; \
-    7z i >/dev/null; \
+    mkdir -p /data; \
+    chown -R pentester:pentester /workspace/.agents /data; \
+    chmod -R a+rX /workspace/.agents; \
+    java -version; \
+    ghidra --help >/dev/null 2>&1 || true; \
+    analyzeHeadless 2>&1 | head -1 || true; \
+    jadx --version; \
     apktool --version; \
     binwalk --help >/dev/null; \
-    dig -v; \
-    file --version; \
-    g++ --version; \
-    gcc --version; \
-    git --version; \
-    httpx -version; \
-    java -version; \
-    jadx --version; \
-    jq --version; \
-    nmap --version; \
-    node --version; \
-    npm --version; \
     observer_ward --help >/dev/null; \
-    openssl version; \
-    pkg-config --version; \
-    python3 --version; \
-    sqlmap --version; \
-    supervisord --version; \
-    tor --version; \
-    unzip -v >/dev/null; \
-    rg --version; \
-    whois --version; \
-    x11vnc -version; \
-    chromium --version; \
     agent-browser-cli --help >/dev/null; \
+    command -v supervisord; \
     command -v websockify; \
-    test -f /opt/agent-browser/chrome-extension/manifest.json; \
-    test -x /opt/agent-browser/bin/agent-browser-cli; \
-    test -x /opt/ghidra/ghidraRun; \
-    test -x /opt/ghidra/support/analyzeHeadless; \
-    test -x /opt/jadx/bin/jadx
+    command -v x11vnc; \
+    command -v tor
 
-COPY --from=proxy-builder --chmod=755 /sandbox-proxy /usr/local/bin/sandbox-proxy
-COPY --from=skills-validator /tmp/.agents/skills .agents/skills
-COPY --chmod=755 entrypoint.sh /entrypoint.sh
-COPY supervisord.conf /supervisord.conf
+# 保持上游镜像的运行身份与工作目录：strix SDK 以 pentester 身份在 /workspace 执行命令
+USER pentester
+WORKDIR /workspace
 
 EXPOSE 8000
-ENTRYPOINT ["/entrypoint.sh"]
+
+ENTRYPOINT ["/ravenholt-entrypoint.sh"]

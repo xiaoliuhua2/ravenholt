@@ -94,6 +94,11 @@ class SandboxConfig(StrictConfigModel):
     # 目标可主动回连。网段 / 网关 / 宿主侧可达性由部署者按其环境自行决定，这里只记录
     # 网络名，不硬编码任何网段。
     network: str = Field(default="")
+    # 会话沙箱使用的镜像（对应 strix 读取的 STRIX_IMAGE）。留空时用 strix 默认的上游
+    # 镜像 ghcr.io/usestrix/strix-sandbox:1.3.0；填 sandbox-runtime:latest 后，agent
+    # 会话会改用本仓库构建的一体化镜像（含 Ghidra / Jadx / observer_ward 等定制工具集
+    # 与容器内 .agents/skills 资源），同时保留上游镜像自带的 Caido 抓包能力。
+    image: str = Field(default="")
 
 
 # 旁路归档器配置：把事件总线上的**全量原始事件** append-only 落盘。
@@ -137,6 +142,12 @@ class IntegrationsConfig(StrictConfigModel):
     # 默认开；若部署环境不允许平台执行 docker 操作，可在控制台关掉。
     # 环境变量 RAVENHOLT_SEARXNG_AUTOPROVISION=0 可强制关闭（优先级更高）。
     searxng_auto_provision: bool = Field(default=True)
+    # SearXNG 容器端口发布到宿主的哪个地址。
+    # 默认 0.0.0.0：同时覆盖 macvlan 沙箱（经宿主 LAN IP 访问）与 bridge 回退沙箱
+    # （经 docker 网关 172.17.0.1 访问），做到「零配置即让沙箱内也能检索」。
+    # 公网部署请改为 127.0.0.1（放弃沙箱内直连）或宿主内网 IP —— 该服务无鉴权，
+    # 绑到公网接口会被滥用为开放检索代理。
+    searxng_bind_addr: str = Field(default="0.0.0.0")
 
 
 # global config
@@ -221,6 +232,20 @@ def sync_strix_sandbox_env() -> None:
     network = _cfg.sandbox.network.strip()
     if network:
         os.environ["STRIX_DOCKER_SANDBOX_NETWORK"] = network
+
+
+def sync_strix_image_env() -> None:
+    """把配置的会话沙箱镜像注入 strix 读取的 ``STRIX_IMAGE``。
+
+    与 :func:`sync_strix_sandbox_env` 分开是刻意的：网络缺失时平台会回退 bridge，
+    但**镜像选择与网络是否可用无关**，不能被那条早退路径连带跳过。留空时不注入，
+    保留部署者手工导出的 ``STRIX_IMAGE`` 与 strix 默认值。
+    """
+    import os
+
+    image = _cfg.sandbox.image.strip()
+    if image:
+        os.environ["STRIX_IMAGE"] = image
 
 
 def _set_or_clear_env(name: str, value: str) -> None:

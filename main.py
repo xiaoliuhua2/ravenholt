@@ -8,6 +8,7 @@ from config import (
     get_config,
     load_config,
     reset_strix_settings_cache,
+    sync_strix_image_env,
     sync_strix_llm_env,
     sync_strix_sandbox_env,
     sync_strix_search_env,
@@ -59,6 +60,7 @@ def _ensure_searxng_endpoint() -> None:
         ensure_local_searxng(
             integrations.searxng_base_url,
             enabled=integrations.searxng_auto_provision,
+            bind_addr=integrations.searxng_bind_addr,
         )
     except Exception:  # noqa: BLE001 - 自动保障绝不阻断启动
         logger.warning("SearXNG 自动保障异常（不影响启动）", exc_info=True)
@@ -87,6 +89,8 @@ if __name__ == "__main__":
     # strix 的 load_settings 是备忘化的：显式失效缓存，确保首次解析发生在本轮注入**之后**，
     # 避免任何早于这里的调用把 provider 固定成旧值。
     reset_strix_settings_cache()
+    # 把会话沙箱镜像同步给 strix（用哪个镜像与网络是否可用无关，故独立于下一步）。
+    sync_strix_image_env()
     # 把沙箱网络同步给 strix（先校验网络确实存在，缺失则回退 bridge）。
     _sync_sandbox_network()
     # 本机 SearXNG 不可达时自动拉起（零配置联网检索的保障；失败不影响启动）。
