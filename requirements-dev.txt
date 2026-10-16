@@ -1,0 +1,15 @@
+# 开发 / 测试依赖 —— 生产部署不需要安装本文件
+#
+# 用途：运行 tests/ 下的引擎回归测试（上游 strix 测试套件平移副本）。
+#   python -m pip install -r requirements-dev.txt
+#   python -m pytest
+# 继承生产依赖：测试跑的是 vendored 的 strix 引擎，其运行依赖必须先装好。
+-r requirements.txt
+pytest>=8.3
+pytest-asyncio>=0.24
+# 上游测试会导入 strix 的 PDF 报告模块与模型 provider 模块，因此测试需要这些
+# 引擎依赖；ravenholt 平台本身不导出 PDF、也不做云端模型认证，故不进生产清单。
+pypdf>=5.0
+reportlab>=4.0
+google-auth>=2.0.0
+boto3>=1.28.0
