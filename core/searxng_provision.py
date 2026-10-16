@@ -138,16 +138,20 @@ def _ensure_image() -> str | None:
     return None
 
 
-def _run_container(base_url: str) -> bool:
+def _run_container(base_url: str, bind_addr: str) -> bool:
     _write_settings()
     image = _ensure_image()
     if image is None:
         logger.warning("searxng provision: 无可用镜像，放弃自动创建")
         return False
     port = urlsplit(base_url).port or 8888
+    # 端口发布的宿主绑定地址由 ``searxng_bind_addr`` 决定，默认 0.0.0.0：
+    # 沙箱容器在 macvlan 上有独立 IP（经宿主 LAN IP 访问）或回退 bridge（经 docker
+    # 网关 172.17.0.1 访问），只绑 loopback 时沙箱侧一律连不上。公网部署应把它改成
+    # 127.0.0.1 或宿主内网 IP —— 该服务无鉴权，绑公网接口等于开放检索代理。
     args = [
         "docker", "run", "-d", "--name", CONTAINER_NAME, "--restart", "unless-stopped",
-        "-p", f"127.0.0.1:{port}:{CONTAINER_PORT}",
+        "-p", f"{bind_addr}:{port}:{CONTAINER_PORT}",
         "-v", f"{SETTINGS_PATH}:/etc/searxng/settings.yml:ro",
         "-e", f"SEARXNG_BASE_URL={base_url.rstrip('/')}/",
         image,
@@ -162,13 +166,18 @@ def ensure_local_searxng(
     base_url: str,
     *,
     enabled: bool | None = None,
+    bind_addr: str = "0.0.0.0",
     attempts: int = 1,
 ) -> bool:
     """确保本机 SearXNG 可达；返回是否最终可用。**永不自阻断**。
 
     ``enabled=False``（控制台开关关掉）或环境变量
     ``RAVENHOLT_SEARXNG_AUTOPROVISION=0`` 时直接跳过，只做可达性判定不做容器操作。
+
+    ``bind_addr`` 是新建容器时端口发布到的宿主地址（见 ``searxng_bind_addr`` 配置）：
+    只做可达性判定；容器已存在时不动它的绑定，需要换绑请先 ``docker rm -f searxng``。
     """
+    bind_addr = bind_addr.strip() or "0.0.0.0"
     if enabled is False:
         logger.info("searxng provision: 控制台已关闭自动保障（仅判定可达性）")
         return _reachable(base_url or "")
@@ -192,7 +201,7 @@ def ensure_local_searxng(
     if _container_exists():
         logger.info("searxng provision: 容器已存在，执行 docker start")
         _run(["docker", "start", CONTAINER_NAME], timeout=120)
-    elif not _run_container(url):
+    elif not _run_container(url, bind_addr):
         return False
 
     # 容器刚起需要几秒初始化
