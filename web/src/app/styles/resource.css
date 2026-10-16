@@ -2519,6 +2519,14 @@ input.bare:focus {
   }
 }
 
+/* ───────── 大屏调优（≥1440）─────────
+   系统配置的分组栅格由 3 列放宽到 4 列，利用宽屏横向空间、减少纵向滚动。 */
+@media (min-width: 1440px) {
+  .cfg-pg {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 /* ───────── 策略审批 / 审计日志 ───────── */
 .table-toolbar-filters .semi-select {
   min-width: 168px;

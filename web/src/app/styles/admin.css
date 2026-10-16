@@ -21,9 +21,19 @@
   background: var(--z-bg);
 }
 
-/* 只有操作台需要中间的会话列 */
+/* 只有操作台需要中间的会话列；列宽由 --admin-context-w 控制（可拖右缘手柄调整） */
 .admin-shell-context {
-  grid-template-columns: 60px 300px minmax(0, 1fr);
+  --admin-context-w: 300px;
+  grid-template-columns: 60px var(--admin-context-w) minmax(0, 1fr);
+}
+
+/* 折叠态：会话列整列收起（宽度归零），仅留图标栏 */
+.admin-shell-context-collapsed {
+  grid-template-columns: 60px 0 minmax(0, 1fr);
+}
+
+.admin-shell-context-collapsed .admin-context {
+  display: none;
 }
 
 /* ───────── 图标窄栏 ───────── */
@@ -158,11 +168,31 @@
 
 /* ───────── 会话列（仅操作台） ───────── */
 .admin-context {
+  position: relative;
   display: flex;
   min-height: 0;
   flex-direction: column;
   background: var(--z-surface);
   border-right: 1px solid var(--z-line);
+}
+
+/* 会话列右缘拖拽手柄：向左/右拖动调整列宽，双击复位 */
+.admin-context-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 6;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.admin-context-resizer:hover,
+.admin-context-resizer:active {
+  background: var(--z-brand-tint);
 }
 
 .admin-context-head {
@@ -332,12 +362,9 @@
 
 /* ───────── 响应式 ───────── */
 @media (max-width: 1100px) {
+  /* 中等宽度下保留会话列（只收窄默认宽度），不再整列隐藏 —— 收起交由折叠按钮或 ≤780px 处理 */
   .admin-shell-context {
-    grid-template-columns: 60px minmax(0, 1fr);
-  }
-
-  .admin-context {
-    display: none;
+    --admin-context-w: 240px;
   }
 }
 
@@ -348,23 +375,39 @@
     grid-template-rows: 56px minmax(0, 1fr);
   }
 
+  /* 手机/极窄：会话列隐藏（单列布局下无处安放） */
+  .admin-context {
+    display: none;
+  }
+
+  /* 窄屏：图标栏横向排列并允许水平滑动 —— 导航项多时不再挤压/溢出屏幕 */
   .admin-rail {
     flex-direction: row;
     align-items: center;
     gap: 4px;
     padding: 0 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--z-line);
+    scrollbar-width: none;
+  }
+
+  .admin-rail::-webkit-scrollbar {
+    display: none;
   }
 
   .rail-logo {
     width: 24px;
     height: 24px;
+    flex: 0 0 auto;
     margin: 0 12px 0 0;
   }
 
   .rail-nav {
+    flex: 0 0 auto;
     flex-direction: row;
+    flex-wrap: nowrap;
   }
 
   .rail-item.active::before {
@@ -375,6 +418,7 @@
   }
 
   .rail-account {
+    flex: 0 0 auto;
     flex-direction: row;
     gap: 10px;
     margin: 0 0 0 auto;
@@ -401,5 +445,28 @@
 
   .admin-content-viewport-scroll {
     padding: 16px;
+  }
+}
+
+/* ───────── 大屏调优（≥1440 / ≥1920）─────────
+   宽屏上会话列与内容内边距随视口增大：300px 侧栏在大屏偏局促，
+   28px 内边距也会让内容显得贴边。只调尺寸，不动结构。 */
+@media (min-width: 1440px) {
+  .admin-shell-context {
+    --admin-context-w: 320px;
+  }
+
+  .admin-content-viewport-scroll {
+    padding: 26px 40px 34px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .admin-shell-context {
+    --admin-context-w: 360px;
+  }
+
+  .admin-content-viewport-scroll {
+    padding: 30px 56px 42px;
   }
 }

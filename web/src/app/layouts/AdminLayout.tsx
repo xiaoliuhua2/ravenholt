@@ -3,6 +3,7 @@ import { FolderKanban, FolderPlus, LogOut, MessageSquareCode, Network, ScrollTex
 import { ReactNode, Suspense, useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { SessionList } from "../../features/playground/SessionList";
+import { useContextColumnWidth } from "../../features/playground/useContextColumnWidth";
 import { useAgentSessionContext } from "../../features/playground/AgentSessionProvider";
 import { usePendingConfirmationCount } from "../../features/policy-confirmations/usePendingConfirmationCount";
 import { WorkProjectFormModal } from "../../features/work-projects/WorkProjectFormModal";
@@ -69,6 +70,14 @@ export function AdminLayout() {
     return () => window.clearTimeout(id);
   }, []);
 
+  const {
+    shellRef,
+    onResizeStart: onContextResizeStart,
+    reset: resetContextWidth,
+    collapsed: contextCollapsed,
+    toggleCollapsed: toggleContextCollapsed,
+  } = useContextColumnWidth();
+
   const isAdmin = user?.role === "admin";
   // 待确认动作许可数量：仅管理员轮询，用于导航角标提醒。
   const pendingConfirmations = usePendingConfirmationCount(Boolean(isAdmin));
@@ -108,7 +117,7 @@ export function AdminLayout() {
   const contentMode = isPlayground ? "fixed" : "scroll";
 
   return (
-    <div className={cx("admin-shell", isPlayground && "admin-shell-context")}>
+    <div ref={shellRef} className={cx("admin-shell", isPlayground && "admin-shell-context")}>
       <aside className="admin-rail">
         <img className="rail-logo" src={ravenholtLogo} alt="Ravenholt" title={versionTitle} />
 
@@ -121,8 +130,21 @@ export function AdminLayout() {
                 key={item.path}
                 to={item.path}
                 className="rail-item"
-                title={item.label}
+                title={
+                  item.path === "/playground"
+                    ? contextCollapsed
+                      ? "操作台 · 点击展开会话列"
+                      : "操作台 · 再次点击收起会话列"
+                    : item.label
+                }
                 aria-label={item.label}
+                onClick={(event) => {
+                  // 已处于操作台时，再次点击该图标即折叠/展开会话列，而非重复跳转
+                  if (item.path === "/playground" && location.pathname.startsWith("/playground")) {
+                    event.preventDefault();
+                    toggleContextCollapsed();
+                  }
+                }}
                 onFocus={() => preloadAdminRoute(item.path)}
                 onPointerDown={() => preloadAdminRoute(item.path)}
                 onPointerEnter={() => preloadAdminRoute(item.path)}
@@ -185,6 +207,15 @@ export function AdminLayout() {
             saving={creatingProject}
             onCancel={() => setProjectModalOpen(false)}
             onSubmit={handleCreateProject}
+          />
+          <div
+            className="admin-context-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖动调整会话列宽度"
+            title="拖动调整会话列宽度（双击复位）"
+            onPointerDown={onContextResizeStart}
+            onDoubleClick={resetContextWidth}
           />
         </section>
       ) : null}
