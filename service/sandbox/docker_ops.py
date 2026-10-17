@@ -69,6 +69,11 @@ def create_container_sync(
             "ports": _to_docker_ports(port_mappings),
             "stdin_open": True,
             "tty": False,
+            # 与 strix 会话沙箱保持一致（见 strix/runtime/docker_client.py）：
+            # nmap 等工具的二进制带 file capabilities(cap_net_admin/cap_net_raw)，
+            # 容器不带这两个 cap 时 exec nmap 会直接 EPERM，raw socket 扫描全废。
+            # 少了它，「沙箱容器」控制台里的渗透工具链等于残废。
+            "cap_add": ["NET_ADMIN", "NET_RAW"],
         }
         create_kwargs.update(_sandbox_resource_limits())
         if environment:
