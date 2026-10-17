@@ -108,10 +108,29 @@ async def apply_managed_proxy_egress_to_running_containers(egress_proxy_id: int)
 
 
 async def apply_egress_environment(target: SandboxControlProxyTarget, environment: dict[str, str]) -> None:
-    # Ravenholt 依赖容器内常驻的 Go 控制面（POST /egress）动态刷新出网环境；ravenholt 官方沙箱镜像
-    # 没有该控制面，运行中的容器无法再动态应用 egress 配置。egress 环境仅在容器创建时通过
-    # docker create 注入，修改需要重建容器。这里显式失败，避免伪装成已生效。
-    raise RuntimeError(
-        "sandbox egress cannot be applied at runtime: the ravenholt sandbox image has no in-container "
-        "control plane; egress environment is only set when the container is created"
-    )
+    # ravenholt 一体化沙箱镜像自带容器内 Go 控制面（sandbox/proxy），它提供
+    # ``POST /egress``（见 sandbox/proxy/main.go 的 handleEgress）用于**运行时**
+    # 刷新出网环境，并同步重写 /etc/profile.d/sandbox-egress.sh 供后续 shell 会话生效。
+    # 控制面端口已由 docker create 发布到宿主（control_proxy_host_port），故从宿主侧调用。
+    import asyncio
+    import httpx
+
+    if not environment:
+        return
+    # 容器刚 start 时控制面可能还没监听（entrypoint → supervisord → sandbox-proxy
+    # 需要几秒），故带短重试；UI 切 egress 时容器早已 running，重试不产生额外等待。
+    last_error: Exception | None = None
+    async with httpx.AsyncClient(timeout=15) as client:
+        for attempt in range(1, 4):
+            try:
+                response = await client.post(
+                    f"{target.base_url}/egress",
+                    json={"environment": environment},
+                    headers={"X-Sandbox-Token": target.token},
+                )
+                response.raise_for_status()
+                return
+            except Exception as exc:  # noqa: BLE001 - 就绪前的连接失败都值得重试
+                last_error = exc
+                await asyncio.sleep(2.0 * attempt)
+    raise RuntimeError(f"failed to apply sandbox egress: {last_error}") from last_error

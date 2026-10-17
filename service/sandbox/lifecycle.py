@@ -29,6 +29,7 @@ from service.sandbox.docker_ops import (
 )
 from service.sandbox.records import load_sandbox_container_record
 from service.sandbox.egress import SandboxEgressSelection, sandbox_egress_container_environment
+from service.sandbox.caido import bootstrap_container_caido
 from service.sandbox.control_proxy import apply_container_egress
 from service.sandbox.status import (
     ContainerStatusSnapshot,
@@ -58,6 +59,24 @@ def _container_name_prefix(image_name: str) -> str:
 
 def _serialize_port_mappings(port_mappings: list[SandboxContainerPortMapping]) -> list[dict]:
     return [mapping.model_dump() for mapping in port_mappings]
+
+
+# 容器启动后的运行时预热是后台任务：容器内控制面与 Caido 都需要几秒才就绪，
+# 同步等待会拖住 start 接口，因此放到后台（best-effort，失败只记日志）。
+_background_sandbox_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_startup_refresh(host: ManagedHost, container_id: int, container_hash: str) -> None:
+    async def _refresh() -> None:
+        try:
+            await apply_container_egress(container_id)
+        except Exception:
+            logger.warning("sandbox container started, but egress refresh failed: %s", container_id, exc_info=True)
+        await bootstrap_container_caido(host, container_hash)
+
+    task = asyncio.create_task(_refresh())
+    _background_sandbox_tasks.add(task)
+    task.add_done_callback(_background_sandbox_tasks.discard)
 
 
 async def create_sandbox_container(
@@ -231,10 +250,9 @@ async def start_sandbox_container(id: int) -> SandboxContainerMutationResult:
             and next_record.container.status == SandboxContainerStatus.RUNNING
             and next_record.container.control_proxy_host_port > 0
         ):
-            try:
-                await apply_container_egress(id)
-            except Exception:
-                logger.warning("sandbox container started, but egress refresh failed: %s", id, exc_info=True)
+            # 运行时预热放到后台：刷新 egress + 准备 Caido project（否则容器内 48080
+            # 当代理会返回 500）。两者都需要等容器内服务就绪，不能拖住 start 接口。
+            _spawn_startup_refresh(host, id, record.container.container_hash)
     except docker.errors.NotFound:
         logger.debug("sandbox container instance not found while starting: %s", id)
         return SandboxContainerMutationResult(
