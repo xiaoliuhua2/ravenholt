@@ -1,3 +1,7 @@
 # Linux container entrypoints: CRLF breaks shebang (exec: no such file or directory)
 *.sh text eol=lf
 supervisord.conf text eol=lf
+
+# 技能文档会被容器内的 validate-skills.sh 解析：它把首行与 `---` 严格比较，
+# CRLF 会让首行变成 `---\r`，从而误报「missing YAML front matter」并中断构建。
+*.md text eol=lf
