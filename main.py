@@ -13,6 +13,7 @@ from config import (
     sync_strix_sandbox_env,
     sync_strix_search_env,
 )
+from core.strix_runtime.sandbox_skills import register_sandbox_skill_dirs
 from logger import get_logger, setup_logging
 
 logger = get_logger(__name__)
@@ -95,5 +96,8 @@ if __name__ == "__main__":
     _sync_sandbox_network()
     # 本机 SearXNG 不可达时自动拉起（零配置联网检索的保障；失败不影响启动）。
     _ensure_searxng_endpoint()
+    # 把镜像内建的工具技能接进 strix 技能加载器：否则 ghidra / jadx / observer_ward 等
+    # 定制工具的用法指引永远读不到（strix 只搜索包内技能与显式注册的目录）。
+    register_sandbox_skill_dirs(WORKSPACE)
 
     main()
