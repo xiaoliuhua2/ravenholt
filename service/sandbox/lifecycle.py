@@ -29,7 +29,7 @@ from service.sandbox.docker_ops import (
 )
 from service.sandbox.records import load_sandbox_container_record
 from service.sandbox.egress import SandboxEgressSelection, sandbox_egress_container_environment
-from service.sandbox.caido import bootstrap_container_caido
+from service.sandbox.caido_bootstrap import bootstrap_container_caido
 from service.sandbox.control_proxy import apply_container_egress
 from service.sandbox.status import (
     ContainerStatusSnapshot,
