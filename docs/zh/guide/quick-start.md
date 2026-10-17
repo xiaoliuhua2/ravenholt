@@ -57,6 +57,12 @@ Ravenholt 的沙盒镜像 `sandbox-runtime:latest` **以 strix 上游镜像为�
 cd sandbox && bash build.sh
 ```
 
+脚本默认经 `https://gh-proxy.com/` 拉取 GitHub Releases（国内直连 `github.com` 的 release 资产常被中途 RST，表现为 `curl: (35) Recv failure: Connection reset by peer`）。需要更换通道时用环境变量覆盖：
+
+```bash
+cd sandbox && GITHUB_MIRROR=https://ghfast.top/ bash build.sh
+```
+
 稍等片刻即可得到 `sandbox-runtime:latest`。构建完成后，**让会话真正使用它**：在 `.ravenholt/config.json` 里设置 `sandbox.image`（用 `bash setup.sh --with-sandbox` 部署时这一步会自动完成）：
 
 ```json

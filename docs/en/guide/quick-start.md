@@ -57,6 +57,12 @@ Ravenholt's sandbox image `sandbox-runtime:latest` **takes the upstream strix im
 cd sandbox && bash build.sh
 ```
 
+The script fetches GitHub Releases through `https://gh-proxy.com/` by default (a direct connection to `github.com` release assets is frequently reset mid-transfer in mainland China, showing up as `curl: (35) Recv failure: Connection reset by peer`). Override the channel with the environment variable when needed:
+
+```bash
+cd sandbox && GITHUB_MIRROR=https://ghfast.top/ bash build.sh
+```
+
 After a short wait, you will get `sandbox-runtime:latest`. To make sessions actually use it, set `sandbox.image` in `.ravenholt/config.json` (deploying with `bash setup.sh --with-sandbox` does this automatically):
 
 ```json
