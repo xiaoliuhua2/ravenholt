@@ -127,12 +127,23 @@ class ArchiveConfig(StrictConfigModel):
 
 
 # 联网检索（strix ``web_search`` / ``web_get_contents``）的 provider 与密钥。
-# provider=auto：有 Exa 用 Exa，否则用 Perplexity；两者都空则该工具返回「未配置」，
-# agent 会自行降级为「靠自身知识与实验」。密钥在启动时经环境变量注入 strix。
+# provider=auto：有 Exa 用 Exa，否则用 Perplexity，再否则本机 SearXNG；显式选
+# ``deepseek`` 时检索走 DeepSeek 官方 ``/v1/tools/search``（需 DeepSeek 密钥）。
+# 密钥在启动时经环境变量注入 strix。
 class IntegrationsConfig(StrictConfigModel):
-    web_search_provider: Literal["auto", "exa", "perplexity", "searxng"] = Field(default="auto")
+    web_search_provider: Literal["auto", "exa", "perplexity", "searxng", "deepseek"] = Field(
+        default="auto"
+    )
     exa_api_key: str = Field(default="")
     perplexity_api_key: str = Field(default="")
+    # DeepSeek 官方 Search/Fetch 工具接口的密钥（可选）。
+    # 配了它 ``web_get_contents`` 的页面抓取改走 DeepSeek ``POST /v1/tools/fetch``，
+    # 不再依赖 Exa；留空则维持原行为（Exa 未配置 → 工具返回「未配置」，
+    # agent 自行改调 web_search / security_search 这两个联网能力）。
+    deepseek_api_key: str = Field(default="")
+    # DeepSeek 接口根地址。填 ``https://api.deepseek.com`` 或
+    # ``https://api.deepseek.com/v1`` 都行，工具侧会自动去掉末尾 ``/v1``。
+    deepseek_base_url: str = Field(default="https://api.deepseek.com")
     # 自建 SearXNG 的 base URL（provider=searxng 时使用；无需 API key）。
     # 默认指向本机容器，做到「零配置即可联网检索」——部署者不必在控制台填任何东西；
     # 平台启动时会 best-effort 保障该容器在跑（见 core/searxng_provision.py）。
@@ -148,6 +159,11 @@ class IntegrationsConfig(StrictConfigModel):
     # 公网部署请改为 127.0.0.1（放弃沙箱内直连）或宿主内网 IP —— 该服务无鉴权，
     # 绑到公网接口会被滥用为开放检索代理。
     searxng_bind_addr: str = Field(default="0.0.0.0")
+    # 「通用引擎」开关：打开后平台改写 SearXNG 的 settings.yml，把
+    # Google / Bing / DuckDuckGo / Brave 这四个通用引擎设为启用并重启容器。
+    # 默认关：这批引擎在部分网络环境被墙或触发验证码，打开后可能拿不到结果并拖慢查询。
+    # 只对**平台自己生成的那份** settings.yml 生效（见 core/searxng_provision.py）。
+    searxng_general_engines: bool = Field(default=False)
 
 
 # global config
@@ -268,9 +284,16 @@ def sync_strix_search_env() -> None:
     运行期改动请配合 :func:`reset_strix_settings_cache` 让缓存失效。
     """
     integrations = _cfg.integrations
+    # 先做一次「自动填入」：控制台保存时会把该字段写成空串（留空=跟随模型配置），
+    # 若直接拿这个空串去注入，就会把进程环境里已有的 DeepSeek key 清掉 ——
+    # 于是「保存了别的配置，抓取/检索的 DeepSeek 通道反而失效」。这里按同样的
+    # 规则重新回填，保证注入的是**生效值**而不是字段原值。
+    _backfill_deepseek_integrations(_cfg)
     _set_or_clear_env("STRIX_WEB_SEARCH_PROVIDER", integrations.web_search_provider)
     _set_or_clear_env("EXA_API_KEY", integrations.exa_api_key)
     _set_or_clear_env("PERPLEXITY_API_KEY", integrations.perplexity_api_key)
+    _set_or_clear_env("DEEPSEEK_API_KEY", integrations.deepseek_api_key)
+    _set_or_clear_env("STRIX_DEEPSEEK_BASE_URL", integrations.deepseek_base_url)
     _set_or_clear_env("STRIX_SEARXNG_BASE_URL", integrations.searxng_base_url)
     # 记一条日志便于运维核对「线上到底注入了什么」
     # （注意：/proc/<pid>/environ 不反映运行时 os.environ 变更，不能用它验证）
@@ -278,11 +301,12 @@ def sync_strix_search_env() -> None:
         from logger import get_logger
 
         get_logger(__name__).info(
-            "联网检索已注入：provider=%s | searxng=%s | exa=%s | perplexity=%s",
+            "联网检索已注入：provider=%s | searxng=%s | exa=%s | perplexity=%s | deepseek=%s",
             integrations.web_search_provider,
             integrations.searxng_base_url or "(空)",
             "有" if integrations.exa_api_key else "无",
             "有" if integrations.perplexity_api_key else "无",
+            "有" if integrations.deepseek_api_key else "无",
         )
     except Exception:  # noqa: BLE001 - 日志失败不影响注入本身
         pass
@@ -297,12 +321,48 @@ def reset_strix_settings_cache() -> None:
     reset_settings_cache()
 
 
+# 联网抓取（strix ``web_get_contents``）走 DeepSeek 官方 Fetch 接口时的默认根地址。
+_DEEPSEEK_DEFAULT_BASE = "https://api.deepseek.com"
+
+
+def _deepseek_root_of(base_url: str) -> str:
+    """把 agent 的 base_url 收敛成 DeepSeek 工具接口的根地址（去掉末尾 ``/v1``）。"""
+    trimmed = (base_url or "").strip().rstrip("/")
+    if trimmed.endswith("/v1"):
+        trimmed = trimmed[: -len("/v1")].rstrip("/")
+    return trimmed or _DEEPSEEK_DEFAULT_BASE
+
+
+def _backfill_deepseek_integrations(cfg: GlobalConfig) -> None:
+    """联网检索的「自动填入」：``integrations.deepseek_api_key`` 留空时，
+    自动采用已经配好的 DeepSeek agent 密钥（base_url 指向 DeepSeek 的那个 agent）。
+
+    这样「用户在模型配置里本来就填了 DeepSeek 的 key」就等于「页面抓取能力自动可用」，
+    不需要再手工复制一遍；把该字段清空即回到「跟随 agent」的自动模式。
+    只在 host 里含 ``deepseek`` 的 agent 上回填——自建网关/中转（base_url 不含该词）
+    不会命中，避免把密钥发到错误的端点。
+    """
+    integrations = cfg.integrations
+    if integrations.deepseek_api_key.strip():
+        return
+    for agent in cfg.agents.values():
+        base_url = agent.base_url or ""
+        api_key = (agent.api_key or "").strip()
+        if api_key and "deepseek" in base_url.lower():
+            integrations.deepseek_api_key = api_key
+            if integrations.deepseek_base_url.strip() in ("", _DEEPSEEK_DEFAULT_BASE):
+                integrations.deepseek_base_url = _deepseek_root_of(base_url)
+            return
+
+
 def read_config_file() -> GlobalConfig:
     """read and validate config.json without mutating global state"""
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
     data = _migrate_config_data(data)
-    return GlobalConfig.model_validate(data)
+    cfg = GlobalConfig.model_validate(data)
+    _backfill_deepseek_integrations(cfg)
+    return cfg
 
 
 def write_config_file(cfg: GlobalConfig) -> None:

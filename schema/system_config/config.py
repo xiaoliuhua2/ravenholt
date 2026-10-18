@@ -36,11 +36,16 @@ class UpdateAgentConfigRequest(BaseModel):
 class UpdateIntegrationsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    web_search_provider: Literal["auto", "exa", "perplexity", "searxng"]
+    web_search_provider: Literal["auto", "exa", "perplexity", "searxng", "deepseek"]
     exa_api_key: str = Field(max_length=4096)
     perplexity_api_key: str = Field(max_length=4096)
+    # DeepSeek 官方 Search/Fetch 接口的密钥（检索与页面抓取共用）。
+    # 留空表示「跟随模型配置里已填的 DeepSeek key」——读取配置时会自动回填后再展示。
+    deepseek_api_key: str = Field(default="", max_length=4096)
     searxng_base_url: str = Field(default="", max_length=1024)
     searxng_auto_provision: bool = True
+    # 「通用引擎」开关：打开后平台改写 SearXNG 配置（Google/Bing/DuckDuckGo/Brave）并重启容器。
+    searxng_general_engines: bool = False
 
 
 class UpdateInstanceConfigRequest(BaseModel):

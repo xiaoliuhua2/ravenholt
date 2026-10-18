@@ -55,14 +55,17 @@ def _ensure_searxng_endpoint() -> None:
     检索侧还有无 key 安全数据库兜底，所以这里失败也不影响 agent 干活。
     """
     try:
-        from core.searxng_provision import ensure_local_searxng
+        from core.searxng_provision import apply_general_engines, ensure_local_searxng
 
         integrations = get_config().integrations
         ensure_local_searxng(
             integrations.searxng_base_url,
             enabled=integrations.searxng_auto_provision,
             bind_addr=integrations.searxng_bind_addr,
+            general_engines=integrations.searxng_general_engines,
         )
+        # 把「通用引擎」开关收敛到**已存在**的容器；状态已一致时是空操作，不会重启。
+        apply_general_engines(integrations.searxng_general_engines)
     except Exception:  # noqa: BLE001 - 自动保障绝不阻断启动
         logger.warning("SearXNG 自动保障异常（不影响启动）", exc_info=True)
 

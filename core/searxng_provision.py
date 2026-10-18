@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 import subprocess
 from pathlib import Path
@@ -37,7 +38,12 @@ IMAGE_CANDIDATES = (
 )
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 
-# 只保留在本网络内实测可达的引擎（Google/DuckDuckGo/Bing 等被墙或触发验证码）。
+# 默认启用的通用引擎（本网络实测可达）。
+# 下面这批是**被墙或触发验证码**的通用引擎，默认禁用；控制台开关
+# ``integrations.searxng_general_engines`` 打开后把它们改成启用
+# （见 :func:`apply_general_engines`）。
+_GENERAL_ENGINES = ("google", "bing", "duckduckgo", "brave")
+
 # 注意：必须用「逐个禁用」而非 keep_only——keep_only 会让默认分类选不到任何引擎。
 _SETTINGS_TEMPLATE = """use_default_settings: true
 server:
@@ -61,11 +67,13 @@ engines:
   - name: 360search
     disabled: false
   - name: google
-    disabled: true
+    disabled: {general_engines}
+  - name: bing
+    disabled: {general_engines}
   - name: duckduckgo
-    disabled: true
+    disabled: {general_engines}
   - name: brave
-    disabled: true
+    disabled: {general_engines}
   - name: google cse
     disabled: true
   - name: wikipedia
@@ -86,6 +94,14 @@ engines:
     disabled: true
 """
 
+_SECRET_RE = re.compile(r'^  secret_key:\s*"?([^"\n]+?)"?\s*$', re.M)
+
+
+def _settings_text(secret: str, *, general_engines: bool) -> str:
+    return _SETTINGS_TEMPLATE.format(
+        secret=secret, general_engines="false" if general_engines else "true"
+    )
+
 
 def _run(args: list[str], timeout: int = 60) -> subprocess.CompletedProcess[str] | None:
     try:
@@ -105,14 +121,80 @@ def _reachable(base_url: str, timeout: float = 4.0) -> bool:
         return False
 
 
-def _write_settings() -> None:
+def _write_settings(*, general_engines: bool) -> None:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     if SETTINGS_PATH.exists():
         return
     SETTINGS_PATH.write_text(
-        _SETTINGS_TEMPLATE.format(secret=secrets.token_urlsafe(32)), encoding="utf-8"
+        _settings_text(secrets.token_urlsafe(32), general_engines=general_engines),
+        encoding="utf-8",
     )
     logger.info("searxng provision: 已写入 %s", SETTINGS_PATH)
+
+
+def _existing_secret() -> str | None:
+    try:
+        text = SETTINGS_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = _SECRET_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _current_general_engines_enabled() -> bool | None:
+    """读现有 settings.yml 判断这批通用引擎当前是否启用（全启用才算启用）。
+
+    返回 ``None`` 表示这份文件里压根没有这批引擎的条目（例如部署者自带的配置），
+    此时平台不接管、不做任何改动。
+    """
+    try:
+        text = SETTINGS_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    states: list[bool] = []
+    for name in _GENERAL_ENGINES:
+        match = re.search(rf"^  - name: {re.escape(name)}\n    disabled: (true|false)$", text, re.M)
+        if match:
+            states.append(match.group(1) == "false")
+    if not states:
+        return None
+    return all(states)
+
+
+def apply_general_engines(enabled: bool) -> bool:
+    """把「通用引擎」开关（Google/Bing/DuckDuckGo/Brave）落到 SearXNG 配置。
+
+    只在平台自己生成的那份 settings.yml 上生效：文件里没有这批引擎条目（部署者自带配置）
+    时直接跳过，不碰别人的文件。已是目标状态则**不重启容器**（幂等）；需要变更时按平台
+    模板重写（保留原 ``secret_key``）并 ``docker restart searxng``。
+
+    **永不自阻断**：任何一步失败只记日志并返回 False。
+    """
+    current = _current_general_engines_enabled()
+    if current is None:
+        logger.info("searxng provision: 未找到平台托管的 settings.yml，跳过通用引擎开关")
+        return False
+    if current is enabled:
+        return True
+
+    secret = _existing_secret() or secrets.token_urlsafe(32)
+    try:
+        SETTINGS_PATH.write_text(
+            _settings_text(secret, general_engines=enabled), encoding="utf-8"
+        )
+    except OSError:
+        logger.warning("searxng provision: 写入 %s 失败", SETTINGS_PATH, exc_info=True)
+        return False
+
+    if not _container_exists():
+        logger.info("searxng provision: 容器不存在，配置已更新（下次创建时生效）")
+        return True
+    result = _run(["docker", "restart", CONTAINER_NAME], timeout=120)
+    if not result or result.returncode != 0:
+        logger.warning("searxng provision: 重启 %s 失败", CONTAINER_NAME)
+        return False
+    logger.info("searxng provision: 通用引擎开关已生效（general_engines=%s），容器已重启", enabled)
+    return True
 
 
 def _container_exists() -> bool:
@@ -138,8 +220,8 @@ def _ensure_image() -> str | None:
     return None
 
 
-def _run_container(base_url: str, bind_addr: str) -> bool:
-    _write_settings()
+def _run_container(base_url: str, bind_addr: str, *, general_engines: bool) -> bool:
+    _write_settings(general_engines=general_engines)
     image = _ensure_image()
     if image is None:
         logger.warning("searxng provision: 无可用镜像，放弃自动创建")
@@ -167,6 +249,7 @@ def ensure_local_searxng(
     *,
     enabled: bool | None = None,
     bind_addr: str = "0.0.0.0",
+    general_engines: bool = False,
     attempts: int = 1,
 ) -> bool:
     """确保本机 SearXNG 可达；返回是否最终可用。**永不自阻断**。
@@ -176,6 +259,9 @@ def ensure_local_searxng(
 
     ``bind_addr`` 是新建容器时端口发布到的宿主地址（见 ``searxng_bind_addr`` 配置）：
     只做可达性判定；容器已存在时不动它的绑定，需要换绑请先 ``docker rm -f searxng``。
+
+    ``general_engines`` 只在**新建容器**时生效（决定初始 settings.yml 里 Google/Bing/
+    DuckDuckGo/Brave 是否启用）；已存在的容器请走 :func:`apply_general_engines`。
     """
     bind_addr = bind_addr.strip() or "0.0.0.0"
     if enabled is False:
@@ -201,7 +287,7 @@ def ensure_local_searxng(
     if _container_exists():
         logger.info("searxng provision: 容器已存在，执行 docker start")
         _run(["docker", "start", CONTAINER_NAME], timeout=120)
-    elif not _run_container(url, bind_addr):
+    elif not _run_container(url, bind_addr, general_engines=general_engines):
         return False
 
     # 容器刚起需要几秒初始化
@@ -214,4 +300,4 @@ def ensure_local_searxng(
     return False
 
 
-__all__ = ["ensure_local_searxng", "SETTINGS_PATH", "CONTAINER_NAME"]
+__all__ = ["apply_general_engines", "ensure_local_searxng", "SETTINGS_PATH", "CONTAINER_NAME"]

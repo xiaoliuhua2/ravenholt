@@ -2846,6 +2846,11 @@ export interface components {
         /** IntegrationsConfig */
         IntegrationsConfig: {
             /**
+             * Deepseek Api Key
+             * @default
+             */
+            deepseek_api_key: string;
+            /**
              * Exa Api Key
              * @default
              */
@@ -2866,11 +2871,16 @@ export interface components {
              */
             searxng_base_url: string;
             /**
+             * Searxng General Engines
+             * @default false
+             */
+            searxng_general_engines: boolean;
+            /**
              * Web Search Provider
              * @default auto
              * @enum {string}
              */
-            web_search_provider: "auto" | "exa" | "perplexity" | "searxng";
+            web_search_provider: "auto" | "exa" | "perplexity" | "searxng" | "deepseek";
         };
         /**
          * KillSwitchConfig
@@ -4062,6 +4072,11 @@ export interface components {
         };
         /** UpdateIntegrationsRequest */
         UpdateIntegrationsRequest: {
+            /**
+             * Deepseek Api Key
+             * @default
+             */
+            deepseek_api_key: string;
             /** Exa Api Key */
             exa_api_key: string;
             /** Perplexity Api Key */
@@ -4077,10 +4092,15 @@ export interface components {
              */
             searxng_base_url: string;
             /**
+             * Searxng General Engines
+             * @default false
+             */
+            searxng_general_engines: boolean;
+            /**
              * Web Search Provider
              * @enum {string}
              */
-            web_search_provider: "auto" | "exa" | "perplexity" | "searxng";
+            web_search_provider: "auto" | "exa" | "perplexity" | "searxng" | "deepseek";
         };
         /** UpdateManagedHostRequest */
         UpdateManagedHostRequest: {

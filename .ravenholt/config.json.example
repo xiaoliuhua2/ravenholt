@@ -60,7 +60,10 @@
         "web_search_provider": "auto",
         "exa_api_key": "",
         "perplexity_api_key": "",
+        "deepseek_api_key": "",
+        "deepseek_base_url": "https://api.deepseek.com",
         "searxng_base_url": "http://127.0.0.1:8888",
-        "searxng_bind_addr": "0.0.0.0"
+        "searxng_bind_addr": "0.0.0.0",
+        "searxng_general_engines": false
     }
 }

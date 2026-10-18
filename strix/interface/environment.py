@@ -29,6 +29,8 @@ def _missing_web_search_vars(integrations: IntegrationSettings) -> list[str]:
         return [] if integrations.exa_api_key else ["EXA_API_KEY"]
     if integrations.web_search_provider == "perplexity":
         return [] if integrations.perplexity_api_key else ["PERPLEXITY_API_KEY"]
+    if integrations.web_search_provider == "deepseek":
+        return [] if integrations.deepseek_api_key else ["DEEPSEEK_API_KEY"]
     if integrations.exa_api_key or integrations.perplexity_api_key or integrations.searxng_base_url:
         return []
     return ["EXA_API_KEY", "PERPLEXITY_API_KEY", "STRIX_SEARXNG_BASE_URL"]

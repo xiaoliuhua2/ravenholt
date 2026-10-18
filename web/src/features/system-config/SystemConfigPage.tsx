@@ -60,8 +60,10 @@ const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   web_search_provider: "auto",
   exa_api_key: "",
   perplexity_api_key: "",
+  deepseek_api_key: "",
   searxng_base_url: "",
   searxng_auto_provision: true,
+  searxng_general_engines: false,
 };
 
 function integrationsSummary(integrations: IntegrationsConfig): string {
@@ -69,7 +71,8 @@ function integrationsSummary(integrations: IntegrationsConfig): string {
   const hasKey = Boolean((integrations.exa_api_key ?? "").trim())
     || Boolean((integrations.perplexity_api_key ?? "").trim())
     || Boolean((integrations.searxng_base_url ?? "").trim());
-  return `provider ${provider} · ${hasKey ? "已配置" : "未配置（检索不可用）"}`;
+  const fetchReady = Boolean((integrations.deepseek_api_key ?? "").trim());
+  return `provider ${provider} · ${hasKey ? "已配置" : "未配置（检索不可用）"} · 抓取${fetchReady ? "DeepSeek 已配置" : "未配置"}`;
 }
 
 const RUNTIME_FIELDS: ConfigField<AgentRuntimeConfig>[] = [
@@ -139,8 +142,10 @@ function toPayload(values: ConfigFormValue): UpdateInstanceConfigRequest {
       web_search_provider: values.integrations.web_search_provider ?? "auto",
       exa_api_key: values.integrations.exa_api_key ?? "",
       perplexity_api_key: values.integrations.perplexity_api_key ?? "",
+      deepseek_api_key: values.integrations.deepseek_api_key ?? "",
       searxng_base_url: values.integrations.searxng_base_url ?? "",
       searxng_auto_provision: values.integrations.searxng_auto_provision ?? true,
+      searxng_general_engines: values.integrations.searxng_general_engines ?? false,
     },
   };
 }
@@ -170,10 +175,11 @@ export function SystemConfigPage() {
   const [savedValues, setSavedValues] = useState<ConfigFormValue | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [expandedCode, setExpandedCode] = useState<string | null>(null);
-  const [runtimeOpen, setRuntimeOpen] = useState(false);
-  const [poolOpen, setPoolOpen] = useState(false);
-  const [integrationsOpen, setIntegrationsOpen] = useState(false);
+  // 折叠区一律默认展开：这几块是「看一眼就想改」的配置，让用户少点几下。
+  const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
+  const [runtimeOpen, setRuntimeOpen] = useState(true);
+  const [poolOpen, setPoolOpen] = useState(true);
+  const [integrationsOpen, setIntegrationsOpen] = useState(true);
   // 屏幕阅读器播报位（保存结果 / 放弃修改），不再只依赖 toast。
   const [announcement, setAnnouncement] = useState("");
 
@@ -185,6 +191,8 @@ export function SystemConfigPage() {
         const nextValues = toFormValue(response.data);
         setValues(nextValues);
         setSavedValues(cloneFormValue(nextValues));
+        // 默认把所有模型预设行也展开（与分区一致：进来就能直接改）。
+        setExpandedCodes(new Set(nextValues.agents.map((agent) => agent.code)));
       }
     } catch (error) {
       showApiError(error);
@@ -395,8 +403,16 @@ export function SystemConfigPage() {
                     <AgentPresetRow
                       key={agent.code}
                       agent={agent}
-                      open={expandedCode === agent.code}
-                      onToggle={() => setExpandedCode((current) => (current === agent.code ? null : agent.code))}
+                      open={expandedCodes.has(agent.code)}
+                      onToggle={() => setExpandedCodes((current) => {
+                        const next = new Set(current);
+                        if (next.has(agent.code)) {
+                          next.delete(agent.code);
+                        } else {
+                          next.add(agent.code);
+                        }
+                        return next;
+                      })}
                       onChange={(patch) => updateAgent(agent.code, patch)}
                     />
                   ))}
@@ -464,13 +480,14 @@ export function SystemConfigPage() {
                           web_search_provider: event.target.value as NonNullable<IntegrationsConfig["web_search_provider"]>,
                         })}
                       >
-                        <option value="auto">auto（有 Exa 用 Exa，否则 Perplexity，再否则 SearXNG）</option>
+                        <option value="auto">auto（检索：Exa → Perplexity → 自建 SearXNG；页面抓取优先用 DeepSeek）</option>
                         <option value="exa">exa</option>
                         <option value="perplexity">perplexity</option>
                         <option value="searxng">searxng（自建，无需 key）</option>
+                        <option value="deepseek">deepseek（检索走 DeepSeek，按次计费、5 QPS）</option>
                       </select>
                     </Field>
-                    <Field id="cfg-exa" label="Exa API 密钥">
+                    <Field id="cfg-exa" label="Exa API 密钥" className="full">
                       <SecretInput
                         id="cfg-exa"
                         value={values.integrations.exa_api_key ?? ""}
@@ -483,6 +500,19 @@ export function SystemConfigPage() {
                         value={values.integrations.perplexity_api_key ?? ""}
                         onChange={(next) => updateIntegrations({ perplexity_api_key: next })}
                       />
+                    </Field>
+                    <Field id="cfg-deepseek" label="DeepSeek API 密钥（检索与页面抓取共用）" className="full">
+                      <SecretInput
+                        id="cfg-deepseek"
+                        value={values.integrations.deepseek_api_key ?? ""}
+                        onChange={(next) => updateIntegrations({ deepseek_api_key: next })}
+                      />
+                      <span className="project-form-hint">
+                        计费：按「成功请求次数」计价 —— Search 与 Fetch 各 5 元 / 1000 次；无结果、失败、超时都不计费，返回条数不影响单价。
+                      </span>
+                      <span className="qi-hint">
+                        限速：账号级 Search 与 Fetch 各自 5 QPS（与用哪把密钥无关），超限返回 429；provider 选 deepseek 时「检索」也走这把密钥，选 auto 时检索不产生 DeepSeek 费用。
+                      </span>
                     </Field>
                     <Field id="cfg-searxng" label="SearXNG 地址" className="full">
                       <input
@@ -502,9 +532,18 @@ export function SystemConfigPage() {
                         searxng_auto_provision: !(values.integrations.searxng_auto_provision ?? true),
                       })}
                     />
+                    <ToggleField
+                      id="cfg-general-engines"
+                      label="通用引擎（Google / Bing / DuckDuckGo / Brave）"
+                      hint="searxng_general_engines"
+                      checked={values.integrations.searxng_general_engines ?? false}
+                      onToggle={() => updateIntegrations({
+                        searxng_general_engines: !(values.integrations.searxng_general_engines ?? false),
+                      })}
+                    />
                   </div>
                   <div className="cfg-legend">
-                    <span>密钥经环境变量注入沙箱 · provider=searxng 时用自建实例，无需 key；「自动拉起容器」= 本机 SearXNG 不可达时平台自动 docker start / run（关掉则只注入配置、不碰容器）</span>
+                    <span>密钥经环境变量注入沙箱 · provider=searxng 时用自建实例，无需 key；provider=deepseek 时检索走 DeepSeek（按次计费、账号级 5 QPS），页面抓取也用它，密钥留空则自动跟随「模型配置」里已填的 DeepSeek key；「自动拉起容器」= 本机 SearXNG 不可达时平台自动 docker start / run（关掉则只注入配置、不碰容器）；「通用引擎」= 打开后平台改写 SearXNG 配置把 Google / Bing / DuckDuckGo / Brave 设为启用并重启容器（默认关：这几个引擎在部分网络被墙或要验证码）</span>
                   </div>
                 </div>
               ) : null}

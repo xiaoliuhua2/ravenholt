@@ -3396,6 +3396,11 @@
       "IntegrationsConfig": {
         "additionalProperties": false,
         "properties": {
+          "deepseek_api_key": {
+            "default": "",
+            "title": "Deepseek Api Key",
+            "type": "string"
+          },
           "exa_api_key": {
             "default": "",
             "title": "Exa Api Key",
@@ -3416,13 +3421,19 @@
             "title": "Searxng Base Url",
             "type": "string"
           },
+          "searxng_general_engines": {
+            "default": false,
+            "title": "Searxng General Engines",
+            "type": "boolean"
+          },
           "web_search_provider": {
             "default": "auto",
             "enum": [
               "auto",
               "exa",
               "perplexity",
-              "searxng"
+              "searxng",
+              "deepseek"
             ],
             "title": "Web Search Provider",
             "type": "string"
@@ -5755,6 +5766,12 @@
       "UpdateIntegrationsRequest": {
         "additionalProperties": false,
         "properties": {
+          "deepseek_api_key": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Deepseek Api Key",
+            "type": "string"
+          },
           "exa_api_key": {
             "maxLength": 4096,
             "title": "Exa Api Key",
@@ -5776,12 +5793,18 @@
             "title": "Searxng Base Url",
             "type": "string"
           },
+          "searxng_general_engines": {
+            "default": false,
+            "title": "Searxng General Engines",
+            "type": "boolean"
+          },
           "web_search_provider": {
             "enum": [
               "auto",
               "exa",
               "perplexity",
-              "searxng"
+              "searxng",
+              "deepseek"
             ],
             "title": "Web Search Provider",
             "type": "string"

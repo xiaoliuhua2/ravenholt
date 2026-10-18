@@ -155,7 +155,7 @@ class TelemetrySettings(BaseSettings):
     enabled: bool = Field(default=True, alias="STRIX_TELEMETRY")
 
 
-WebSearchProvider = Literal["auto", "perplexity", "exa", "searxng"]
+WebSearchProvider = Literal["auto", "perplexity", "exa", "searxng", "deepseek"]
 ExaSearchType = Literal["auto", "fast", "instant", "deep-lite", "deep", "deep-reasoning"]
 
 
@@ -171,6 +171,19 @@ class IntegrationSettings(BaseSettings):
         default=None,
         alias="EXA_API_KEY",
         repr=False,
+    )
+    # DeepSeek 官方 Search/Fetch 工具接口的密钥（可选）。配了就用于
+    # ``web_get_contents`` 的页面抓取；为空时该工具维持原行为（Exa 未配置即报错）。
+    deepseek_api_key: str | None = Field(
+        default=None,
+        alias="DEEPSEEK_API_KEY",
+        repr=False,
+    )
+    deepseek_base_url: str | None = Field(
+        default=None,
+        alias="STRIX_DEEPSEEK_BASE_URL",
+        description="DeepSeek API root for the Search/Fetch tool endpoints "
+        "(default https://api.deepseek.com)",
     )
     web_search_provider: WebSearchProvider = Field(
         default="auto",

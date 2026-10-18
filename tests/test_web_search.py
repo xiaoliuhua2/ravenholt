@@ -236,7 +236,7 @@ def test_exa_page_text_requests_full_text_and_renders_pages(
 
 
 def test_exa_page_text_truncates_a_long_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = "A" * (tool._EXA_PAGE_MAX_CHARS + 500)
+    body = "A" * (tool._PAGE_MAX_CHARS + 500)
     monkeypatch.setattr(
         requests,
         "post",
@@ -246,7 +246,7 @@ def test_exa_page_text_truncates_a_long_page(monkeypatch: pytest.MonkeyPatch) ->
     )
     content, _fetched = tool._exa_page_text("ek", ["https://ex.example"])
     assert "truncated at" in content
-    assert content.count("A") == tool._EXA_PAGE_MAX_CHARS
+    assert content.count("A") == tool._PAGE_MAX_CHARS
 
 
 @pytest.mark.parametrize("body", [{}, {"results": []}, {"results": [{"url": "u"}]}])
@@ -414,3 +414,414 @@ def test_do_search_reports_the_provider_it_used(monkeypatch: pytest.MonkeyPatch)
         "provider": "exa",
         "content": "answer",
     }
+
+
+class _FakeHTTPErrorResponse:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
+def test_deepseek_fetch_url_tolerates_a_trailing_v1() -> None:
+    assert tool._deepseek_fetch_url(None) == "https://api.deepseek.com/v1/tools/fetch"
+    assert (
+        tool._deepseek_fetch_url("https://api.deepseek.com/v1")
+        == "https://api.deepseek.com/v1/tools/fetch"
+    )
+    assert (
+        tool._deepseek_fetch_url("https://proxy.internal/deepseek/")
+        == "https://proxy.internal/deepseek/v1/tools/fetch"
+    )
+
+
+def test_do_get_contents_prefers_deepseek_when_its_key_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _Settings:
+        integrations = IntegrationSettings(DEEPSEEK_API_KEY="dk")
+
+    def fake_post(url: str, **kwargs: Any) -> _FakeResponse:
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        captured["json"] = kwargs["json"]
+        return _FakeResponse({"title": "Example Domain", "content": "  Body.  "})
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    result = tool._do_get_contents([" https://ex.example "])
+
+    assert captured["url"] == "https://api.deepseek.com/v1/tools/fetch"
+    assert captured["headers"]["Authorization"] == "Bearer dk"
+    assert captured["json"] == {"url": "https://ex.example"}
+    assert result == {
+        "success": True,
+        "urls": ["https://ex.example"],
+        "provider": "deepseek",
+        "content": "### Example Domain\nhttps://ex.example\n\nBody.",
+    }
+
+
+def test_do_get_contents_honours_an_explicit_exa_pin_over_deepseek(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            DEEPSEEK_API_KEY="dk",
+            STRIX_WEB_SEARCH_PROVIDER="exa",
+        )
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(tool, "_exa_page_text", lambda *_a: ("page", {"https://ex.example"}))
+
+    assert tool._do_get_contents(["https://ex.example"])["provider"] == "exa"
+
+
+def test_do_get_contents_deepseek_keeps_the_pages_that_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(DEEPSEEK_API_KEY="dk")
+
+    def fake_post(_url: str, **kwargs: Any) -> _FakeResponse:
+        if kwargs["json"]["url"].endswith("blocked.example"):
+            raise requests.exceptions.HTTPError(response=_FakeHTTPErrorResponse(404))
+        return _FakeResponse({"title": "Ok", "content": "Body."})
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    result = tool._do_get_contents(["https://ok.example", "https://blocked.example"])
+
+    assert result["success"] is True
+    assert result["urls"] == ["https://ok.example"]
+    assert result["provider"] == "deepseek"
+    assert result["failed_urls"] == ["https://blocked.example"]
+    assert "1 of 2" in result["warning"]
+    assert "blocked.example" not in result["content"]
+
+
+def test_do_get_contents_deepseek_errors_when_no_page_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(DEEPSEEK_API_KEY="dk")
+
+    def fake_post(*_args: Any, **_kwargs: Any) -> None:
+        raise requests.exceptions.Timeout
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    result = tool._do_get_contents(["https://ex.example"])
+
+    assert result["success"] is False
+    assert result["failed_urls"] == ["https://ex.example"]
+    assert "no content for any requested URL" in result["error"]
+    assert "dk" not in result["error"]
+
+
+def test_deepseek_page_block_truncates_a_long_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 与 Exa 分支同一口径：超长文档不能整页塞进 agent 上下文。
+    body = "B" * (tool._PAGE_MAX_CHARS + 500)
+    monkeypatch.setattr(
+        requests,
+        "post",
+        lambda *_a, **_kw: _FakeResponse({"title": "长文", "content": body}),
+    )
+    block = tool._deepseek_page_block("dk", None, "https://ex.example")
+    assert "truncated at" in block
+    assert block.count("B") == tool._PAGE_MAX_CHARS
+    assert block.startswith("### 长文\nhttps://ex.example\n\n")
+
+
+def test_do_get_contents_without_a_deepseek_key_keeps_the_old_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(STRIX_WEB_SEARCH_PROVIDER="searxng")
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+
+    result = tool._do_get_contents(["https://ex.example"])
+
+    assert result["success"] is False
+    assert "searxng" in result["error"]
+
+
+def test_explicit_deepseek_provider_uses_the_deepseek_key() -> None:
+    integrations = IntegrationSettings(
+        DEEPSEEK_API_KEY="dk",
+        STRIX_WEB_SEARCH_PROVIDER="deepseek",
+    )
+    assert tool._resolve_provider(integrations) == ("deepseek", "dk")
+
+
+def test_explicit_deepseek_without_a_key_names_only_deepseek() -> None:
+    integrations = IntegrationSettings(
+        EXA_API_KEY="ek",
+        STRIX_WEB_SEARCH_PROVIDER="deepseek",
+    )
+    resolved = tool._resolve_provider(integrations)
+    assert isinstance(resolved, dict)
+    assert "DEEPSEEK_API_KEY" in resolved["error"]
+
+
+def test_auto_never_picks_deepseek_even_when_its_key_is_set() -> None:
+    # 「自动」不该替部署者选择按次计费的通道：有 searxng 就仍然走 searxng。
+    integrations = IntegrationSettings(
+        DEEPSEEK_API_KEY="dk",
+        STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+    )
+    assert tool._resolve_provider(integrations) == ("searxng", "http://127.0.0.1:8888")
+
+
+def test_deepseek_content_renders_ranked_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_post(url: str, **kwargs: Any) -> _FakeResponse:
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        captured["json"] = kwargs["json"]
+        return _FakeResponse(
+            {
+                "results": [
+                    {
+                        "url": "https://nvd.example/cve",
+                        "title": "NVD entry",
+                        "summary": "  CVE-2024-0001 is a heap overflow.  ",
+                        "snippet": "short",
+                    },
+                    {"url": "https://blog.example/post", "snippet": "only a snippet"},
+                    {"title": "no url", "summary": "x"},
+                    "not-a-dict",
+                ]
+            }
+        )
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    content = tool._deepseek_content("dk", None, "OpenSSH 7.4 RCE?", 5)
+
+    assert captured["url"] == "https://api.deepseek.com/v1/tools/search"
+    assert captured["headers"]["Authorization"] == "Bearer dk"
+    assert captured["json"] == {"query": "OpenSSH 7.4 RCE?", "count": 5}
+    assert content == (
+        "### NVD entry\nhttps://nvd.example/cve\nCVE-2024-0001 is a heap overflow.\n\n"
+        "### https://blog.example/post\nhttps://blog.example/post\nonly a snippet"
+    )
+
+
+def test_deepseek_content_clamps_the_count_to_the_api_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_post(_url: str, **kwargs: Any) -> _FakeResponse:
+        captured["json"] = kwargs["json"]
+        return _FakeResponse({"results": [{"url": "https://ex.example", "title": "Ex"}]})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    tool._deepseek_content("dk", None, "q", 500)
+
+    assert captured["json"]["count"] == tool._DEEPSEEK_MAX_SEARCH_COUNT
+
+
+@pytest.mark.parametrize("body", [{}, {"results": []}, {"results": ["x"]}])
+def test_deepseek_content_rejects_empty_results(
+    monkeypatch: pytest.MonkeyPatch, body: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: _FakeResponse(body))
+    with pytest.raises(ValueError, match="no results"):
+        tool._deepseek_content("dk", None, "q", 5)
+
+
+def test_do_search_reports_deepseek_as_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            DEEPSEEK_API_KEY="dk",
+            STRIX_WEB_SEARCH_PROVIDER="deepseek",
+        )
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(tool, "_deepseek_content", lambda *_a: "answer")
+
+    result = tool._do_search("OpenSSH 7.4 RCE?")
+
+    assert result == {
+        "success": True,
+        "query": "OpenSSH 7.4 RCE?",
+        "provider": "deepseek",
+        "content": "answer",
+    }
+
+
+def test_deepseek_provider_requires_its_own_key_in_env_validation() -> None:
+    integrations = IntegrationSettings.model_validate({"STRIX_WEB_SEARCH_PROVIDER": "deepseek"})
+    assert _missing_web_search_vars(integrations) == ["DEEPSEEK_API_KEY"]
+
+
+# ---------- 上游 provider 出错时的表现：提示要准、auto 要降级、钉住不降级 ----------
+
+
+def _http_error(status: int) -> requests.exceptions.HTTPError:
+    return requests.exceptions.HTTPError(response=_FakeHTTPErrorResponse(status))
+
+
+def test_auth_failure_tells_the_operator_to_fix_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            STRIX_WEB_SEARCH_PROVIDER="exa",  # 钉住 → 不降级，错误原样交给 agent
+        )
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: (_ for _ in ()).throw(_http_error(401)))
+
+    result = tool._do_search("q")
+
+    assert result["success"] is False
+    assert result["reason"] == "auth"
+    assert "API key was rejected" in result["error"]
+    assert "Refine" not in result["error"]  # 不能再误导成「查询有问题」
+    assert "ek" not in result["error"]
+
+
+def test_quota_failure_names_the_credit_problem(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: (_ for _ in ()).throw(_http_error(402)))
+    result = tool._guarded_call("Web search", "rejected", lambda: tool._exa_content("ek", "q", "auto", 5))
+    assert result["reason"] == "quota"
+    assert "out of credit" in result["error"]
+
+
+def test_rate_limit_failure_says_retry_later(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: (_ for _ in ()).throw(_http_error(429)))
+    result = tool._guarded_call("Web search", "rejected", lambda: tool._exa_content("ek", "q", "auto", 5))
+    assert result["reason"] == "rate_limit"
+    assert "rate limit" in result["error"]
+
+
+def test_auto_fails_over_from_a_broken_exa_to_searxng(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+        )
+
+    def fake_post(*_args: Any, **_kwargs: Any) -> None:
+        raise _http_error(401)
+
+    def fake_get(*_args: Any, **_kwargs: Any) -> _FakeResponse:
+        return _FakeResponse({"results": [{"url": "https://s.example", "title": "Searxng hit"}]})
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    result = tool._do_search("q")
+
+    assert result["success"] is True
+    assert result["provider"] == "searxng"
+    assert "was unavailable" in result["note"]
+    assert "Searxng hit" in result["content"]
+
+
+def test_pinned_provider_does_not_fail_over(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+            STRIX_WEB_SEARCH_PROVIDER="exa",
+        )
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: (_ for _ in ()).throw(_http_error(401)))
+    monkeypatch.setattr(requests, "get", lambda *_a, **_kw: _FakeResponse({"results": [{"url": "u"}]}))
+
+    result = tool._do_search("q")
+
+    assert result["success"] is False  # 钉住就得让部署者看到自己 key 的问题
+    assert result["reason"] == "auth"
+
+
+def test_shape_errors_do_not_fail_over(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 解析失败换 provider 也解决不了，静默降级只会掩盖真实故障。
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+        )
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: _FakeResponse({}))
+    monkeypatch.setattr(requests, "get", lambda *_a, **_kw: _FakeResponse({"results": [{"url": "u"}]}))
+
+    result = tool._do_search("q")
+
+    assert result["success"] is False
+    assert "unexpected response" in result["error"]
+
+
+def test_auto_fails_over_to_security_databases_when_searxng_is_also_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(
+            EXA_API_KEY="ek",
+            STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+        )
+
+    def dead_get(*_args: Any, **_kwargs: Any) -> None:
+        raise requests.exceptions.ConnectionError
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(requests, "post", lambda *_a, **_kw: (_ for _ in ()).throw(_http_error(401)))
+    monkeypatch.setattr(requests, "get", dead_get)
+    monkeypatch.setattr(
+        tool,
+        "_fallback_to_security_databases",
+        lambda query: {"success": True, "query": query, "provider": "security-databases",
+                       "note": "n", "content": "db hit"},
+    )
+
+    result = tool._do_search("q")
+
+    assert result["success"] is True
+    assert result["provider"] == "security-databases"
+    assert "was unavailable" in result["note"]
+
+
+def test_get_contents_falls_back_to_exa_when_deepseek_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        integrations = IntegrationSettings(DEEPSEEK_API_KEY="dk", EXA_API_KEY="ek")
+
+    monkeypatch.setattr(tool, "load_settings", _Settings)
+    monkeypatch.setattr(
+        tool, "_deepseek_get_contents",
+        lambda *_a: {"success": False, "provider": "deepseek", "error": "out of credit"},
+    )
+    monkeypatch.setattr(tool, "_exa_page_text", lambda *_a: ("exa page", {"https://ex.example"}))
+
+    result = tool._do_get_contents(["https://ex.example"])
+
+    assert result["success"] is True
+    assert result["provider"] == "exa"
+    assert "fell back to Exa" in result["note"]
+    assert result["content"] == "exa page"
+
+
+def test_auto_prefers_searxng_over_perplexity() -> None:
+    # 本机 SearXNG 免费且实测可达；Perplexity 在部分网络根本连不上，
+    # 排在它前面会「一填 key 反而把检索弄废」。
+    integrations = IntegrationSettings(
+        PERPLEXITY_API_KEY="pk",
+        STRIX_SEARXNG_BASE_URL="http://127.0.0.1:8888",
+    )
+    assert tool._resolve_provider(integrations) == ("searxng", "http://127.0.0.1:8888")

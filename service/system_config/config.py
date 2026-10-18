@@ -71,8 +71,10 @@ async def update_instance_config(request: UpdateInstanceConfigRequest) -> Instan
                 "web_search_provider": request.integrations.web_search_provider,
                 "exa_api_key": request.integrations.exa_api_key,
                 "perplexity_api_key": request.integrations.perplexity_api_key,
+                "deepseek_api_key": request.integrations.deepseek_api_key,
                 "searxng_base_url": request.integrations.searxng_base_url,
                 "searxng_auto_provision": request.integrations.searxng_auto_provision,
+                "searxng_general_engines": request.integrations.searxng_general_engines,
             }),
         })
         write_config_file(next_cfg)
@@ -176,8 +178,24 @@ def _extract_model_ids(payload: object) -> list[str]:
     return models
 
 
+async def _sync_searxng_general_engines(enabled: bool) -> None:
+    """把「SearXNG 通用引擎」开关落到容器配置（best-effort，失败只记日志）。
+
+    只在平台托管的那份 settings.yml 上生效；状态已一致时是空操作（不会重启容器）。
+    ``docker restart`` 是阻塞调用，放到线程里执行，避免卡住事件循环。
+    """
+    try:
+        from core.searxng_provision import apply_general_engines
+
+        ok = await asyncio.to_thread(apply_general_engines, enabled)
+        logger.info("SearXNG 通用引擎开关同步完成：enabled=%s ok=%s", enabled, ok)
+    except Exception:  # noqa: BLE001 - 同步失败不影响保存本身
+        logger.warning("SearXNG 通用引擎开关同步失败（不影响保存）", exc_info=True)
+
+
 async def _apply_instance_config_from_file(file_cfg: GlobalConfig) -> InstanceConfigApplyResult:
     previous = _snapshot_instance_config(get_config())
+    general_engines_before = previous.integrations.searxng_general_engines
     runtime_changed = _apply_instance_config(file_cfg)
     if runtime_changed:
         try:
@@ -191,6 +209,9 @@ async def _apply_instance_config_from_file(file_cfg: GlobalConfig) -> InstanceCo
             logger.info(
                 "instance config applied; agent instance rebuild deferred until running turns finish"
             )
+    if file_cfg.integrations.searxng_general_engines != general_engines_before:
+        # 配置确实落地后再同步容器，避免重建失败回滚时白改一次 SearXNG。
+        await _sync_searxng_general_engines(file_cfg.integrations.searxng_general_engines)
     return InstanceConfigApplyResult(
         config=_instance_config_from_global(get_config()),
         restarted=runtime_changed,
