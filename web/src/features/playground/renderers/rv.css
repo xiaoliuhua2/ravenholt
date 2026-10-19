@@ -1,0 +1,148 @@
+/* ============================================================================
+ * strix viewer 展示组件的样式作用域
+ *
+ * - 只引入 Tailwind 的 theme + utilities（**不引 preflight**），因此不会重置
+ *   平台既有的元素样式；平台全站没有任何 Tailwind 工具类，规则不会命中其它页面。
+ * - `@source "./"` 把扫描面锁在 renderers/ 目录内。
+ * - 所有覆盖规则都限定在 `.rv-scope` / `.rv-dark` 之下：
+ *   `.rv-scope` = 浅色域（跟随平台 --z-* 变量），
+ *   `.rv-dark`  = 深色域（终端输出 / 代码块，还原 strix 原亮色）。
+ * - 回退：删掉本目录 + styles.css 里那一行 @import 即可复原。
+ * ========================================================================= */
+
+@layer theme, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* 代码高亮主题只服务于 .rv-dark 内的代码块；平台自身不使用 .hljs。 */
+@import "highlight.js/styles/github-dark.css";
+
+@source "./";
+
+/* ---------- 色板变量：浅色域映射到平台语义色 ---------- */
+.rv-scope {
+  --rv-success: var(--z-success);
+  --rv-info: var(--z-info);
+  --rv-violet: var(--z-violet);
+  --rv-cyan: var(--z-cyan);
+  --rv-warning: var(--z-warning);
+  --rv-danger: var(--z-danger);
+  --rv-orange: #c2410c;
+  --rv-teal: var(--z-cyan);
+  --rv-strong: var(--z-text-strong);
+  --rv-muted: var(--z-text-muted);
+  --rv-subtle: var(--z-text-subtle);
+  --rv-line: var(--z-line);
+  --rv-surface-soft: var(--z-surface-soft);
+}
+
+/* ---------- 色板变量：深色域还原 strix 原色 ---------- */
+.rv-dark {
+  --rv-success: #34d399;
+  --rv-info: #60a5fa;
+  --rv-violet: #c084fc;
+  --rv-cyan: #22d3ee;
+  --rv-warning: #fbbf24;
+  --rv-danger: #f87171;
+  --rv-orange: #fb923c;
+  --rv-teal: #2dd4bf;
+  --rv-strong: #e5e7eb;
+  --rv-muted: #9ca3af;
+  --rv-subtle: #6b7280;
+  --rv-line: rgba(255, 255, 255, 0.12);
+  --rv-surface-soft: rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- 基础 shim：补齐 Tailwind preflight 被跳过后的默认样式 ---------- */
+.rv-scope button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rv-scope img,
+.rv-scope svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* ---------- 语义色：基础（不透明） ---------- */
+.rv-scope [class*="text-emerald-400"] { color: var(--rv-success); }
+.rv-scope [class*="text-blue-400"] { color: var(--rv-info); }
+.rv-scope [class*="text-sky-400"] { color: var(--rv-info); }
+.rv-scope [class*="text-purple-400"] { color: var(--rv-violet); }
+.rv-scope [class*="text-cyan-400"] { color: var(--rv-cyan); }
+.rv-scope [class*="text-teal-400"] { color: var(--rv-teal); }
+.rv-scope [class*="text-teal-300"] { color: var(--rv-teal); }
+.rv-scope [class*="text-amber-400"] { color: var(--rv-warning); }
+.rv-scope [class*="text-yellow-400"] { color: var(--rv-warning); }
+.rv-scope [class*="text-orange-400"] { color: var(--rv-orange); }
+.rv-scope [class*="text-red-400"] { color: var(--rv-danger); }
+.rv-scope [class*="bg-purple-500"] { background-color: var(--rv-violet); }
+
+/* ---------- 语义色：带透明度变体（统一压到 60%，保留层次感） ---------- */
+.rv-scope [class*="text-emerald-400/"] { color: color-mix(in srgb, var(--rv-success) 60%, transparent); }
+.rv-scope [class*="text-blue-400/"] { color: color-mix(in srgb, var(--rv-info) 60%, transparent); }
+.rv-scope [class*="text-sky-400/"] { color: color-mix(in srgb, var(--rv-info) 60%, transparent); }
+.rv-scope [class*="text-purple-400/"] { color: color-mix(in srgb, var(--rv-violet) 60%, transparent); }
+.rv-scope [class*="text-cyan-400/"] { color: color-mix(in srgb, var(--rv-cyan) 60%, transparent); }
+.rv-scope [class*="text-teal-400/"] { color: color-mix(in srgb, var(--rv-teal) 60%, transparent); }
+.rv-scope [class*="text-amber-400/"] { color: color-mix(in srgb, var(--rv-warning) 60%, transparent); }
+.rv-scope [class*="text-yellow-400/"] { color: color-mix(in srgb, var(--rv-warning) 60%, transparent); }
+.rv-scope [class*="text-orange-400/"] { color: color-mix(in srgb, var(--rv-orange) 60%, transparent); }
+.rv-scope [class*="text-red-400/"] { color: color-mix(in srgb, var(--rv-danger) 60%, transparent); }
+
+/* 极淡提示（/30）单独保留 30%，避免在浅色底上过重 */
+.rv-scope [class*="text-emerald-400/30"] { color: color-mix(in srgb, var(--rv-success) 30%, transparent); }
+.rv-scope [class*="text-red-400/30"] { color: color-mix(in srgb, var(--rv-danger) 30%, transparent); }
+
+/* ---------- 中性色 / 硬编码灰阶 ---------- */
+.rv-scope [class*="bg-white/"] { background-color: var(--rv-surface-soft); }
+.rv-scope [class~="bg-white"] { background-color: var(--z-surface); }
+.rv-scope [class*="border-white"] { border-color: var(--rv-line); }
+.rv-scope [class*="text-[#"] { color: var(--rv-muted); }
+
+/* 深色域内把"白字/灰字"还原成深底上的浅字（写在最后，同特异性后写者胜） */
+.rv-dark [class*="text-white/"] { color: var(--rv-strong); }
+.rv-dark [class*="text-[#"] { color: #9ca3af; }
+.rv-dark [class*="bg-white/"] { background-color: rgba(255, 255, 255, 0.06); }
+.rv-dark [class~="bg-white"] { background-color: #161b22; }
+.rv-dark [class*="border-white"] { border-color: rgba(255, 255, 255, 0.12); }
+
+/* ---------- 代码/终端输出容器 ---------- */
+.rv-dark .hljs {
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+/* ---------- 思考块正文（平台 .thinking-text 原为等宽 pre 样式，这里按 strix 的 markdown 观感覆盖） ---------- */
+.rv-scope.rv-thinking {
+  font-family: inherit;
+  font-size: 13px;
+  font-style: italic;
+  white-space: normal;
+  color: var(--z-text-muted);
+}
+
+/* ---------- 工具卡内的「原始 JSON」折叠（平台的排障视图，默认收起） ---------- */
+.rv-raw {
+  margin-top: 6px;
+}
+
+.rv-raw-summary {
+  cursor: pointer;
+  color: var(--z-text-subtle);
+  font-size: 11.5px;
+  list-style: none;
+}
+
+.rv-raw-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rv-raw[open] .rv-raw-summary {
+  margin-bottom: 4px;
+}

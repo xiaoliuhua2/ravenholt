@@ -7,11 +7,11 @@ import type {
   ThinkingItem,
 } from "./chatState";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import { renderThinkingInline } from "./thinkingInline";
 import { normalizeMarkdownForRender } from "./markdown";
 import type { SubagentSelection } from "./subagentView";
 import { cx } from "../../shared/lib/className";
 import { ToolGroup } from "./TranscriptExecutions";
+import { TruncatedText } from "./renderers/ToolCard";
 import {
   activeTextItemId,
   activeThinkingItemId,
@@ -174,7 +174,7 @@ function ThinkingGroup({
   // 默认折叠：思考链平时只占一行摘要，用户点击后才展开全文。
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const bodyRef = useRef<HTMLPreElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const text = useMemo(
     () => items.map((item) => item.text.trim()).filter(Boolean).join("\n\n"),
     [items],
@@ -231,9 +231,15 @@ function ThinkingGroup({
       {open ? (
         <div className="thinking-body">
           <div className="thinking-fade thinking-fade-top" />
-          <pre ref={bodyRef} className="thinking-text">
-            {text ? renderThinkingInline(text) : (activeItemId ? " " : "（暂无思考内容）")}
-          </pre>
+          <div ref={bodyRef} className="thinking-text rv-scope rv-thinking">
+            {text ? (
+              <TruncatedText text={text} maxLines={0} />
+            ) : activeItemId ? (
+              " "
+            ) : (
+              "（暂无思考内容）"
+            )}
+          </div>
           <div className="thinking-fade thinking-fade-bottom" />
         </div>
       ) : null}

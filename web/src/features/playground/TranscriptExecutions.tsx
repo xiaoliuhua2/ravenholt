@@ -5,6 +5,7 @@ import type { NestedTranscript, SubagentExecutionItem, ToolExecutionItem } from 
 import { cx } from "../../shared/lib/className";
 import { subagentStatusColor, subordinateStatusLabel, type SubagentSelection } from "./subagentView";
 import { TranscriptContent } from "./Transcript";
+import { StrixToolRow } from "./renderers/StrixToolRow";
 import { emptyAgentTranscript, transcriptHasRunningExecution, transcriptItemCount, type ToolBlock } from "./transcriptView";
 
 export function ToolGroup({
@@ -106,7 +107,7 @@ function ToolExecutionBlock({
       </button>
       {open ? (
         <div ref={detailRef} className="execution-row-detail">
-          <JsonExecutionSection label="参数" value={item.arguments} />
+          <StrixToolRow item={item} live={live} />
           {allowSubagentOpen && (item.nested || item.subagentTask) ? (
             <NestedTranscriptPanel
               nested={item.nested ?? emptyAgentTranscript()}
@@ -117,11 +118,15 @@ function ToolExecutionBlock({
               onOpenSubagent={onOpenSubagent}
             />
           ) : null}
-          {item.resolved ? (
-            <ToolOutputSection output={item.output} tone={item.isError ? "error" : undefined} />
-          ) : (
-            <ExecutionSection label="输出" body={live ? "执行中…" : "无输出（轮次已中断）"} />
-          )}
+          <details className="rv-raw">
+            <summary className="rv-raw-summary">原始 JSON</summary>
+            <JsonExecutionSection label="参数" value={item.arguments} />
+            {item.resolved ? (
+              <ToolOutputSection output={item.output} tone={item.isError ? "error" : undefined} />
+            ) : (
+              <ExecutionSection label="输出" body={live ? "执行中…" : "无输出（轮次已中断）"} />
+            )}
+          </details>
         </div>
       ) : null}
     </div>

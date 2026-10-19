@@ -7,3 +7,5 @@
 @import "./styles/resource.css";
 @import "./styles/playground.css";
 @import "./styles/shell.css";
+/* strix viewer 移植组件的作用域样式（Tailwind utilities + 浅/深双域配色）。整目录可回退。 */
+@import "../features/playground/renderers/rv.css";
