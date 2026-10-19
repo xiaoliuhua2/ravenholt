@@ -17,6 +17,25 @@ During task execution, the system continuously accumulates assets, relationships
 >
 > **The author is not responsible for any consequences, losses, damages, legal liabilities, or unlawful behavior caused by users.**
 
+## Relationship to upstream strix
+
+The execution engine is [strix](https://github.com/usestrix/strix); its source tree is vendored into the repository's `strix/` directory (431 files). The platform **does not modify strix's package-internal runtime logic** (assembly and adaptation only) and records the upstream commit plus per-file hashes in `.strix-vendor.json`, so the upstream can be followed and aligned at any time.
+
+In one sentence: **strix is a single-machine CLI / TUI pentest agent; ravenholt is a control-plane-oriented red-team multi-agent platform** — the same agent runtime, placed inside an engineering process with sessions, projects, evidence, policy, and audit.
+
+| Dimension | Upstream strix | ravenholt |
+| --- | --- | --- |
+| Interaction | CLI / terminal TUI / its own viewer | Web console (sessions / projects / policy / audit / container console) |
+| Sessions | One run (a single scan) | Multiple sessions: interrupt / cancel / resume, session pool, background subagent tasks with wake-up |
+| Orchestration | In-process root agent spawning | Platform `AgentCoordinator` + mailbox collection + a graph view |
+| Process record | Report files (markdown / SARIF) | WorkProject: assets / findings / relationship graph / attack paths / replayable timeline |
+| Evidence | The agent's own narrative is the conclusion | Differential evidence + an independent verifier (replays baseline/probe; only `reproduced` may leave the draft state) |
+| Governance | None | Red-line policy (fail-closed) + approval queue + audit log + egress proxies |
+| Sandbox | Upstream image (Caido + Kali toolchain) | All-in-one image: reverse-engineering tools, in-container Go control plane, desktop stack, skill resources |
+| Web search | Exa / Perplexity | Adds a local SearXNG (zero-config) and DeepSeek, with automatic failover |
+
+> For installation steps and "what each feature requires", see the repository's `README.md` ("1. Overview" and "5. Download & Installation"). Note: the frontend build output `web/dist-app` is not committed — source deployments must build the frontend once.
+
 ## Core Capabilities
 
 | Capability | Description |

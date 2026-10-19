@@ -58,6 +58,29 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | **策略治理与证据面** | 红线策略（fail-closed）、动作审批、审计日志、WorkProject 证据、可回放时间线 |
 | **一体化沙箱镜像** | 本仓库 `sandbox/` 构建的 `sandbox-runtime:latest`：上游能力（Caido + Kali 工具链）+ 定制工具集（Ghidra / Jadx / observer_ward / agent-browser）+ 容器内控制面与技能资源 |
 
+### 1.1 与上游 strix 的关系与区别
+
+**关系：strix 是本项目的执行引擎，不是竞品。** strix 源码已整份 vendor 进 `strix/` 目录（431 个文件），平台**不改造它的包内运行时逻辑**——设计约束是「只做装配与适配」，以便随时跟随上游升级。`.strix-vendor.json` 记录上游仓库地址、commit、每个文件的 SHA-256 与受保护前缀（`skills/src_hunt/`），供校验与对齐使用。
+
+**一句话区别：** strix 是「单机 CLI / TUI 渗透 agent」；ravenholt 是「以控制平面为中心的红队多智能体协作平台」——同一套 agent 运行时，被放进带会话、项目、证据、策略与审计的工程流程里。
+
+| 维度 | 上游 strix | ravenholt（本项目） |
+| --- | --- | --- |
+| 交互形态 | 命令行 / 终端 TUI / 自带 viewer（读本地 run 目录） | Web 控制台（REST + WebSocket）：会话、项目、策略、审计、容器控制台 |
+| 执行引擎 | 自带 agent 运行时、skills、沙箱、Caido | **复用**（vendor 同一套），平台只在装配层注入模型配置与运行上下文 |
+| 模型接入 | strix 自己的 settings / LiteLLM 解析 | 平台 per-agent 配置（`agents` 段）注入，不改 strix 内部逻辑 |
+| 会话 | 一次 run（单次扫描） | 多会话：中断 / 取消 / 恢复、会话池、后台子智能体任务与唤醒 |
+| 编排 | 进程内 root agent 派生 | 平台侧 `AgentCoordinator` + 邮箱回收 + 可视图（子代理完成报告回投父代理） |
+| 过程沉淀 | 报告文件（markdown / SARIF） | **WorkProject**：范围资产、发现、关系图、攻击路径、可回放时间线 |
+| 证据 | agent 自述即结论 | **差分级证据 + 独立验证器**：平台重放 baseline / probe，`reproduced` 才允许离开草稿态 |
+| 治理 | 无 | **红线策略（fail-closed）+ 审批队列 + 审计日志 + 出口代理** |
+| 沙箱 | 上游镜像（Caido + Kali 工具链） | 同一基础镜像叠加逆向工具、容器内 Go 控制面、桌面栈、容器内技能资源 |
+| 联网检索 | Exa / Perplexity | 扩展**本机 SearXNG（零配置）与 DeepSeek**；`auto` 按可用性排序并在失败时降级 |
+| 技能 | 上游 skills 库 | 同一加载器 + 镜像技能注册 + **确定性技能路由**（`route_skills`） |
+| 增量位置 | — | `core/` `service/` `router/` `schema/` `model/` `web/` `sandbox/`；`strix/` 保持上游原样 |
+
+> 两者可以并存：`strix/` 既是引擎源码，也是升级时的对齐基线（`scripts/verify_strix_version_alignment.py`）。
+
 ---
 
 ## 二、功能特性
@@ -191,7 +214,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | **Docker** | 24+，daemon 已运行 | 沙箱执行面（会话中的命令执行、Caido 抓包） | 只能使用控制面，无法做渗透 |
 | **一体化沙箱镜像** | `sandbox-runtime:latest`（构建约 5 GB+） | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser、容器控制台、egress 运行时刷新、技能资源 | 会话仍可用上游镜像跑渗透，但缺上述定制工具与控制台 |
 | **上游沙箱镜像** | `ghcr.io/usestrix/strix-sandbox:1.3.0`（约 4 GB） | Caido + Kali 工具链 | 首次会话会自动拉取；离线环境需预拉 |
-| **Node.js** | ≥ 20.19（推荐 22） | 重新构建前端（仓库已内置 `web/dist-app`） | 不改前端则无影响 |
+| **Node.js** | ≥ 20.19（推荐 22） | **构建前端（源码部署必需）**：仓库不含 `web/dist-app`，须 `npm install && npm run build` 生成 | 不装则控制台页面无法加载（Docker/Compose 部署由镜像内构建阶段完成，不需要宿主 Node） |
 | **Docker Compose** | v2 | Compose 部署方式 | 只用 `serve.sh` 则无影响 |
 | **SearXNG 容器** | `searxng/searxng:latest`（约 265 MB） | 零配置联网检索 | 平台会自动拉起；离线环境需改配 Exa/Perplexity Key |
 | **macvlan 支持** | 宿主网卡允许 L2 多 MAC | 目标主动回连（OOB 外带 / 反弹 shell 收口） | 自动回退 bridge，OOB 走容器内 interactsh |
@@ -243,7 +266,7 @@ git clone https://github.com/xiaoliuhua2/ravenholt.git
 cd ravenholt
 ```
 
-> 也可以直接下载 ZIP 解压。仓库已 vendor 完整的 `strix/` 运行时与**预构建好的前端产物** `web/dist-app`，开箱即可用。
+> 也可以直接下载 ZIP 解压。仓库已 vendor 完整的 `strix/` 运行时（431 个文件），**但前端构建产物 `web/dist-app` 不入库**：源码部署必须先构建一次前端（见 [5.3](#53-手动分步部署) 第 5 步，需 Node ≥ 20.19）；用 Docker / Compose 部署则由镜像构建阶段自动生成。
 
 ### 5.2 一键部署（完整功能，推荐）
 
@@ -329,13 +352,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**第 5 步：前端构建（可选）**
+**第 5 步：构建前端（源码部署必需）**
 
 ```bash
 cd web && npm install && npm run build && cd ..
 ```
 
-> 仓库已内置预构建的 `web/dist-app`，**跳过本步也能启动**；仅在改动前端源码后才需重新构建。
+> **源码部署下本步必做**：`web/dist-app` 是构建产物、不入库；不构建则 API 能通但控制台页面加载不出来（空白 / 404）。用 Docker / Compose 部署时由镜像构建阶段生成，**不需要宿主装 Node**。
 
 **第 6 步：构建一体化沙箱镜像（完整功能必需）**
 
@@ -378,7 +401,7 @@ bash serve.sh run
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-> 应用镜像（`Dockerfile`）已内置 vendor 的 `strix/` 运行时与构建好的前端 `web/dist-app`，无需额外挂载；`./.ravenholt` 由 Compose 挂载进容器作为运行时配置；`app` 通过挂载宿主 Docker socket 使用沙箱镜像。
+> 应用镜像由根目录 `Dockerfile` **多阶段构建**：Node 阶段现场执行 `npm ci && npm run build` 生成前端产物并拷入运行镜像，因此**不要求仓库里已有 `web/dist-app`**，也不要求宿主安装 Node；镜像内已含 vendor 的 `strix/` 运行时；`./.ravenholt` 由 Compose 挂载进容器作为运行时配置；`app` 通过挂载宿主 Docker socket 使用沙箱镜像。
 
 > [!CAUTION]
 > **Compose 的配置来源（重要，别用错来源）**：编排内置的 `postgres` 服务口令固定为 `123456`（见 `docker-compose.prod.yml`），与仓库自带的 `.ravenholt/config.json.example` 一致。因此 Compose 部署请**直接复制示例**：
@@ -612,7 +635,8 @@ ravenholt/
 ├── core/            # 运行时核心：agent、会话池、策略引擎、strix 运行时、事件归档
 ├── service/ handler/ router/ schema/ model/       # 分层：逻辑 / 处理 / 路由 / 契约 / 模型
 ├── middleware/ utils/                             # 鉴权、统一响应等中间件与工具
-├── strix/           # vendor 的 strix 运行时与技能库（由 .strix-vendor.json 校验）
+├── strix/           # vendor 的 strix 运行时与技能库（由 .strix-vendor.json 校验上游 commit 与逐文件哈希）
+├── .strix-vendor.json  # vendor 清单：上游仓库 / commit / 文件哈希 / 受保护前缀
 ├── sandbox/         # 一体化沙箱镜像构建
 │   ├── Dockerfile           # 基于上游镜像叠加定制能力
 │   ├── entrypoint.sh        # 先挂附加服务，再交给上游 entrypoint 启动 Caido
@@ -620,9 +644,10 @@ ravenholt/
 │   ├── proxy/               # 容器内 Go 控制面（终端/文件/egress）
 │   ├── .agents/skills/      # 容器内技能资源（随镜像分发）
 │   └── setup_macvlan.sh     # 沙箱网络（按宿主自动派生）
-├── web/             # 前端（src / dist-app 构建产物 / openapi.json）
+├── web/             # 前端源码（src / openapi.json）；dist-app 为构建产物，不入库
 ├── docs/            # VitePress 文档站（en / zh）
-├── scripts/         # 工具与自检脚本（export_schema、verify_*_selftest、verify_strix_version_alignment 等）
+├── scripts/         # 工具与自检脚本（sync_strix.py 同步上游、export_schema、verify_*_selftest、verify_strix_version_alignment 等）
+├── tests/           # 单元测试
 ├── .ravenholt/      # 运行时配置：config.json / policy.yaml / skill_routes.yaml（均不入库）
 ├── setup.sh         # 一键部署脚本
 ├── serve.sh         # 服务管理（start/stop/restart/status/logs/run；启动打印账号口令）
@@ -668,6 +693,9 @@ A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 
 
 **Q：改了配置不生效？**
 A：`config.json` 改动需重启（`bash serve.sh restart`），且 `sandbox.image` 只影响**之后新建的会话**；`policy.yaml` 通过控制台改是即时的，手工改需重启。`approvals.allow` 的改动只对新建会话 / 新建子代理生效（提示词在创建 agent 时渲染）。
+
+**Q：`git clone` 后启动，浏览器打开是空白页或 404？**
+A：前端产物 `web/dist-app` **不入库**，源码部署必须先构建一次：`cd web && npm install && npm run build`（Node ≥ 20.19）。用 Docker / Compose 部署时由镜像构建阶段自动生成，无需本步。
 
 **Q：`npm run build` 失败？**
 A：检查 Node 版本（需 ≥ 20.19）与 `web/node_modules` 是否残缺；删除 `web/node_modules` 后重跑 `npm install`。

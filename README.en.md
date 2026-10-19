@@ -58,6 +58,29 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 | **Policy governance & evidence plane** | Red-line policy (fail-closed), action approvals, audit log, WorkProject evidence, replayable timeline |
 | **All-in-one sandbox image** | `sandbox-runtime:latest`, built by this repo's `sandbox/`: upstream capabilities (Caido + Kali toolchain) plus the customized toolchain (Ghidra / Jadx / observer_ward / agent-browser), an in-container control plane, and skill resources |
 
+### 1.1 Relationship to upstream strix
+
+**strix is this project's execution engine, not a competitor.** The entire strix source tree is vendored into `strix/` (431 files), and the platform **does not modify its package-internal runtime logic** — the design constraint is "assembly and adaptation only", so the upstream can be followed at any time. `.strix-vendor.json` records the upstream repository, commit, per-file SHA-256 hashes and a protected prefix (`skills/src_hunt/`) for verification and upgrade alignment.
+
+**In one sentence:** strix is a single-machine CLI / TUI pentest agent; ravenholt is a control-plane-oriented red-team multi-agent **platform** — the same agent runtime, placed inside an engineering process that has sessions, projects, evidence, policy and audit.
+
+| Dimension | Upstream strix | ravenholt (this repo) |
+| --- | --- | --- |
+| Interaction | CLI / terminal TUI / its own viewer (reads local run dirs) | Web console (REST + WebSocket): sessions, projects, policy, audit, container console |
+| Execution engine | Ships its own agent runtime, skills, sandbox, Caido | **Reused** (the same vendored code); the platform injects model config and run context at the assembly layer |
+| Model wiring | strix's own settings / LiteLLM resolution | Platform per-agent config (the `agents` section) injected, without touching strix internals |
+| Sessions | One run (a single scan) | Multiple sessions: interrupt / cancel / resume, session pool, background sub-agent tasks with wake-up |
+| Orchestration | In-process root agent spawning | Platform-side `AgentCoordinator` + mailbox collection + a graph view (child completion reports return to the parent) |
+| Process record | Report files (markdown / SARIF) | **WorkProject**: scope assets, findings, relationship graph, attack paths, replayable timeline |
+| Evidence | The agent's own narrative is the conclusion | **Differential evidence + an independent verifier**: the platform replays baseline / probe, and only `reproduced` may leave the draft state |
+| Governance | None | **Red-line policy (fail-closed) + approval queue + audit log + egress proxies** |
+| Sandbox | Upstream image (Caido + Kali toolchain) | The same base image plus reverse-engineering tools, an in-container Go control plane, a desktop stack, and in-container skill resources |
+| Web search | Exa / Perplexity | Adds **a local SearXNG (zero-config) and DeepSeek**; `auto` ranks by availability and fails over |
+| Skills | Upstream skill library | The same loader plus registered image skills and **deterministic skill routing** (`route_skills`) |
+| Where the additions live | — | `core/` `service/` `router/` `schema/` `model/` `web/` `sandbox/`; `strix/` stays upstream-clean |
+
+> The two can coexist: `strix/` is both the engine source and the alignment baseline for upgrades (`scripts/verify_strix_version_alignment.py`).
+
 ---
 
 ## 2. Features
@@ -191,7 +214,7 @@ Capability comparison:
 | **Docker** | 24+, daemon running | Sandbox execution plane (in-session command execution, Caido capture) | Control plane only; no pentesting |
 | **All-in-one sandbox image** | `sandbox-runtime:latest` (~5 GB+ to build) | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser, container console, live egress refresh, skill resources | Sessions still run on the upstream image, but the items above are missing |
 | **Upstream sandbox image** | `ghcr.io/usestrix/strix-sandbox:1.3.0` (~4 GB) | Caido + Kali toolchain | Pulled automatically on the first session; pre-pull for offline hosts |
-| **Node.js** | ≥ 20.19 (22 recommended) | Rebuilding the frontend (a prebuilt `web/dist-app` ships with the repo) | No impact unless you change frontend sources |
+| **Node.js** | ≥ 20.19 (22 recommended) | **Building the frontend (required for source deployments)**: the repo does not ship `web/dist-app`; run `npm install && npm run build` to produce it | Without it the console pages cannot load (Docker/Compose deployments build it inside the image, so no host Node.js is needed) |
 | **Docker Compose** | v2 | The Compose deployment route | No impact if you use `serve.sh` |
 | **SearXNG container** | `searxng/searxng:latest` (~265 MB) | Zero-config web search | Auto-started by the platform; offline hosts should use Exa/Perplexity keys |
 | **macvlan support** | Host NIC allows multiple L2 MACs | Target-initiated callbacks (OOB exfil / reverse-shell collection) | Falls back to bridge; OOB uses the in-container interactsh |
@@ -207,7 +230,7 @@ Capability comparison:
 | Database | `postgresql`, `postgresql-client` |
 | Basics | `curl`, `openssl`, `ca-certificates`, `git` |
 | Sandbox runtime | `docker.io` (plus `systemctl enable --now docker`) |
-| Frontend build (optional) | `nodejs` (≥ 20.19; nodesource 22.x recommended) |
+| Frontend build (required for source deployments) | `nodejs` (≥ 20.19; nodesource 22.x recommended) |
 
 > The system packages the all-in-one sandbox image needs (apktool, binwalk, 7zip, make, sqlite3, openjdk-21-jdk-headless, xvfb, x11vnc, novnc, websockify, tor, supervisor, ...) are declared in `sandbox/Dockerfile` and installed by `docker build` — they do **not** need to be installed on the host.
 
@@ -243,7 +266,7 @@ git clone https://github.com/xiaoliuhua2/ravenholt.git
 cd ravenholt
 ```
 
-> You can also download and unzip the repository. It vendors the complete `strix/` runtime and **prebuilt frontend artifacts** (`web/dist-app`), so it works out of the box.
+> You can also download and unzip the repository. It vendors the complete `strix/` runtime (431 files), **but the frontend build output `web/dist-app` is not committed**: source deployments must build the frontend once (see Step 5 in 5.3, Node ≥ 20.19); Docker / Compose deployments generate it during the image build.
 
 ### 5.2 One-click deployment (full feature set, recommended)
 
@@ -329,13 +352,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-**Step 5: Frontend build (optional)**
+**Step 5: Build the frontend (required for source deployments)**
 
 ```bash
 cd web && npm install && npm run build && cd ..
 ```
 
-> A prebuilt `web/dist-app` ships with the repository, so **you can skip this step**; rebuild only after changing frontend sources.
+> **Required for source deployments**: `web/dist-app` is build output and is not committed; without it the API works but console pages fail to load (blank / 404). Docker / Compose deployments build it inside the image — no host Node.js needed.
 
 **Step 6: Build the all-in-one sandbox image (required for the full feature set)**
 
@@ -379,7 +402,7 @@ For running the control plane and the database together in containers.
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-> The app image (`Dockerfile`) already bundles the vendored `strix/` runtime and the prebuilt frontend `web/dist-app`, so nothing extra needs mounting; `./.ravenholt` is mounted into the container as runtime config; `app` uses sandbox images through the mounted host Docker socket.
+> The app image is built **in stages** by the root `Dockerfile`: a Node stage runs `npm ci && npm run build` to produce the frontend, which is copied into the runtime image — so the repo does **not** need to contain `web/dist-app`, and the host does **not** need Node.js. The image also contains the vendored `strix/` runtime; `./.ravenholt` is mounted into the container as runtime config; `app` uses sandbox images through the mounted host Docker socket.
 
 > [!CAUTION]
 > **Where Compose gets its config (important)**: the bundled `postgres` service uses the fixed password `123456` (see `docker-compose.prod.yml`), matching the repo's `.ravenholt/config.json.example`. For Compose, **copy the example directly**:
@@ -613,7 +636,8 @@ ravenholt/
 ├── core/            # runtime core: agents, session pool, policy engine, strix runtime, event archive
 ├── service/ handler/ router/ schema/ model/       # layers: logic / handling / routing / contracts / models
 ├── middleware/ utils/                             # auth, unified responses, middleware and helpers
-├── strix/           # vendored strix runtime and skill library (verified by .strix-vendor.json)
+├── strix/           # vendored strix runtime and skill library (upstream commit + per-file hashes in .strix-vendor.json)
+├── .strix-vendor.json  # vendor manifest: upstream repo / commit / file hashes / protected prefix
 ├── sandbox/         # all-in-one sandbox image build
 │   ├── Dockerfile           # upstream image + customized layers
 │   ├── entrypoint.sh        # detaches extra services, then hands off to the upstream entrypoint for Caido
@@ -621,9 +645,10 @@ ravenholt/
 │   ├── proxy/               # in-container Go control plane (terminal/files/egress)
 │   ├── .agents/skills/      # in-container skill resources (shipped with the image)
 │   └── setup_macvlan.sh     # sandbox network (derived from the host)
-├── web/             # frontend (src / dist-app build output / openapi.json)
+├── web/             # frontend sources (src / openapi.json); dist-app is build output, not committed
 ├── docs/            # VitePress docs site (en / zh)
-├── scripts/         # tooling and self-check scripts (export_schema, verify_*_selftest, verify_strix_version_alignment, ...)
+├── scripts/         # tooling and self-check scripts (sync_strix.py for upstream sync, export_schema, verify_*_selftest, verify_strix_version_alignment, ...)
+├── tests/           # unit tests
 ├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (never committed)
 ├── setup.sh         # one-click deployment script
 ├── serve.sh         # service management (start/stop/restart/status/logs/run; prints account on start)
@@ -669,6 +694,9 @@ A: That is a **proxy error page, not the target's response** — all in-sandbox 
 
 **Q: Config changes don't take effect?**
 A: `config.json` changes need a restart (`bash serve.sh restart`), and `sandbox.image` only affects **sessions created afterwards**; `policy.yaml` changes via the console are live, manual edits need a restart. Changes to an agent's `approvals.allow` only apply to newly created sessions / new sub-agents (prompts are rendered when the agent is created).
+
+**Q: After `git clone`, the browser shows a blank page or 404?**
+A: The frontend output `web/dist-app` is **not committed**, so source deployments must build it first: `cd web && npm install && npm run build` (Node ≥ 20.19). Docker / Compose deployments generate it during the image build.
 
 **Q: `npm run build` fails?**
 A: Check the Node version (≥ 20.19) and whether `web/node_modules` is incomplete; delete `web/node_modules` and re-run `npm install`.

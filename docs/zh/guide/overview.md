@@ -17,6 +17,25 @@ Ravenholt 是一个开源的**红队智能体协作平台**，以 [strix](https:
 >
 > **作者不对使用者造成的任何后果、损失、损害、法律责任或违法行为负责。**
 
+## 与上游 strix 的关系
+
+执行引擎是 [strix](https://github.com/usestrix/strix)，源码已整份 vendor 进仓库的 `strix/` 目录（431 个文件）；平台**不修改其包内运行时逻辑**（只做装配与适配），并用 `.strix-vendor.json` 记录上游 commit 与逐文件哈希，便于随时跟随上游升级与对齐。
+
+一句话：**strix 是「单机 CLI / TUI 渗透 agent」，ravenholt 是「以控制平面为中心的红队多智能体协作平台」**——同一套 agent 运行时，被放进带会话、项目、证据、策略与审计的工程流程里。
+
+| 维度 | 上游 strix | ravenholt |
+| --- | --- | --- |
+| 形态 | CLI / 终端 TUI / 自带 viewer | Web 控制台（会话 / 项目 / 策略 / 审计 / 容器控制台） |
+| 会话 | 一次 run（单次扫描） | 多会话：中断 / 取消 / 恢复、会话池、后台子智能体任务与唤醒 |
+| 编排 | 进程内 root agent 派生 | 平台 `AgentCoordinator` + 邮箱回收 + 可视图谱 |
+| 过程沉淀 | 报告文件（markdown / SARIF） | WorkProject：资产 / 发现 / 关系图 / 攻击路径 / 可回放时间线 |
+| 证据 | agent 自述即结论 | 差分级证据 + 独立验证器（重放 baseline/probe 裁决，`reproduced` 才可离开草稿态） |
+| 治理 | 无 | 红线策略（fail-closed）+ 审批队列 + 审计日志 + 出口代理 |
+| 沙箱 | 上游镜像（Caido + Kali 工具链） | 一体化镜像：叠加逆向工具、容器内 Go 控制面、桌面栈、技能资源 |
+| 联网检索 | Exa / Perplexity | 扩展本机 SearXNG（零配置）与 DeepSeek，失败时自动降级 |
+
+> 安装步骤与「完整功能需要什么」见仓库根目录的 `README.md`（「一、项目简介」与「五、下载与安装部署」）。注意：前端产物 `web/dist-app` 不入库，源码部署须先构建一次前端。
+
 ## 核心能力
 
 | 能力 | 说明 |
