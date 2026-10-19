@@ -404,6 +404,19 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 > The app image is built **in stages** by the root `Dockerfile`: a Node stage runs `npm ci && npm run build` to produce the frontend, which is copied into the runtime image — so the repo does **not** need to contain `web/dist-app`, and the host does **not** need Node.js. The image also contains the vendored `strix/` runtime; `./.ravenholt` is mounted into the container as runtime config; `app` uses sandbox images through the mounted host Docker socket.
 
+> [!TIP]
+> **Slow or failing builds on restricted networks**: the `Dockerfile` accepts two **optional** mirror arguments (defaults are unchanged — omit them to use the official sources):
+> `--build-arg PIP_INDEX_URL=<PyPI mirror>` (e.g. `https://mirrors.aliyun.com/pypi/simple/`)
+> and `--build-arg NPM_REGISTRY=<npm mirror>` (e.g. `https://registry.npmmirror.com`).
+>
+> ```bash
+> docker build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+>              --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+>              -t ravenholt:latest .
+> ```
+>
+> `docker compose ... up -d --build` cannot pass build args directly — build the app image manually first, or set the same arguments under `build.args` in the compose file.
+
 > [!CAUTION]
 > **Where Compose gets its config (important)**: the bundled `postgres` service uses the fixed password `123456` (see `docker-compose.prod.yml`), matching the repo's `.ravenholt/config.json.example`. For Compose, **copy the example directly**:
 >

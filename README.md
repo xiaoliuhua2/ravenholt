@@ -403,6 +403,20 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 > 应用镜像由根目录 `Dockerfile` **多阶段构建**：Node 阶段现场执行 `npm ci && npm run build` 生成前端产物并拷入运行镜像，因此**不要求仓库里已有 `web/dist-app`**，也不要求宿主安装 Node；镜像内已含 vendor 的 `strix/` 运行时；`./.ravenholt` 由 Compose 挂载进容器作为运行时配置；`app` 通过挂载宿主 Docker socket 使用沙箱镜像。
 
+> [!TIP]
+> **国内网络下构建慢或失败时**：`Dockerfile` 提供两个**可选**镜像源参数，默认走官方源（不传即保持原行为）——
+> `--build-arg PIP_INDEX_URL=<PyPI 镜像>`（例如 `https://mirrors.aliyun.com/pypi/simple/`）
+> 与 `--build-arg NPM_REGISTRY=<npm 镜像>`（例如 `https://registry.npmmirror.com`）。
+> 手工构建示例：
+>
+> ```bash
+> docker build --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+>              --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
+>              -t ravenholt:latest .
+> ```
+>
+> `docker compose ... up -d --build` 不便直接传参，可先手工构建应用镜像再 `up`，或在 compose 文件的 `build.args` 下配置同名参数。
+
 > [!CAUTION]
 > **Compose 的配置来源（重要，别用错来源）**：编排内置的 `postgres` 服务口令固定为 `123456`（见 `docker-compose.prod.yml`），与仓库自带的 `.ravenholt/config.json.example` 一致。因此 Compose 部署请**直接复制示例**：
 >
