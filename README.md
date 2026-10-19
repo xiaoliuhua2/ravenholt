@@ -550,7 +550,22 @@ bash config-tool.sh clear                                 # 清空所有 Key
 cd sandbox && bash build.sh        # 产出 sandbox-runtime:latest
 # 换基础镜像（例如国内镜像源）：
 # docker build --build-arg STRIX_SANDBOX_IMAGE=<镜像地址> -t sandbox-runtime:latest .
+# 换 GitHub 加速前缀（默认 https://gh-proxy.com/；置空则直连）：
+# GITHUB_MIRROR=https://ghfast.top/ bash build.sh
+# GITHUB_MIRROR= bash build.sh
 ```
+
+> [!TIP]
+> **带宽不足时的做法**：构建要下载约 1.5 GB 的 Ghidra 及若干工具包。若本机链路很慢（实测有环境经加速前缀只有几十 KB/s，1.5 GB 需数小时且会被代理掐断），更实际的是**在带宽好的机器上构建，再迁移镜像**：
+>
+> ```bash
+> # 有网机器上
+> docker save sandbox-runtime:latest | gzip > sandbox-runtime.tgz
+> # 目标机器上
+> gunzip -c sandbox-runtime.tgz | docker load
+> ```
+>
+> 完全不构建也不影响渗透：会话会退回上游镜像 `ghcr.io/usestrix/strix-sandbox:1.3.0`（含 Caido + Kali 工具链），只是缺少逆向工具与容器控制台。
 
 启用分两处（缺一不可，用途不同）：
 

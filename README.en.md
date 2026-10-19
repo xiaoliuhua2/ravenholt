@@ -548,9 +548,24 @@ To reach the local SearXNG from inside a sandbox, use the **host LAN IP** (e.g. 
 
 ```bash
 cd sandbox && bash build.sh        # produces sandbox-runtime:latest
-# Swap the base image (e.g. a mirror):
-# docker build --build-arg STRIX_SANDBOX_IMAGE=<image-ref> -t sandbox-runtime:latest .
+# switch the base image (e.g. a regional mirror):
+# docker build --build-arg STRIX_SANDBOX_IMAGE=<image> -t sandbox-runtime:latest .
+# switch the GitHub accelerator prefix (default https://gh-proxy.com/; empty = direct):
+# GITHUB_MIRROR=https://ghfast.top/ bash build.sh
+# GITHUB_MIRROR= bash build.sh
 ```
+
+> [!TIP]
+> **When bandwidth is insufficient**: the build downloads ~1.5 GB of Ghidra plus several tool packages. If your link is very slow (measured environments get only tens of KB/s through the accelerator — 1.5 GB takes hours and gets cut off by the proxy), build the image on a well-connected machine and migrate it:
+>
+> ```bash
+> # on the well-connected machine
+> docker save sandbox-runtime:latest | gzip > sandbox-runtime.tgz
+> # on the target machine
+> gunzip -c sandbox-runtime.tgz | docker load
+> ```
+>
+> Not building it at all is also fine: sessions fall back to the upstream image `ghcr.io/usestrix/strix-sandbox:1.3.0` (Caido + Kali toolchain), lacking only the reverse-engineering tools and the container console.
 
 Enabling requires **two** places (both are needed, for different purposes):
 

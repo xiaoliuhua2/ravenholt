@@ -87,7 +87,11 @@ ARG GHIDRA_URL=https://github.com/NationalSecurityAgency/ghidra/releases/downloa
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends binutils ca-certificates curl unzip; \
-    curl -fsSL --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 20 "${GITHUB_MIRROR}${GHIDRA_URL}" -o /tmp/ghidra.zip; \
+    for i in 1 2 3 4 5; do \
+      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${GHIDRA_URL}" -o /tmp/ghidra.zip && break; \
+      sleep 5; \
+    done; \
+    test -s /tmp/ghidra.zip; \
     unzip -q /tmp/ghidra.zip -d /opt; \
     ghidra_dir="$(find /opt -maxdepth 1 -type d -name 'ghidra_*_PUBLIC' | sort | head -n 1)"; \
     test -n "$ghidra_dir"; \
@@ -118,7 +122,11 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl unzip; \
     mkdir -p /opt/jadx; \
-    curl -fsSL --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 20 "${GITHUB_MIRROR}${JADX_URL}" -o /tmp/jadx.zip; \
+    for i in 1 2 3 4 5; do \
+      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${JADX_URL}" -o /tmp/jadx.zip && break; \
+      sleep 5; \
+    done; \
+    test -s /tmp/jadx.zip; \
     unzip -q /tmp/jadx.zip -d /opt/jadx; \
     find /opt/jadx -type d \( \
       -name '.github' -o \
