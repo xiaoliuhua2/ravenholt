@@ -25,7 +25,24 @@ PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="$LOG_DIR/serve.log"
 PID_FILE="$LOG_DIR/serve.pid"
-HEALTH_URL="http://127.0.0.1:8000/"
+# 健康检查地址跟随 config.json 的监听端口/地址（部署者改过 listen_port 时不再误判成"已就绪"）
+CFG_LISTEN="$(python3 - "$PROJECT_DIR/.ravenholt/config.json" 2>/dev/null <<'PYEOF' || echo "127.0.0.1 8000"
+import json, sys
+host, port = "127.0.0.1", 8000
+try:
+    cfg = json.load(open(sys.argv[1], encoding="utf-8")).get("system", {}) or {}
+    host = str(cfg.get("listen_addr") or "").strip() or "127.0.0.1"
+    port = int(cfg.get("listen_port") or 8000)
+except Exception:
+    pass
+if host in ("0.0.0.0", "::", "*", ""):
+    host = "127.0.0.1"
+print(f"{host} {port}")
+PYEOF
+)"
+HEALTH_HOST="${CFG_LISTEN%% *}"
+HEALTH_PORT="${CFG_LISTEN##* }"
+HEALTH_URL="http://${HEALTH_HOST:-127.0.0.1}:${HEALTH_PORT:-8000}/"
 READY_TIMEOUT=60
 
 mkdir -p "$LOG_DIR"
@@ -200,10 +217,10 @@ do_status() {
     info "进程：未运行"
   fi
 
-  if ss -ltn 2>/dev/null | grep -q ':8000'; then
-    info "端口：8000 已监听"
+  if ss -ltn 2>/dev/null | grep -q ":${HEALTH_PORT}"; then
+    info "端口：${HEALTH_PORT} 已监听"
   else
-    info "端口：8000 未监听"
+    info "端口：${HEALTH_PORT} 未监听"
   fi
 
   if curl -sf -m 3 -o /dev/null "$HEALTH_URL"; then
@@ -234,8 +251,8 @@ do_run() {
   ensure_venv || exit 1
   ensure_sandbox_network
   info ""
-  info "  前台运行：http://127.0.0.1:8000"
-  info "  API 文档：http://127.0.0.1:8000/docs"
+  info "  前台运行：${HEALTH_URL}"
+  info "  API 文档：${HEALTH_URL}docs"
   print_admin_credentials
   info ""
   info "  按 Ctrl+C 停止服务"

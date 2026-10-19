@@ -70,10 +70,14 @@ py_ok() { python3 -c "import sys;raise SystemExit(0 if sys.version_info>=(${PY_M
 # 以 postgres 超级用户身份执行 psql（参数与 psql 相同）。
 # root 下走 su（-s 绕过 postgres 用户的 nologin shell）；非 root 走免密 sudo（-n，避免交互阻塞）。
 psql_super() {
-  if [ "$(id -u)" -eq 0 ]; then
-    su -s /bin/sh -c "$(printf '%q ' psql "$@")" postgres
-  elif have sudo; then
+  # 优先用 sudo 以**参数数组**形式透传：SQL 里带引号的字面量（如 PASSWORD 'xxx'）
+  # 若经 `printf '%q'` 生成字符串再交给 sh 解析，单引号会被吞掉导致语法错误
+  # （CREATE USER/ALTER USER 一律失败，进而建库失败、平台起不来）。
+  if have sudo; then
     sudo -n -u postgres psql "$@"
+  elif [ "$(id -u)" -eq 0 ]; then
+    # 无 sudo 时的回退：改用 bash 解析 %q 转义（dash 会丢引号）
+    su -s /bin/bash -c "$(printf '%q ' psql "$@")" postgres
   else
     return 127
   fi
