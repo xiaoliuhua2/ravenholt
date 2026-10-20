@@ -301,7 +301,7 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 | 4/8 PostgreSQL | 启动服务、建角色与数据库，口令与 config.json 对齐 |
 | 5/8 Python 依赖 | 建 `.venv` 并 `pip install -r requirements.txt` |
 | 6/8 前端构建 | `web/` 下 `npm install --include=optional` + `npm run build`，产出 `web/dist-app`；若因缺少可选原生依赖（Vite 8 的 rolldown 平台绑定）失败，**两步自愈**：①补装可选依赖后重试；②仍失败则从报错中解析缺失的绑定名，按 rolldown 实际版本显式安装 `@rolldown/binding-<平台>` 再重试（实测仅 `--include=optional` 往往补不回，第 ② 步才生效） |
-| 7/8 沙箱镜像 | 检测上游镜像是否已拉取；未构建一体化镜像时按 `--with-sandbox` 构建，**构建成功会自动把 `sandbox.image` 写入 config.json** |
+| 7/8 沙箱镜像 | 检测上游镜像是否已拉取；**先尝试拉取 CI 已构建好的 GHCR 镜像（几分钟，免本地构建）**，拉不到再按 `--with-sandbox` 本地构建；**成功（拉取或构建）都会自动把 `sandbox.image` 写入 config.json** |
 | 8/8 安装后自检 | 语法编译、config/policy 加载、`create_app` 装配冒烟 |
 
 脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖；`sandbox.image` 已有值时不会被改写。已存在 `web/dist-app` 时会**跳过前端构建**（省下每次重跑的构建时间），需要重建时加 `--rebuild-frontend`。
@@ -584,6 +584,14 @@ cd sandbox && bash build.sh        # 产出 sandbox-runtime:latest
 # GITHUB_MIRROR= bash build.sh                      # 强制直连
 ```
 
+**一体化镜像的来源优先级**（`setup.sh` 会自动按这个顺序判断）：
+
+1. 本地已有 `sandbox-runtime:latest` → 直接用，不动网络；
+2. 否则**先尝试拉取 CI 已构建好的 `ghcr.io/xiaoliuhua2/ravenholt-sandbox:latest`**（通常几分钟，无需本地 5 GB 构建）—— 拉成功即 `docker tag` 成 `sandbox-runtime:latest` 并写入 `config.json`；
+3. 拉不到（未发布 / 未设为 Public / 未 `docker login ghcr.io` / 无网络）时，才按 `--with-sandbox` 决定本地构建（要下约 1.5 GB GitHub 资源），否则给出上面两种取得方式的提示。
+
+> 换你自己的 GHCR 仓库 / 改 tag：`SANDBOX_REMOTE_IMAGE=ghcr.io/<owner>/<image>:<tag> bash setup.sh`；离线环境想强制走本地构建：`SANDBOX_REMOTE_IMAGE= bash setup.sh --with-sandbox`。
+
 > [!TIP]
 > **带宽不足时的做法**：构建要下载约 1.5 GB 的 Ghidra 及若干工具包。若本机链路很慢（实测有环境经加速前缀只有几十 KB/s，1.5 GB 需数小时且会被代理掐断），更实际的是**在带宽好的机器上构建，再迁移镜像**：
 >
@@ -770,6 +778,8 @@ docker tag  ghcr.io/<你的用户名>/ravenholt-sandbox:latest sandbox-runtime:l
 ```
 
 这样免去本地拉基础镜像与下载 1.5 GB Ghidra。注意：首次推送后要到 仓库 → **Packages** → `ravenholt-sandbox` → Package settings 把可见性改为 **Public**，否则他人 `docker pull` 需登录 GHCR。
+
+> `setup.sh` 第 7/8 段现在**会自动检测并拉取**这个镜像（拉成功就 `docker tag` 成 `sandbox-runtime:latest` 并写入 `config.json`），不需要手工执行上面的命令 —— 前提是它已发布且可访问；拉不到才回退本地构建（见 [6.6](#66-沙箱镜像构建与启用)）。
 
 **Q：沙箱里 `curl` 目标返回 502，页面标题是 `Caido`？**
 A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 HTTP 都经容器内 Caido 代理，目标不可达时由代理代为报错。用 `curl -s <url> | grep -A8 'c-title"'` 看真实原因（`Failed to query DNS` / `Connection refused` / TLS 握手失败 / timeout），修正 URL 后重试。

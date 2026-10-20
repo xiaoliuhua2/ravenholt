@@ -301,7 +301,7 @@ The script runs 8 stages and prints results per stage:
 | 4/8 PostgreSQL | Starts the service, creates role and database, with credentials aligned to config.json |
 | 5/8 Python deps | Creates `.venv` and runs `pip install -r requirements.txt` |
 | 6/8 Frontend build | `npm install --include=optional` + `npm run build` under `web/`, producing `web/dist-app`; if it fails on a missing optional native binding (Vite 8's rolldown platform binding), it **self-heals in two steps**: (1) re-install optionals and retry; (2) if that still fails, parse the missing binding name out of the build log and explicitly install `@rolldown/binding-<platform>` at rolldown's actual version, then retry (measured: `--include=optional` alone usually does not restore it; step 2 is what works) |
-| 7/8 Sandbox image | Checks whether the upstream image has been pulled; builds the all-in-one image with `--with-sandbox` and **writes `sandbox.image` into config.json on success** |
+| 7/8 Sandbox image | Checks whether the upstream image has been pulled; **first tries to pull the CI-built GHCR image (minutes, no local build)**, and only builds locally with `--with-sandbox` if that fails; **either way, `sandbox.image` is written into config.json on success** |
 | 8/8 Post-install self-check | Syntax compile, config/policy loading, `create_app` assembly smoke test |
 
 The script is **idempotent**: an existing `config.json` / `policy.yaml` is never overwritten, and `sandbox.image` is left alone once set. When `web/dist-app` already exists the frontend build is **skipped** (saving the rebuild time on every re-run); pass `--rebuild-frontend` to force it.
@@ -585,6 +585,14 @@ cd sandbox && bash build.sh        # produces sandbox-runtime:latest
 # GITHUB_MIRROR= bash build.sh                      # force direct
 ```
 
+**Where the all-in-one image comes from** (`setup.sh` decides in this order):
+
+1. `sandbox-runtime:latest` already present locally → use it, no network;
+2. otherwise **it first tries to pull the CI-built `ghcr.io/xiaoliuhua2/ravenholt-sandbox:latest`** (usually minutes, no 5 GB local build) — on success it is `docker tag`ged to `sandbox-runtime:latest` and written into `config.json`;
+3. only if that fails (not published / not Public / not logged in to GHCR / no network) does `--with-sandbox` trigger a local build (~1.5 GB of GitHub downloads), otherwise the two options above are printed.
+
+> Point at your own GHCR repo / tag: `SANDBOX_REMOTE_IMAGE=ghcr.io/<owner>/<image>:<tag> bash setup.sh`; to force a local build offline: `SANDBOX_REMOTE_IMAGE= bash setup.sh --with-sandbox`.
+
 > [!TIP]
 > **When bandwidth is insufficient**: the build downloads ~1.5 GB of Ghidra plus several tool packages. If your link is very slow (measured environments get only tens of KB/s through the accelerator — 1.5 GB takes hours and gets cut off by the proxy), build the image on a well-connected machine and migrate it:
 >
@@ -771,6 +779,8 @@ docker tag  ghcr.io/<your-user>/ravenholt-sandbox:latest sandbox-runtime:latest
 ```
 
 That avoids pulling base images and downloading ~1.5 GB of Ghidra locally. Note: after the first push, go to the repository → **Packages** → `ravenholt-sandbox` → Package settings and switch the visibility to **Public**, otherwise others need to log in to GHCR to pull it.
+
+> `setup.sh` step 7/8 now **detects and pulls that image automatically** (on success it is `docker tag`ged to `sandbox-runtime:latest` and written into `config.json`), so the commands above are no longer needed by hand — as long as the package is published and reachable; only if that fails does it fall back to a local build (see [6.6](#66-sandbox-image-build--enable)).
 
 **Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
 A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.

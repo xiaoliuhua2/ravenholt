@@ -899,6 +899,12 @@ step "7/8 沙箱镜像"
 # （含 Caido 与 Kali 工具链），只是缺少上面那批定制工具与技能资源。
 # 构建成功会自动写入 .ravenholt/config.json 的 sandbox.image，让会话改用一体化镜像。
 STRIX_DEFAULT_IMAGE="ghcr.io/usestrix/strix-sandbox:1.3.0"
+# 一体化镜像的「现成来源」：CI（.github/workflows/build-sandbox-image.yml）构建并推到 GHCR 的那个。
+# 先拉它、拉不到再考虑本地构建 —— 拉取通常几分钟，而本地构建要下约 1.5 GB GitHub 资源并产出 5 GB 镜像。
+# 禁用远端拉取（强制本地构建）：SANDBOX_REMOTE_IMAGE= bash setup.sh --with-sandbox
+# 换仓库/换 tag 也用它覆盖：SANDBOX_REMOTE_IMAGE=ghcr.io/<owner>/<image>:<tag>
+REMOTE_SANDBOX_IMAGE="${SANDBOX_REMOTE_IMAGE-ghcr.io/xiaoliuhua2/ravenholt-sandbox:latest}"
+LOCAL_SANDBOX_IMAGE="sandbox-runtime:latest"
 if ! have docker || ! docker info >/dev/null 2>&1; then
   warn "Docker 不可用，跳过沙箱镜像（安装/启动 Docker 后执行：cd sandbox && bash build.sh）"
 else
@@ -908,28 +914,52 @@ else
     info "上游沙箱镜像尚未拉取（首次会话自动拉取，约 4GB）：$STRIX_DEFAULT_IMAGE"
   fi
 
-  if docker image inspect sandbox-runtime:latest >/dev/null 2>&1; then
-    ok "一体化沙箱镜像已存在：sandbox-runtime:latest"
-    pin_sandbox_image "sandbox-runtime:latest"
+  if docker image inspect "$LOCAL_SANDBOX_IMAGE" >/dev/null 2>&1; then
+    ok "一体化沙箱镜像已存在：$LOCAL_SANDBOX_IMAGE"
+    pin_sandbox_image "$LOCAL_SANDBOX_IMAGE"
   elif [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "amd64" ]; then
     warn "架构 $ARCH 无法构建一体化镜像（仅 x64）：会话沿用上游镜像；平台「沙箱容器」控制台将无终端/文件/noVNC"
-  elif [ "$WITH_SANDBOX" -eq 1 ]; then
-    info "构建一体化沙箱镜像（下载量大、耗时长，请耐心等待）..."
-    if ( cd "$PROJECT_DIR/sandbox" && bash build.sh ); then
-      ok "一体化沙箱镜像构建完成：sandbox-runtime:latest"
-      pin_sandbox_image "sandbox-runtime:latest"
-    else
-      warn "一体化沙箱镜像构建失败，会话将继续沿用上游镜像"
-      info "镜像构建要先拉取 Docker Hub（debian / golang）与 GHCR（usestrix/strix-sandbox）基础镜像；"
-      info "若卡在拉取阶段，请给 Docker 配镜像加速（/etc/docker/daemon.json 的 registry-mirrors）后重试，"
-      info "或在能联网的机器上 docker save 后本机 docker load（见 README 常见问题）。"
-      info "单独重试构建：cd sandbox && bash build.sh"
-    fi
   else
-    info "一体化沙箱镜像 sandbox-runtime:latest 未构建 —— 本次不影响渗透可用性"
-    info "会话将使用上游镜像（含 Caido 抓包 + Kali 工具链）；构建后额外获得"
-    info "Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser 与技能资源"
-    info "构建：cd sandbox && bash build.sh   （或本次运行加 --with-sandbox 自动构建）"
+    # ① 先看 CI 已经构建好的镜像能不能直接拉（免本地构建）
+    PULLED=0
+    if [ -n "$REMOTE_SANDBOX_IMAGE" ]; then
+      info "检测远端一体化镜像：$REMOTE_SANDBOX_IMAGE（能拉到就直接用，免本地构建）..."
+      if docker pull "$REMOTE_SANDBOX_IMAGE"; then
+        docker tag "$REMOTE_SANDBOX_IMAGE" "$LOCAL_SANDBOX_IMAGE"
+        PULLED=1
+        ok "已从远端拉取并标记为 $LOCAL_SANDBOX_IMAGE（未做本地构建）"
+        pin_sandbox_image "$LOCAL_SANDBOX_IMAGE"
+      else
+        info "远端镜像不可用 —— 常见原因：镜像未发布 / 未设为 Public / 未 docker login ghcr.io / 无网络"
+      fi
+    fi
+    # ② 远端拿不到时：按 --with-sandbox 决定是否本地构建，否则给出两种取得方式
+    if [ "$PULLED" -eq 0 ]; then
+      if [ "$WITH_SANDBOX" -eq 1 ]; then
+        info "本地构建一体化沙箱镜像（下载量大、耗时长，请耐心等待）..."
+        if ( cd "$PROJECT_DIR/sandbox" && bash build.sh ); then
+          ok "一体化沙箱镜像构建完成：$LOCAL_SANDBOX_IMAGE"
+          pin_sandbox_image "$LOCAL_SANDBOX_IMAGE"
+        else
+          warn "一体化沙箱镜像构建失败，会话将继续沿用上游镜像"
+          info "镜像构建要先拉取 Docker Hub（debian / golang）与 GHCR（usestrix/strix-sandbox）基础镜像；"
+          info "若卡在拉取阶段，请给 Docker 配镜像加速（/etc/docker/daemon.json 的 registry-mirrors）后重试，"
+          info "或在能联网的机器上 docker save 后本机 docker load（见 README 常见问题）。"
+          info "单独重试构建：cd sandbox && bash build.sh"
+        fi
+      else
+        info "一体化沙箱镜像 $LOCAL_SANDBOX_IMAGE 未就绪 —— 本次不影响渗透可用性"
+        info "会话将使用上游镜像（含 Caido 抓包 + Kali 工具链）；取得一体化镜像后额外获得"
+        info "Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser 与技能资源"
+        if [ -n "$REMOTE_SANDBOX_IMAGE" ]; then
+          info "取得方式 ① 拉 CI 已构建的镜像：docker pull $REMOTE_SANDBOX_IMAGE"
+          info "                                       docker tag $REMOTE_SANDBOX_IMAGE $LOCAL_SANDBOX_IMAGE"
+          info "取得方式 ② 本地构建：cd sandbox && bash build.sh（或本次运行加 --with-sandbox）"
+        else
+          info "取得方式：cd sandbox && bash build.sh（或本次运行加 --with-sandbox）"
+        fi
+      fi
+    fi
   fi
 fi
 
