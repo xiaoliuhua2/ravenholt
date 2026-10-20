@@ -12,6 +12,7 @@
 #   bash setup.sh --deps-only     # 只装系统依赖（Node.js / Docker 等）后退出
 #   bash setup.sh --no-deps       # 跳过系统依赖与 Node.js / Docker 的自动安装
 #   bash setup.sh --with-sandbox  # 额外自动构建沙箱镜像（下载量大、耗时长）
+#   bash setup.sh --rebuild-frontend  # 强制重建前端产物（默认 web/dist-app 已存在时跳过）
 #
 # 说明：本脚本只针对 ravenholt 当前结构；幂等，已存在的配置不会被覆盖。
 # ============================================================
@@ -41,6 +42,7 @@ Ravenholt 一键部署脚本
   bash setup.sh --deps-only     只装系统依赖（Node.js / Docker 等）后退出，便于分步执行
   bash setup.sh --no-deps       跳过系统依赖与 Node.js / Docker 的自动安装
   bash setup.sh --with-sandbox  额外自动构建沙箱镜像（下载量大、耗时长）
+  bash setup.sh --rebuild-frontend  强制重建前端产物（已存在 web/dist-app 时默认跳过）
   bash setup.sh -h | --help     显示本帮助
 
 说明：更新替代，已存在的 .ravenholt/config.json、policy.yaml 不会被覆盖。
@@ -53,14 +55,16 @@ CHECK_ONLY=0
 WITH_SANDBOX=0
 DEPS_ONLY=0
 NO_DEPS=0
+REBUILD_FRONTEND=0
 for arg in "$@"; do
   case "$arg" in
-    --check|-c)      CHECK_ONLY=1 ;;
-    --deps-only)     DEPS_ONLY=1 ;;
-    --no-deps)       NO_DEPS=1 ;;
-    --with-sandbox)  WITH_SANDBOX=1 ;;
-    -h|--help)       usage; exit 0 ;;
-    *) printf "未知参数: %s（可用: --check / --deps-only / --no-deps / --with-sandbox / --help）\n" "$arg"; exit 2 ;;
+    --check|-c)         CHECK_ONLY=1 ;;
+    --deps-only)        DEPS_ONLY=1 ;;
+    --no-deps)          NO_DEPS=1 ;;
+    --with-sandbox)     WITH_SANDBOX=1 ;;
+    --rebuild-frontend) REBUILD_FRONTEND=1 ;;
+    -h|--help)          usage; exit 0 ;;
+    *) printf "未知参数: %s（可用: --check / --deps-only / --no-deps / --with-sandbox / --rebuild-frontend / --help）\n" "$arg"; exit 2 ;;
   esac
 done
 
@@ -139,31 +143,22 @@ print("" if node is None else node)
 PYEOF
 }
 
-# 带进度显示的下载：每秒刷新"已下载 XX MB"。输出以 \r 结尾，不刷屏但可见。
-# 静默下载会让用户以为卡死（apt 曾因管道缓冲出现同样问题），故所有大文件下载都走这里。
+# 下载：进度交给 curl 自带的进度条（速率 / 已下载 / 剩余时间），不再自写 \r 循环。
+# 两点讲究：
+#   · 不接任何管道 —— 管道会缓冲输出，下载期间屏幕上什么都没有（apt 曾因此"看着卡死"）；
+#   · curl 的进度与错误直接进终端，失败时能一眼看到原因（如 404 / 连接被拒）。
 fetch_with_progress() {
   local url="$1" out="$2" label="${3:-下载}"
-  local errfile="/tmp/.rv-fetch-err.$$"
-  rm -f "$out" "$errfile" 2>/dev/null || true
-  # curl 的错误输出送文件：否则它会插进 \r 刷新的进度行，同一行文字互相覆盖
-  curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$url" -o "$out" 2>"$errfile" &
-  local pid=$! n=0 bytes=0
-  while kill -0 "$pid" 2>/dev/null; do
-    # 用字节数换算（保留两位小数）：du -m 只有整数 MB，低速链路会长时间停在 0 MB，看起来仍像卡死
-    bytes="$( [ -f "$out" ] && stat -c %s "$out" 2>/dev/null || echo 0 )"
-    printf "\r  %s：已下载 %s MB（%s 秒）      " "$label" "$(awk -v b="$bytes" 'BEGIN{printf "%.2f", b/1048576}')" "$n"
-    sleep 1
-    n=$((n+1))
-  done
-  wait "$pid"; local rc=$?
-  if [ "$rc" -eq 0 ]; then
-    printf "\r  %s：完成，共 %s MB（用时 %s 秒）%*s\n" "$label" "$(awk -v b="$(stat -c %s "$out" 2>/dev/null || echo 0)" 'BEGIN{printf "%.2f", b/1048576}')" "$n" 16 ""
-  else
-    printf "\r%*s\r" 60 ""
-    warn "$label 下载失败（curl 退出码 $rc）$( [ -s "$errfile" ] && printf -- '— %s' "$(tail -n 1 "$errfile")" )"
+  local size
+  info "$label：开始下载（下方进度条实时显示速率与剩余时间）..."
+  if curl -fL --progress-bar --retry 2 --retry-all-errors --retry-delay 3 \
+       --connect-timeout 20 --max-time 900 "$url" -o "$out"; then
+    size="$(awk -v b="$(stat -c %s "$out" 2>/dev/null || echo 0)" 'BEGIN{printf "%.2f", b/1048576}')"
+    ok "$label：下载完成（${size} MB）"
+    return 0
   fi
-  rm -f "$errfile"
-  return "$rc"
+  warn "$label：下载失败 —— 换源后重跑，或用 NODE_MIRROR 指定可达镜像"
+  return 1
 }
 
 # 前台静默任务（npm install / npm run build）加心跳：完整日志落文件，屏幕每 3 秒刷新"进行中 N 秒"。
@@ -641,6 +636,9 @@ hash -r   # 第 2 段可能刚装好 Node.js，清掉 shell 的命令路径缓�
 if [ -d "$PROJECT_DIR/web" ]; then
   if ! have node; then
     warn "未安装 Node.js，跳过前端构建（后端仍可跑，但界面缺失）"
+  elif [ -f "$PROJECT_DIR/web/dist-app/index.html" ] && [ "$REBUILD_FRONTEND" -eq 0 ]; then
+    # 前端产物已就绪就跳过整段构建：省下每次重跑 npm install / npm run build 的时间
+    ok "前端产物已存在：web/dist-app（跳过构建；需要重建请加 --rebuild-frontend）"
   else
     cd "$PROJECT_DIR/web"
     # web/openapi.json 已随仓库提交；缺失时回退根 openapi.json

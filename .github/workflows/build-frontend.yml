@@ -1,0 +1,75 @@
+name: build-frontend
+
+# 目的：产出「免构建」的前端产物 —— 打 tag 或手动触发时构建 web/dist-app，
+#       打包为 web-dist-app.tar.gz 并作为 Release 附件发布。
+#
+# 用户侧用法（源码部署、不想装 Node、不想跑 npm run build）：
+#   下载附件 → tar -xzf web-dist-app.tar.gz -C web/ → bash serve.sh start
+#
+# 触发：
+#   - push tag（v*）时自动构建并把附件挂到该 tag 的 Release
+#   - 手动触发（Actions → build-frontend → Run workflow），可指定目标 Release 标签
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "把附件发布到哪个 Release 标签（留空 = 当前 ref 名）"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Ensure web/openapi.json（构建前需要它生成 API 类型）
+        run: |
+          if [ ! -f web/openapi.json ]; then
+            cp openapi.json web/openapi.json
+          fi
+
+      # --include=optional 是关键：npm 在空白环境会静默跳过 optionalDependencies，
+      # 而 Vite 8 的 rolldown 依赖平台原生绑定（@rolldown/binding-linux-x64-gnu）。
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --include=optional
+
+      - name: Build web/dist-app
+        working-directory: web
+        run: npm run build
+
+      - name: Verify output
+        run: test -f web/dist-app/index.html && du -sh web/dist-app
+
+      - name: Pack
+        run: tar -czf web-dist-app.tar.gz -C web dist-app
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-app
+          path: web-dist-app.tar.gz
+          retention-days: 30
+
+      # push tag 时自动建/更新 Release；手动触发则需显式填 tag，避免误建一个以分支名命名的 Release
+      - name: Attach to Release
+        if: ${{ github.event_name == 'push' || github.event.inputs.tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: web-dist-app.tar.gz

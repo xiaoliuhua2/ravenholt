@@ -267,6 +267,13 @@ cd ravenholt
 ```
 
 > You can also download and unzip the repository. It vendors the complete `strix/` runtime (431 files), **but the frontend build output `web/dist-app` is not committed**: source deployments must build the frontend once (see Step 5 in 5.3, Node ≥ 20.19); Docker / Compose deployments generate it during the image build.
+>
+> **No Node.js, no local frontend build?** Grab the Release asset `web-dist-app.tar.gz` (built by CI on tag pushes, see [`.github/workflows/build-frontend.yml`](.github/workflows/build-frontend.yml)) and unpack it — this replaces Step 5 in 5.3:
+>
+> ```bash
+> wget https://github.com/xiaoliuhua2/ravenholt/releases/latest/download/web-dist-app.tar.gz
+> tar -xzf web-dist-app.tar.gz -C web/      # produces web/dist-app
+> ```
 
 ### 5.2 One-click deployment (full feature set, recommended)
 
@@ -297,10 +304,12 @@ The script runs 8 stages and prints results per stage:
 | 7/8 Sandbox image | Checks whether the upstream image has been pulled; builds the all-in-one image with `--with-sandbox` and **writes `sandbox.image` into config.json on success** |
 | 8/8 Post-install self-check | Syntax compile, config/policy loading, `create_app` assembly smoke test |
 
-The script is **idempotent**: an existing `config.json` / `policy.yaml` is never overwritten, and `sandbox.image` is left alone once set.
+The script is **idempotent**: an existing `config.json` / `policy.yaml` is never overwritten, and `sandbox.image` is left alone once set. When `web/dist-app` already exists the frontend build is **skipped** (saving the rebuild time on every re-run); pass `--rebuild-frontend` to force it.
+
+Upgrade to a newer version with [`update.sh`](#7-running--operations): `bash update.sh` = `git pull` → refresh dependencies → rebuild the frontend if needed → restart the service.
 
 > [!TIP]
-> **Every download and long-running step reports live progress, so nothing looks frozen**: apt (`Get` / `Setting up` lines), the Node.js binary (`already downloaded X.XX MB (N s)`, refreshed every second), pip, `npm install` and `npm run build` (`running… N s` heartbeat, full logs in `.npm-install.log` / `.build.log`), and Ghidra / Jadx inside the sandbox image build (downloaded MB refreshed every 3 seconds, with automatic resume and 5 retries). **To tell whether it is really stuck, watch whether that number still grows** — only a number that stays flat for a long time means a network or mirror problem (see the slow-download entry in [11 FAQ](#11-faq)).
+> **Every download and long-running step reports live progress, so nothing looks frozen**: apt (`Get` / `Setting up` lines), the Node.js binary (curl's own progress bar with percentage / rate / ETA), pip, `npm install` and `npm run build` (`running… N s` heartbeat, full logs in `.npm-install.log` / `.build.log`), and Ghidra / Jadx inside the sandbox image build (downloaded MB refreshed every 3 seconds, with automatic resume and 5 retries). **To tell whether it is really stuck, watch whether that number still grows** — only a flat number over a long time means a network or mirror problem (see [11 FAQ](#11-faq) for remedies).
 
 > [!IMPORTANT]
 > The admin password is randomly generated and printed **only once** — save it immediately.
@@ -613,6 +622,17 @@ bash serve.sh stop       # stop (graceful SIGTERM)
 - URL: <http://127.0.0.1:8000>; API docs: <http://127.0.0.1:8000/docs>
 - `serve.sh start` also: starts PostgreSQL using the detected major version, creates the venv and installs dependencies if missing, and runs `sandbox/setup_macvlan.sh` to prepare the sandbox network.
 
+**One-command upgrade**
+
+```bash
+bash update.sh                      # git pull → refresh deps → rebuild frontend if needed → restart
+bash update.sh --no-pull            # no code pull; rebuild deps from the current checkout and restart
+bash update.sh --rebuild-frontend   # force a frontend rebuild
+bash update.sh --with-sandbox       # also rebuild the all-in-one sandbox image (large download)
+```
+
+`update.sh` reuses the idempotent logic of `setup.sh --no-deps`: pip requirements already satisfied are skipped, an existing `web/dist-app` skips the build, and `config.json` / `policy.yaml` are never overwritten — so it is safe to run repeatedly; it finishes with `serve.sh restart` to pick up the new code. With local changes, `git pull --ff-only` fails and the script only warns instead of overwriting your work.
+
 ---
 
 ## 8. Getting Started
@@ -694,7 +714,9 @@ ravenholt/
 ├── scripts/         # tooling and self-check scripts (sync_strix.py for upstream sync, export_schema, verify_*_selftest, verify_strix_version_alignment, ...)
 ├── tests/           # unit tests
 ├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (never committed)
+├── .github/         # CI: build-frontend (builds dist-app, attaches it to the Release), build-sandbox-image (builds and pushes to GHCR)
 ├── setup.sh         # one-click deployment script
+├── update.sh        # one-command upgrade (git pull -> refresh deps -> restart)
 ├── serve.sh         # service management (start/stop/restart/status/logs/run; prints account on start)
 ├── config-tool.sh   # LLM API key management
 ├── docker-compose.prod.yml / .dev.yml
@@ -732,6 +754,18 @@ A: Confirm the Docker daemon is running and that the platform process can reach 
 
 **Q: The all-in-one image build fails?**
 A: Two cases. **(1) It fails while resolving images** (`failed to resolve source metadata for docker.io/docker/dockerfile:1`, `connection refused`, `registry-1.docker.io` timeouts) — the host cannot reach Docker Hub / GHCR, and this image needs `debian:trixie-slim` and `golang:trixie` (Docker Hub) plus `ghcr.io/usestrix/strix-sandbox` and `ghcr.io/astral-sh/uv` (GHCR). Fixes: configure a registry mirror for Docker (`registry-mirrors` in `/etc/docker/daemon.json`, e.g. `https://docker.m.daocloud.io`) then `systemctl restart docker`; verify connectivity with `docker pull ghcr.io/usestrix/strix-sandbox:1.3.0`; if fully offline, build on a connected machine and migrate with `docker save` / `docker load`. (This repo's `sandbox/Dockerfile` deliberately omits `# syntax=docker/dockerfile:1` so that no extra frontend image has to be pulled.) **(2) It fails mid-build** — confirm x64 architecture and sufficient disk (it downloads ~1.5 GB of Ghidra and more), and on restricted networks use `--build-arg STRIX_SANDBOX_IMAGE=<reachable-mirror>`. `sandbox/build.sh` prints these steps when the build fails.
+
+**Q: I don't want to install Node.js locally, nor build the 5 GB sandbox image — is there a way around it?**
+A: Two "no-build" paths, both provided by CI:
+① **Frontend**: on tag pushes [`.github/workflows/build-frontend.yml`](.github/workflows/build-frontend.yml) builds `web/dist-app` and attaches it to the Release as `web-dist-app.tar.gz`; just unpack it (`tar -xzf web-dist-app.tar.gz -C web/`) and source deployments need no Node.js at all.
+② **Sandbox image**: run Actions → `build-sandbox-image` → Run workflow; CI builds the all-in-one image and pushes it to GHCR, so your machine only needs
+
+```bash
+docker pull ghcr.io/<your-user>/ravenholt-sandbox:latest
+docker tag  ghcr.io/<your-user>/ravenholt-sandbox:latest sandbox-runtime:latest
+```
+
+That avoids pulling base images and downloading ~1.5 GB of Ghidra locally. Note: after the first push, go to the repository → **Packages** → `ravenholt-sandbox` → Package settings and switch the visibility to **Public**, otherwise others need to log in to GHCR to pull it.
 
 **Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
 A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.

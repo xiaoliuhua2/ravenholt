@@ -267,6 +267,13 @@ cd ravenholt
 ```
 
 > 也可以直接下载 ZIP 解压。仓库已 vendor 完整的 `strix/` 运行时（431 个文件），**但前端构建产物 `web/dist-app` 不入库**：源码部署必须先构建一次前端（见 [5.3](#53-手动分步部署) 第 5 步，需 Node ≥ 20.19）；用 Docker / Compose 部署则由镜像构建阶段自动生成。
+>
+> **不想装 Node、不想本地构建前端**：直接下载 Release 附件 `web-dist-app.tar.gz`（由 CI 在打 tag 时构建，见 [`.github/workflows/build-frontend.yml`](.github/workflows/build-frontend.yml)）解压即可，跳过 [5.3](#53-手动分步部署) 第 5 步：
+>
+> ```bash
+> wget https://github.com/xiaoliuhua2/ravenholt/releases/latest/download/web-dist-app.tar.gz
+> tar -xzf web-dist-app.tar.gz -C web/      # 解压出 web/dist-app
+> ```
 
 ### 5.2 一键部署（完整功能，推荐）
 
@@ -297,10 +304,12 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 | 7/8 沙箱镜像 | 检测上游镜像是否已拉取；未构建一体化镜像时按 `--with-sandbox` 构建，**构建成功会自动把 `sandbox.image` 写入 config.json** |
 | 8/8 安装后自检 | 语法编译、config/policy 加载、`create_app` 装配冒烟 |
 
-脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖；`sandbox.image` 已有值时不会被改写。
+脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖；`sandbox.image` 已有值时不会被改写。已存在 `web/dist-app` 时会**跳过前端构建**（省下每次重跑的构建时间），需要重建时加 `--rebuild-frontend`。
+
+升级到新版本用 [`update.sh`](#七启动与运维)：`bash update.sh` = `git pull` → 更新依赖 → 必要时重建前端 → 重启服务。
 
 > [!TIP]
-> **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（`已下载 X.XX MB（N 秒）`，每秒刷新）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，数字长时间不变才是网络或源站问题（处置见 [11 常见问题](#十一常见问题)）。
+> **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（curl 自带进度条：百分比 / 速率 / 剩余时间）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，长时间不动才是网络或源站问题（处置见 [11 常见问题](#十一常见问题)）。
 
 > [!IMPORTANT]
 > 管理员口令由脚本随机生成，**只在终端打印一次**，请立即保存。
@@ -612,6 +621,17 @@ bash serve.sh stop       # 停止（SIGTERM 优雅退出）
 - 访问地址：<http://127.0.0.1:8000>；API 文档：<http://127.0.0.1:8000/docs>
 - `serve.sh start` 还会：按已安装主版本号动态启动 PostgreSQL、必要时自动创建 venv 并装依赖、执行 `sandbox/setup_macvlan.sh` 准备沙箱网络。
 
+**一键升级**
+
+```bash
+bash update.sh                      # git pull → 更新依赖 → 必要时重建前端 → 重启服务
+bash update.sh --no-pull            # 不拉代码，只按当前代码重建依赖并重启
+bash update.sh --rebuild-frontend   # 强制重建前端产物
+bash update.sh --with-sandbox       # 额外重建一体化沙箱镜像（下载量大、耗时长）
+```
+
+`update.sh` 复用 `setup.sh --no-deps` 的幂等逻辑：pip 依赖已满足则跳过、`web/dist-app` 已存在则跳过构建、`config.json` / `policy.yaml` 一律不覆盖 —— 因此可以放心反复执行；最后调用 `serve.sh restart` 让新代码生效。有本地改动时 `git pull --ff-only` 会失败，脚本只提示、不覆盖你的改动。
+
 ---
 
 ## 八、快速上手
@@ -693,7 +713,9 @@ ravenholt/
 ├── scripts/         # 工具与自检脚本（sync_strix.py 同步上游、export_schema、verify_*_selftest、verify_strix_version_alignment 等）
 ├── tests/           # 单元测试
 ├── .ravenholt/      # 运行时配置：config.json / policy.yaml / skill_routes.yaml（均不入库）
+├── .github/         # CI：build-frontend（构建 dist-app 并作为 Release 附件）、build-sandbox-image（构建并推 GHCR）
 ├── setup.sh         # 一键部署脚本
+├── update.sh        # 一键升级（git pull → 更新依赖 → 重启服务）
 ├── serve.sh         # 服务管理（start/stop/restart/status/logs/run；启动打印账号口令）
 ├── config-tool.sh   # LLM API Key 管理
 ├── docker-compose.prod.yml / .dev.yml
@@ -731,6 +753,18 @@ A：确认 Docker 守护进程在运行，且平台进程能访问 Docker Socket
 
 **Q：一体化镜像构建失败？**
 A：分两种情况。**(1) 卡在拉取阶段**（报 `failed to resolve source metadata for docker.io/docker/dockerfile:1`、`connection refused`、`registry-1.docker.io` 超时）—— 说明本机到 Docker Hub / GHCR 不通；本镜像需要 `debian:trixie-slim`、`golang:trixie`（Docker Hub）与 `ghcr.io/usestrix/strix-sandbox`、`ghcr.io/astral-sh/uv`（GHCR）。处置：给 Docker 配镜像加速（`/etc/docker/daemon.json` 的 `registry-mirrors`，如 `https://docker.m.daocloud.io`）后 `systemctl restart docker`；先手工 `docker pull ghcr.io/usestrix/strix-sandbox:1.3.0` 验证通路；完全离线时在能联网的机器上构建后 `docker save` / `docker load` 迁移。（本仓库的 `sandbox/Dockerfile` 已刻意不写 `# syntax=docker/dockerfile:1`，避免为此多拉一个前端镜像。）**(2) 构建中途失败** —— 确认 x64 架构与足够磁盘（要下载约 1.5 GB 的 Ghidra 等），受限网络可用 `--build-arg STRIX_SANDBOX_IMAGE=<可用镜像源>` 换基础镜像。`sandbox/build.sh` 在失败时会把上述处置打印出来。
+
+**Q：不想本地装 Node / 不想本地构建 5 GB 沙箱镜像？**
+A：两条「免构建」路径（CI 已提供）：
+① **前端**：打 tag 时 [`.github/workflows/build-frontend.yml`](.github/workflows/build-frontend.yml) 会构建 `web/dist-app` 并作为 Release 附件 `web-dist-app.tar.gz` 发布；下载后 `tar -xzf web-dist-app.tar.gz -C web/` 即可，源码部署不再需要 Node。
+② **沙箱镜像**：Actions → `build-sandbox-image` → Run workflow，CI 会构建一体化镜像并推送到 GHCR；本机只需要
+
+```bash
+docker pull ghcr.io/<你的用户名>/ravenholt-sandbox:latest
+docker tag  ghcr.io/<你的用户名>/ravenholt-sandbox:latest sandbox-runtime:latest
+```
+
+这样免去本地拉基础镜像与下载 1.5 GB Ghidra。注意：首次推送后要到 仓库 → **Packages** → `ravenholt-sandbox` → Package settings 把可见性改为 **Public**，否则他人 `docker pull` 需登录 GHCR。
 
 **Q：沙箱里 `curl` 目标返回 502，页面标题是 `Caido`？**
 A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 HTTP 都经容器内 Caido 代理，目标不可达时由代理代为报错。用 `curl -s <url> | grep -A8 'c-title"'` 看真实原因（`Failed to query DNS` / `Connection refused` / TLS 握手失败 / timeout），修正 URL 后重试。
