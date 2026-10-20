@@ -299,6 +299,9 @@ The script runs 8 stages and prints results per stage:
 
 The script is **idempotent**: an existing `config.json` / `policy.yaml` is never overwritten, and `sandbox.image` is left alone once set.
 
+> [!TIP]
+> **Every download and long-running step reports live progress, so nothing looks frozen**: apt (`Get` / `Setting up` lines), the Node.js binary (`already downloaded X.XX MB (N s)`, refreshed every second), pip, `npm install` and `npm run build` (`running… N s` heartbeat, full logs in `.npm-install.log` / `.build.log`), and Ghidra / Jadx inside the sandbox image build (downloaded MB refreshed every 3 seconds, with automatic resume and 5 retries). **To tell whether it is really stuck, watch whether that number still grows** — only a number that stays flat for a long time means a network or mirror problem (see the slow-download entry in [11 FAQ](#11-faq)).
+
 > [!IMPORTANT]
 > The admin password is randomly generated and printed **only once** — save it immediately.
 > If you lose it, delete `.ravenholt/config.json` and re-run `bash setup.sh` (this regenerates the DB password too, so update the database role accordingly).

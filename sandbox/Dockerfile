@@ -88,9 +88,19 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends binutils ca-certificates curl unzip; \
     for i in 1 2 3 4 5; do \
-      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${GHIDRA_URL}" -o /tmp/ghidra.zip && break; \
+      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${GHIDRA_URL}" -o /tmp/ghidra.zip & \
+      curl_pid=$!; \
+      n=0; \
+      while kill -0 "$curl_pid" 2>/dev/null; do \
+        printf '\r  Ghidra 已下载 %s MB（%s 秒）      ' "$( [ -f /tmp/ghidra.zip ] && stat -c %s /tmp/ghidra.zip | awk '{printf "%.2f", $1/1048576}' || echo 0 )" "$n"; \
+        sleep 3; n=$((n+3)); \
+      done; \
+      if wait "$curl_pid"; then break; fi; \
+      echo; \
+      echo "  Ghidra 第 $i 轮中断，已下载 $( [ -f /tmp/ghidra.zip ] && stat -c %s /tmp/ghidra.zip | awk '{printf "%.2f", $1/1048576}' || echo 0 ) MB，续传重试..."; \
       sleep 5; \
     done; \
+    printf '\r  Ghidra 下载完成：%s MB                \n' "$(stat -c %s /tmp/ghidra.zip | awk '{printf "%.2f", $1/1048576}')"; \
     test -s /tmp/ghidra.zip; \
     unzip -q /tmp/ghidra.zip -d /opt; \
     ghidra_dir="$(find /opt -maxdepth 1 -type d -name 'ghidra_*_PUBLIC' | sort | head -n 1)"; \
@@ -123,9 +133,19 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends ca-certificates curl unzip; \
     mkdir -p /opt/jadx; \
     for i in 1 2 3 4 5; do \
-      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${JADX_URL}" -o /tmp/jadx.zip && break; \
+      curl -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 1800 -C - "${GITHUB_MIRROR}${JADX_URL}" -o /tmp/jadx.zip & \
+      curl_pid=$!; \
+      n=0; \
+      while kill -0 "$curl_pid" 2>/dev/null; do \
+        printf '\r  Jadx 已下载 %s MB（%s 秒）      ' "$( [ -f /tmp/jadx.zip ] && stat -c %s /tmp/jadx.zip | awk '{printf "%.2f", $1/1048576}' || echo 0 )" "$n"; \
+        sleep 3; n=$((n+3)); \
+      done; \
+      if wait "$curl_pid"; then break; fi; \
+      echo; \
+      echo "  Jadx 第 $i 轮中断，已下载 $( [ -f /tmp/jadx.zip ] && stat -c %s /tmp/jadx.zip | awk '{printf "%.2f", $1/1048576}' || echo 0 ) MB，续传重试..."; \
       sleep 5; \
     done; \
+    printf '\r  Jadx 下载完成：%s MB                \n' "$(stat -c %s /tmp/jadx.zip | awk '{printf "%.2f", $1/1048576}')"; \
     test -s /tmp/jadx.zip; \
     unzip -q /tmp/jadx.zip -d /opt/jadx; \
     find /opt/jadx -type d \( \

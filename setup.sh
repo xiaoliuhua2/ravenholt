@@ -139,6 +139,55 @@ print("" if node is None else node)
 PYEOF
 }
 
+# 带进度显示的下载：每秒刷新"已下载 XX MB"。输出以 \r 结尾，不刷屏但可见。
+# 静默下载会让用户以为卡死（apt 曾因管道缓冲出现同样问题），故所有大文件下载都走这里。
+fetch_with_progress() {
+  local url="$1" out="$2" label="${3:-下载}"
+  local errfile="/tmp/.rv-fetch-err.$$"
+  rm -f "$out" "$errfile" 2>/dev/null || true
+  # curl 的错误输出送文件：否则它会插进 \r 刷新的进度行，同一行文字互相覆盖
+  curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$url" -o "$out" 2>"$errfile" &
+  local pid=$! n=0 bytes=0
+  while kill -0 "$pid" 2>/dev/null; do
+    # 用字节数换算（保留两位小数）：du -m 只有整数 MB，低速链路会长时间停在 0 MB，看起来仍像卡死
+    bytes="$( [ -f "$out" ] && stat -c %s "$out" 2>/dev/null || echo 0 )"
+    printf "\r  %s：已下载 %s MB（%s 秒）      " "$label" "$(awk -v b="$bytes" 'BEGIN{printf "%.2f", b/1048576}')" "$n"
+    sleep 1
+    n=$((n+1))
+  done
+  wait "$pid"; local rc=$?
+  if [ "$rc" -eq 0 ]; then
+    printf "\r  %s：完成，共 %s MB（用时 %s 秒）%*s\n" "$label" "$(awk -v b="$(stat -c %s "$out" 2>/dev/null || echo 0)" 'BEGIN{printf "%.2f", b/1048576}')" "$n" 16 ""
+  else
+    printf "\r%*s\r" 60 ""
+    warn "$label 下载失败（curl 退出码 $rc）$( [ -s "$errfile" ] && printf -- '— %s' "$(tail -n 1 "$errfile")" )"
+  fi
+  rm -f "$errfile"
+  return "$rc"
+}
+
+# 前台静默任务（npm install / npm run build）加心跳：完整日志落文件，屏幕每 3 秒刷新"进行中 N 秒"。
+# 目的同 fetch_with_progress：长任务静默会让人误判卡死。
+run_with_heartbeat() {
+  local label="$1" logfile="$2"; shift 2
+  local pid t0 elapsed
+  t0="$(date +%s)"
+  "$@" > "$logfile" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    printf "\r  %s 进行中… %s 秒      " "$label" "$(( $(date +%s) - t0 ))"
+    sleep 1
+  done
+  wait "$pid"; local rc=$?
+  elapsed=$(( $(date +%s) - t0 ))
+  if [ "$rc" -eq 0 ]; then
+    printf "\r  %s 完成（用时 %s 秒）%*s\n" "$label" "$elapsed" 16 ""
+  else
+    printf "\r%*s\r" 60 ""
+  fi
+  return "$rc"
+}
+
 # Node.js 是否满足前端构建的最低要求（Vite 8 需 >= 20.19）
 node_ver_ok() {
   have node || return 1
@@ -169,11 +218,10 @@ install_node() {
   local tmp; tmp="$(mktemp -d)" || return 1
   local src="${node_mirror}/${node_version}/${tarball}"
 
-  info "下载 Node.js ${node_version}（${narch}）..."
-  if ! curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$src" -o "$tmp/$tarball"; then
+  if ! fetch_with_progress "$src" "$tmp/$tarball" "Node.js ${node_version}"; then
     info "官方源不可达，改用镜像源"
     src="${fallback_mirror}${node_version}/${tarball}"
-    if ! curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$src" -o "$tmp/$tarball"; then
+    if ! fetch_with_progress "$src" "$tmp/$tarball" "Node.js ${node_version}（镜像源）"; then
       rm -rf "$tmp"
       warn "Node.js 下载失败（网络受限？）—— 可设置 NODE_MIRROR=<可用镜像> 后重跑"
       return 1
@@ -576,10 +624,10 @@ else
   ok "虚拟环境已存在：.venv"
 fi
 PY="$VENV_DIR/bin/python"
-info "pip 安装依赖（阿里云镜像）..."
-"$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip -q 2>&1 | tail -1
-# 注意：这里依赖脚本顶部的 pipefail，管道退出码才能正确反映 pip 是否失败
-if "$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -3; then
+info "pip 安装依赖（阿里云镜像；pip 会逐步打印下载与安装进度）..."
+"$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip -q
+# 不接管道：管道会缓冲到命令结束才显示，下载期间屏幕上看不到进度
+if "$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ -r "$PROJECT_DIR/requirements.txt"; then
   ok "Python 依赖已安装（requirements.txt）"
 else
   fatal "Python 依赖安装失败，请检查网络/镜像后重跑本脚本"
@@ -601,39 +649,41 @@ if [ -d "$PROJECT_DIR/web" ]; then
       info "已链接 web/openapi.json -> openapi.json"
     fi
     if [ ! -d node_modules/openapi-typescript ] || [ ! -d node_modules/vite ]; then
-      info "npm install ..."
-      if ! npm install > "$PROJECT_DIR/web/.npm-install.log" 2>&1; then
-        tail -20 "$PROJECT_DIR/web/.npm-install.log"; rm -f "$PROJECT_DIR/web/.npm-install.log"
-        warn "npm install 失败，跳过前端构建"
+      NPM_LOG="$PROJECT_DIR/web/.npm-install.log"
+      info "npm install（数百个包，心跳表示仍在进行；完整日志写入 .npm-install.log）..."
+      if run_with_heartbeat "npm install" "$NPM_LOG" npm install; then
+        ok "前端依赖已安装"
       else
-        rm -f "$PROJECT_DIR/web/.npm-install.log"; ok "前端依赖已安装"
+        tail -20 "$NPM_LOG"; warn "npm install 失败，跳过前端构建"
       fi
+      rm -f "$NPM_LOG"
     else
       ok "前端依赖已就绪"
     fi
     if [ -d node_modules/vite ]; then
-      info "npm run build（generate:api → tsc → vite build）..."
+      BUILD_LOG="$PROJECT_DIR/web/.build.log"
+      info "npm run build（generate:api → tsc → vite build；心跳表示仍在进行）..."
       BUILD_OK=0
-      if npm run build > "$PROJECT_DIR/web/.build.log" 2>&1; then
+      if run_with_heartbeat "npm run build" "$BUILD_LOG" npm run build; then
         BUILD_OK=1
-        tail -2 "$PROJECT_DIR/web/.build.log"; ok "前端构建完成：web/dist-app"
+        tail -2 "$BUILD_LOG"; ok "前端构建完成：web/dist-app"
       else
         # 已知坑：npm 在空白环境安装时会**静默跳过** optionalDependencies，
         # 而 Vite 8 的 rolldown 依赖平台原生绑定（如 @rolldown/binding-linux-x64-gnu），
         # 缺失时构建报 MODULE_NOT_FOUND。补装可选依赖后重试一次即可自愈。
-        if grep -qE "MODULE_NOT_FOUND|Cannot find module" "$PROJECT_DIR/web/.build.log"; then
+        if grep -qE "MODULE_NOT_FOUND|Cannot find module" "$BUILD_LOG"; then
           info "构建失败疑似缺少可选依赖（原生绑定），补装后重试..."
           npm install --include=optional >/dev/null 2>&1 || true
-          if npm run build > "$PROJECT_DIR/web/.build.log" 2>&1; then
+          if run_with_heartbeat "npm run build（重试）" "$BUILD_LOG" npm run build; then
             BUILD_OK=1
-            tail -2 "$PROJECT_DIR/web/.build.log"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
+            tail -2 "$BUILD_LOG"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
           fi
         fi
       fi
       if [ "$BUILD_OK" -eq 0 ]; then
-        tail -25 "$PROJECT_DIR/web/.build.log"; warn "前端构建失败，请检查上方日志"
+        tail -25 "$BUILD_LOG"; warn "前端构建失败，请检查上方日志"
       fi
-      rm -f "$PROJECT_DIR/web/.build.log"
+      rm -f "$BUILD_LOG"
     fi
     cd "$PROJECT_DIR"
   fi

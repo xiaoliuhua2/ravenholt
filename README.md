@@ -299,6 +299,9 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 
 脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖；`sandbox.image` 已有值时不会被改写。
 
+> [!TIP]
+> **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（`已下载 X.XX MB（N 秒）`，每秒刷新）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，数字长时间不变才是网络或源站问题（见 [11 FAQ](#十一常见问题) 的下载慢条目）。
+
 > [!IMPORTANT]
 > 管理员口令由脚本随机生成，**只在终端打印一次**，请立即保存。
 > 若忘记，删除 `.ravenholt/config.json` 后重跑 `bash setup.sh` 可重新生成（会重建数据库口令，需同步更新数据库角色）。
