@@ -619,12 +619,18 @@ else
   ok "虚拟环境已存在：.venv"
 fi
 PY="$VENV_DIR/bin/python"
-info "pip 安装依赖（阿里云镜像；pip 会逐步打印下载与安装进度）..."
-"$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip -q
-# 不接管道：管道会缓冲到命令结束才显示，下载期间屏幕上看不到进度
-if "$PY" -m pip install -i https://mirrors.aliyun.com/pypi/simple/ -r "$PROJECT_DIR/requirements.txt"; then
+# 输出精简：pip 会把每个已满足的依赖都打印一行 "Requirement already satisfied: ..."（几十行、
+# 没有信息量），因此成功路径改为 -q 静默 + 心跳，只有失败时才把完整日志打印出来。
+info "pip 安装依赖（阿里云镜像；成功只打印一行，失败会打印完整日志）..."
+"$PY" -m pip install -q --no-input -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip || true
+PIP_LOG="$PROJECT_DIR/.pip-install.log"
+if run_with_heartbeat "pip install" "$PIP_LOG" \
+     "$PY" -m pip install -q --no-input -i https://mirrors.aliyun.com/pypi/simple/ -r "$PROJECT_DIR/requirements.txt"; then
+  rm -f "$PIP_LOG"
   ok "Python 依赖已安装（requirements.txt）"
 else
+  warn "Python 依赖安装失败，完整输出如下："
+  cat "$PIP_LOG"
   fatal "Python 依赖安装失败，请检查网络/镜像后重跑本脚本"
 fi
 

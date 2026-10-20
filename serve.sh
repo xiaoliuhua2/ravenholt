@@ -89,17 +89,21 @@ ensure_venv() {
   if [ -x "$VENV_DIR/bin/python" ]; then
     return 0
   fi
-  info "  未找到虚拟环境，正在创建并安装依赖（首次可能较慢）..."
+  info "  未找到虚拟环境，正在创建并安装依赖（首次会下载若干 MB；成功只打印一行，失败会打印完整日志）..."
   if ! python3 -m venv "$VENV_DIR"; then
     fail "  创建虚拟环境失败（请确认已安装 python3-venv）"
     return 1
   fi
-  "$VENV_DIR/bin/pip" install -i "$PIP_INDEX" --upgrade pip -q 2>&1 | tail -1
-  if "$VENV_DIR/bin/pip" install -i "$PIP_INDEX" -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -3; then
+  # -q 静默：避免把几十行 "Requirement already satisfied: ..." 刷到屏幕上；失败时再打印完整日志
+  "$VENV_DIR/bin/pip" install -q --no-input -i "$PIP_INDEX" --upgrade pip || true
+  if "$VENV_DIR/bin/pip" install -q --no-input -i "$PIP_INDEX" -r "$PROJECT_DIR/requirements.txt" > "$LOG_DIR/pip.log" 2>&1; then
+    rm -f "$LOG_DIR/pip.log"
     info "  依赖安装完成"
     return 0
   fi
-  fail "  依赖安装失败，请检查网络/镜像后重试"
+  fail "  依赖安装失败，完整输出如下："
+  cat "$LOG_DIR/pip.log" >&2
+  fail "  （可换源后重试，例如：pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/）"
   return 1
 }
 
