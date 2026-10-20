@@ -212,9 +212,10 @@ install_docker() {
     APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get)
   fi
 
-  info "apt 安装 docker.io ..."
-  if ! "${APT[@]}" install -y docker.io 2>&1 | tail -3; then
-    warn "Docker 安装未完成 —— 请手动执行：sudo apt install -y docker.io"
+  info "apt 安装 docker.io（含 containerd/runc/iptables 等依赖，视网络需下载数十至百余 MB）..."
+  info "apt 的 Get/Setting up 行即为进展；若长时间没有新行，请看提示：换 Kali 镜像源，或等其它 apt 进程释放锁"
+  if ! "${APT[@]}" install -y docker.io; then
+    warn "Docker 安装未完成 —— 请手动执行：sudo apt install -y docker.io（或换镜像源后重试）"
     return 1
   fi
   # compose：v2 插件包与 v1 独立包在不同发行版上包名不同，两者都试一次
@@ -352,7 +353,8 @@ if [ -n "${PKGS// /}" ]; then
     else
       APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get)
     fi
-    if "${APT[@]}" update -qq && "${APT[@]}" install -y $PKGS 2>&1 | tail -5; then
+    # 不把 apt 输出接进管道：管道会缓冲全部输出，下载期间屏幕上看不到任何进展
+    if "${APT[@]}" update -qq && "${APT[@]}" install -y $PKGS; then
       ok "系统依赖已安装"
     else
       warn "apt 安装未完成，请手动执行：sudo apt install -y $PKGS"
