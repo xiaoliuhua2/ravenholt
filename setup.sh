@@ -7,8 +7,10 @@
 #
 # 适用环境：Linux x64（推荐 Kali / Debian）
 # 用法：
-#   bash setup.sh                 # 检测 + 安装 + 部署
+#   bash setup.sh                 # 检测 + 安装 + 部署（缺 Node.js / Docker 会自动装）
 #   bash setup.sh --check         # 仅环境检测，不改动任何文件
+#   bash setup.sh --deps-only     # 只装系统依赖（Node.js / Docker 等）后退出
+#   bash setup.sh --no-deps       # 跳过系统依赖与 Node.js / Docker 的自动安装
 #   bash setup.sh --with-sandbox  # 额外自动构建沙箱镜像（下载量大、耗时长）
 #
 # 说明：本脚本只针对 ravenholt 当前结构；幂等，已存在的配置不会被覆盖。
@@ -34,23 +36,31 @@ Ravenholt 一键部署脚本
 适用环境：Linux x64（推荐 Kali / Debian）
 
 用法：
-  bash setup.sh                 检测 + 安装 + 部署
+  bash setup.sh                 检测 + 安装 + 部署（缺 Node.js / Docker 会自动安装）
   bash setup.sh --check         仅环境检测，不改动任何文件
+  bash setup.sh --deps-only     只装系统依赖（Node.js / Docker 等）后退出，便于分步执行
+  bash setup.sh --no-deps       跳过系统依赖与 Node.js / Docker 的自动安装
   bash setup.sh --with-sandbox  额外自动构建沙箱镜像（下载量大、耗时长）
   bash setup.sh -h | --help     显示本帮助
 
 说明：更新替代，已存在的 .ravenholt/config.json、policy.yaml 不会被覆盖。
+      Node.js 走官方二进制（可设 NODE_MIRROR / NODE_VERSION 覆盖源与版本）；
+      Docker 走发行版包 docker.io 并自动启动守护进程。
 EOF
 }
 
 CHECK_ONLY=0
 WITH_SANDBOX=0
+DEPS_ONLY=0
+NO_DEPS=0
 for arg in "$@"; do
   case "$arg" in
     --check|-c)      CHECK_ONLY=1 ;;
+    --deps-only)     DEPS_ONLY=1 ;;
+    --no-deps)       NO_DEPS=1 ;;
     --with-sandbox)  WITH_SANDBOX=1 ;;
     -h|--help)       usage; exit 0 ;;
-    *) printf "未知参数: %s（可用: --check / --with-sandbox / --help）\n" "$arg"; exit 2 ;;
+    *) printf "未知参数: %s（可用: --check / --deps-only / --no-deps / --with-sandbox / --help）\n" "$arg"; exit 2 ;;
   esac
 done
 
@@ -129,6 +139,95 @@ print("" if node is None else node)
 PYEOF
 }
 
+# Node.js 是否满足前端构建的最低要求（Vite 8 需 >= 20.19）
+node_ver_ok() {
+  have node || return 1
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit((a>20)||(a===20&&b>=19)?0:1)' 2>/dev/null
+}
+
+# 安装 Node.js：下载官方二进制解压到 /usr/local。
+# 不依赖发行版仓库版本（Debian 12 的 nodejs 只有 18），也不引入 nodesource 第三方源。
+# 官方源不可达时自动回退清华镜像；可用 NODE_MIRROR / NODE_VERSION 覆盖。
+install_node() {
+  local node_version="${NODE_VERSION:-v22.11.0}"
+  local node_mirror="${NODE_MIRROR:-https://nodejs.org/dist}"
+  local fallback_mirror="https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/"
+  local narch
+  case "$(uname -m)" in
+    x86_64|amd64)  narch=linux-x64 ;;
+    aarch64|arm64) narch=linux-arm64 ;;
+    *) warn "架构 $(uname -m) 无官方 Node 二进制，请手动安装 Node.js >= 20.19"; return 1 ;;
+  esac
+
+  if ! can_root; then
+    warn "无 root/sudo，无法自动安装 Node.js —— 请手动安装 >= 20.19 后重跑本脚本"
+    info "参考：${node_mirror}/${node_version}/node-${node_version}-${narch}.tar.xz"
+    return 1
+  fi
+
+  local tarball="node-${node_version}-${narch}.tar.xz"
+  local tmp; tmp="$(mktemp -d)" || return 1
+  local src="${node_mirror}/${node_version}/${tarball}"
+
+  info "下载 Node.js ${node_version}（${narch}）..."
+  if ! curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$src" -o "$tmp/$tarball"; then
+    info "官方源不可达，改用镜像源"
+    src="${fallback_mirror}${node_version}/${tarball}"
+    if ! curl -fsSL --retry 2 --retry-all-errors --connect-timeout 20 --max-time 600 "$src" -o "$tmp/$tarball"; then
+      rm -rf "$tmp"
+      warn "Node.js 下载失败（网络受限？）—— 可设置 NODE_MIRROR=<可用镜像> 后重跑"
+      return 1
+    fi
+  fi
+
+  if ! tar -xJf "$tmp/$tarball" -C "$tmp" >/dev/null 2>&1; then
+    rm -rf "$tmp"
+    warn "Node.js 解压失败 —— 缺少 xz 支持？可先 apt install -y xz-utils 后重跑"
+    return 1
+  fi
+
+  # 官方包结构固定为 node-<ver>-<arch>/{bin,lib,include,share}；cp -a 保留 bin/npm 等符号链接
+  if [ "$(id -u)" -eq 0 ]; then
+    cp -a "$tmp/node-${node_version}-${narch}/." /usr/local/
+  else
+    sudo cp -a "$tmp/node-${node_version}-${narch}/." /usr/local/
+  fi
+  rm -rf "$tmp"
+  hash -r
+  return 0
+}
+
+# 安装并启动 Docker（Kali / Debian 的包名均为 docker.io）。
+# 守护进程启动失败只告警不中断：平台与渗透会话在无 Docker 时仍可运行（沙箱功能受限）。
+install_docker() {
+  if ! can_root; then
+    warn "无 root/sudo，无法自动安装 Docker —— 请手动安装后重跑本脚本"
+    info "参考：sudo apt install -y docker.io && sudo systemctl enable --now docker"
+    return 1
+  fi
+  local APT
+  if [ "$(id -u)" -eq 0 ]; then
+    APT=(env DEBIAN_FRONTEND=noninteractive apt-get)
+  else
+    APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get)
+  fi
+
+  info "apt 安装 docker.io ..."
+  if ! "${APT[@]}" install -y docker.io 2>&1 | tail -3; then
+    warn "Docker 安装未完成 —— 请手动执行：sudo apt install -y docker.io"
+    return 1
+  fi
+  # compose：v2 插件包与 v1 独立包在不同发行版上包名不同，两者都试一次
+  if ! have docker-compose; then
+    "${APT[@]}" install -y docker-compose-v2 >/dev/null 2>&1 \
+      || "${APT[@]}" install -y docker-compose >/dev/null 2>&1 || true
+  fi
+  # 启动守护进程；无 systemd 的环境（容器内）回退到 service
+  systemctl enable --now docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1 || true
+  sleep 3
+  docker info >/dev/null 2>&1
+}
+
 printf "========================================\n"
 printf "  Ravenholt 一键部署\n"
 printf "========================================\n"
@@ -166,16 +265,14 @@ fi
 # 1.4 Node（Vite 8 要求 >= 20.19）
 if have node; then
   NODEV="$(node -v 2>/dev/null)"
-  if node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit((a>20)||(a===20&&b>=19)?0:1)' 2>/dev/null; then
+  if node_ver_ok; then
     ok "Node.js: $NODEV"
   else
-    warn "Node.js: $NODEV —— 前端构建需要 >= 20.19（推荐 22+）"
-    info "升级：curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs"
+    warn "Node.js: $NODEV —— 前端构建需要 >= 20.19，第 2 段将自动升级到 22（官方二进制）"
   fi
-  have npm && ok "npm: $(npm -v 2>/dev/null)" || warn "npm 未找到（通常随 nodejs 一起安装）"
+  have npm && ok "npm: $(npm -v 2>/dev/null)" || warn "npm 未找到（随 Node.js 一起安装，第 2 段会补齐）"
 else
-  warn "Node.js 未安装 —— 前端无法构建；建议用 nodesource 安装 22+："
-  info "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs"
+  warn "Node.js 未安装 —— 第 2 段将自动安装（官方二进制 22.x，满足前端构建要求）"
 fi
 
 # 1.5 Docker（渗透沙箱运行时；缺失则功能受限）
@@ -184,12 +281,11 @@ if have docker; then
   if docker compose version >/dev/null 2>&1 || have docker-compose; then
     ok "Docker Compose 可用"
   else
-    warn "Docker Compose 未找到（docker-compose.prod.yml 需要）"
+    warn "Docker Compose 未找到（docker-compose.prod.yml 需要）—— 第 2 段将尝试安装"
   fi
-  docker info >/dev/null 2>&1 || warn "Docker 守护进程未运行（systemctl start docker）"
+  docker info >/dev/null 2>&1 || warn "Docker 守护进程未运行 —— 第 2 段将尝试启动"
 else
-  warn "Docker 未安装 —— 渗透/代码审计沙箱功能将不可用"
-  info "安装：sudo apt install -y docker.io && sudo systemctl enable --now docker"
+  warn "Docker 未安装 —— 第 2 段将自动安装 docker.io 并启动守护进程"
 fi
 
 # 1.6 PostgreSQL
@@ -266,6 +362,38 @@ else
   ok "系统依赖已就绪"
 fi
 
+# ---- Node.js（前端构建；缺失或版本过低则自动安装）----
+if [ "$NO_DEPS" -eq 1 ]; then
+  info "已指定 --no-deps，跳过 Node.js 自动安装"
+elif node_ver_ok; then
+  ok "Node.js 已就绪：$(node -v)（npm $(npm -v 2>/dev/null || echo '?')）"
+elif install_node && node_ver_ok; then
+  hash -r
+  ok "Node.js 已安装：$(node -v)（npm $(npm -v 2>/dev/null || echo '?')）"
+else
+  warn "Node.js 不可用 —— 第 6 段将跳过前端构建（后端与平台仍可运行）"
+fi
+
+# ---- Docker（渗透/审计沙箱运行时；缺失则自动安装并启动）----
+if [ "$NO_DEPS" -eq 1 ]; then
+  info "已指定 --no-deps，跳过 Docker 自动安装"
+elif have docker && docker info >/dev/null 2>&1; then
+  ok "Docker 已就绪"
+elif have docker; then
+  info "Docker 已安装但守护进程未运行 —— 尝试启动"
+  if [ "$(id -u)" -eq 0 ]; then
+    systemctl enable --now docker >/dev/null 2>&1 || service docker start >/dev/null 2>&1 || true
+  else
+    sudo systemctl enable --now docker >/dev/null 2>&1 || sudo service docker start >/dev/null 2>&1 || true
+  fi
+  sleep 3
+  if docker info >/dev/null 2>&1; then ok "Docker 守护进程已启动"; else warn "Docker 守护进程未能启动 —— 沙箱功能不可用"; fi
+elif install_docker; then
+  ok "Docker 已安装并启动：$(docker --version 2>/dev/null | sed 's/^Docker version //;s/,.*//')"
+else
+  warn "Docker 未就绪 —— 渗透沙箱不可用；平台仍可启动（稍后装好 Docker 再重跑本脚本即可）"
+fi
+
 # ---- 硬性依赖复检（安装之后再判定，避免"缺 Python 直接退出、装都不装"）----
 HARD_MISS=0
 if ! have python3; then
@@ -280,6 +408,20 @@ else
 fi
 if [ "$HARD_MISS" -ne 0 ]; then
   fatal "硬性依赖未满足，请按上面的提示处理后重跑：bash setup.sh"
+fi
+
+# 分步执行出口：只装环境，后续构建/部署由用户自行决定时机
+if [ "$DEPS_ONLY" -eq 1 ]; then
+  printf "\n${C_BLU}══ 系统依赖安装完成（--deps-only）${C_NC}\n"
+  printf "  Node.js: %s | Docker: %s\n" \
+    "$(node -v 2>/dev/null || echo '不可用')" \
+    "$(have docker && docker info >/dev/null 2>&1 && echo '可用' || echo '不可用')"
+  printf "  后续可分别执行：\n"
+  printf "    · 完整部署（配置 / 数据库 / 依赖 / 前端）： bash setup.sh\n"
+  printf "    · 仅构建前端： cd web && npm install && npm run build\n"
+  printf "    · 仅构建沙箱镜像： cd sandbox && bash build.sh\n"
+  printf "    · 启动平台： bash serve.sh start\n"
+  exit 0
 fi
 
 # ============================================================
@@ -445,6 +587,7 @@ fi
 # 6. 前端构建
 # ============================================================
 step "6/8 构建前端"
+hash -r   # 第 2 段可能刚装好 Node.js，清掉 shell 的命令路径缓存
 if [ -d "$PROJECT_DIR/web" ]; then
   if ! have node; then
     warn "未安装 Node.js，跳过前端构建（后端仍可跑，但界面缺失）"
@@ -468,9 +611,24 @@ if [ -d "$PROJECT_DIR/web" ]; then
     fi
     if [ -d node_modules/vite ]; then
       info "npm run build（generate:api → tsc → vite build）..."
+      BUILD_OK=0
       if npm run build > "$PROJECT_DIR/web/.build.log" 2>&1; then
+        BUILD_OK=1
         tail -2 "$PROJECT_DIR/web/.build.log"; ok "前端构建完成：web/dist-app"
       else
+        # 已知坑：npm 在空白环境安装时会**静默跳过** optionalDependencies，
+        # 而 Vite 8 的 rolldown 依赖平台原生绑定（如 @rolldown/binding-linux-x64-gnu），
+        # 缺失时构建报 MODULE_NOT_FOUND。补装可选依赖后重试一次即可自愈。
+        if grep -qE "MODULE_NOT_FOUND|Cannot find module" "$PROJECT_DIR/web/.build.log"; then
+          info "构建失败疑似缺少可选依赖（原生绑定），补装后重试..."
+          npm install --include=optional >/dev/null 2>&1 || true
+          if npm run build > "$PROJECT_DIR/web/.build.log" 2>&1; then
+            BUILD_OK=1
+            tail -2 "$PROJECT_DIR/web/.build.log"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
+          fi
+        fi
+      fi
+      if [ "$BUILD_OK" -eq 0 ]; then
         tail -25 "$PROJECT_DIR/web/.build.log"; warn "前端构建失败，请检查上方日志"
       fi
       rm -f "$PROJECT_DIR/web/.build.log"

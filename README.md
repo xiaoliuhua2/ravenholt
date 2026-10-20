@@ -214,7 +214,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | **Docker** | 24+，daemon 已运行 | 沙箱执行面（会话中的命令执行、Caido 抓包） | 只能使用控制面，无法做渗透 |
 | **一体化沙箱镜像** | `sandbox-runtime:latest`（构建约 5 GB+） | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser、容器控制台、egress 运行时刷新、技能资源 | 会话仍可用上游镜像跑渗透，但缺上述定制工具与控制台 |
 | **上游沙箱镜像** | `ghcr.io/usestrix/strix-sandbox:1.3.0`（约 4 GB） | Caido + Kali 工具链 | 首次会话会自动拉取；离线环境需预拉 |
-| **Node.js** | ≥ 20.19（推荐 22） | **构建前端（源码部署必需）**：仓库不含 `web/dist-app`，须 `npm install && npm run build` 生成 | 不装则控制台页面无法加载（Docker/Compose 部署由镜像内构建阶段完成，不需要宿主 Node） |
+| **Node.js** | ≥ 20.19（推荐 22） | **构建前端（源码部署必需）**：仓库不含 `web/dist-app`，须 `npm install && npm run build` 生成 | 不装则控制台页面无法加载；但不必手工处理——`setup.sh` 会**自动安装**（官方二进制 22.x 解压到 `/usr/local`）；Docker/Compose 部署由镜像内构建阶段完成，不需要宿主 Node |
 | **Docker Compose** | v2 | Compose 部署方式 | 只用 `serve.sh` 则无影响 |
 | **SearXNG 容器** | `searxng/searxng:latest`（约 265 MB） | 零配置联网检索 | 平台会自动拉起；离线环境需改配 Exa/Perplexity Key |
 | **macvlan 支持** | 宿主网卡允许 L2 多 MAC | 目标主动回连（OOB 外带 / 反弹 shell 收口） | 自动回退 bridge，OOB 走容器内 interactsh |
@@ -222,7 +222,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 
 ### 4.3 系统包清单
 
-一键脚本（`setup.sh`）会自动安装下列 Debian/Kali 包；手动部署请照此安装。
+一键脚本（`setup.sh`）会自动安装下列内容；手动部署请照此安装。其中 **Node.js 走官方二进制**（解压到 `/usr/local`，避开发行版仓库的老版本）、**Docker 走发行版包并自动启动守护进程**。
 
 | 用途 | 包 |
 | --- | --- |
@@ -230,7 +230,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | 数据库 | `postgresql`、`postgresql-client` |
 | 基础工具 | `curl`、`openssl`、`ca-certificates`、`git` |
 | 沙箱运行时 | `docker.io`（+ `systemctl enable --now docker`） |
-| 前端构建（可选） | `nodejs`（≥ 20.19，推荐 nodesource 的 22.x） |
+| 前端构建 | Node.js 22.x 官方二进制（脚本自动下载到 `/usr/local`；可用 `NODE_MIRROR` / `NODE_VERSION` 覆盖源与版本） |
 
 > 一体化沙箱镜像所需的系统包（apktool、binwalk、7zip、make、sqlite3、openjdk-21-jdk-headless、xvfb、x11vnc、novnc、websockify、tor、supervisor 等）在 `sandbox/Dockerfile` 里声明，由 `docker build` 自动安装，**不需要**在宿主上安装。
 
@@ -278,6 +278,10 @@ bash setup.sh --check
 #    → 装 Python 依赖 → 构建前端 → 构建一体化沙箱镜像 → 自检
 #    （--with-sandbox 会额外构建 sandbox-runtime:latest，即完整功能所需）
 bash setup.sh --with-sandbox
+
+# 3) 只想先把运行环境备好（自动装 Node.js / Docker），其余步骤稍后再做：
+bash setup.sh --deps-only     # 装完系统依赖即退出
+bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / Docker
 ```
 
 脚本共 8 段，逐段打印结果：
@@ -285,11 +289,11 @@ bash setup.sh --with-sandbox
 | 段 | 内容 |
 | --- | --- |
 | 1/8 环境检测 | 系统/架构/Python/Node/Docker/PostgreSQL/权限/端口/磁盘，逐项给出结论与修复命令 |
-| 2/8 系统依赖 | 缺什么装什么（apt），装完复检 Python/venv 等硬性依赖 |
+| 2/8 系统依赖 | 缺什么装什么（apt）；**并自动安装 Node.js（官方二进制 22.x）与 Docker（安装 + 启动守护进程）**，装完复检 Python/venv 等硬性依赖 |
 | 3/8 配置初始化 | 生成 `.ravenholt/config.json`（随机 `encrypt_key`、数据库口令、管理员口令）与 **`policy.yaml`** |
 | 4/8 PostgreSQL | 启动服务、建角色与数据库，口令与 config.json 对齐 |
 | 5/8 Python 依赖 | 建 `.venv` 并 `pip install -r requirements.txt` |
-| 6/8 前端构建 | `web/` 下 `npm install` + `npm run build`，产出 `web/dist-app` |
+| 6/8 前端构建 | `web/` 下 `npm install` + `npm run build`，产出 `web/dist-app`；若因缺少可选原生依赖（Vite 8 的 rolldown 平台绑定）失败，**自动补装并重试一次** |
 | 7/8 沙箱镜像 | 检测上游镜像是否已拉取；未构建一体化镜像时按 `--with-sandbox` 构建，**构建成功会自动把 `sandbox.image` 写入 config.json** |
 | 8/8 安装后自检 | 语法编译、config/policy 加载、`create_app` 装配冒烟 |
 
@@ -313,9 +317,12 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip \
                     postgresql postgresql-client \
                     curl openssl ca-certificates git
-# Node.js（仅重新构建前端时需要；Debian/Kali 自带版本可能过旧）
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
+# Node.js（构建前端需要；以下二选一，方式 A 与 setup.sh 的做法一致）
+# 方式 A：官方二进制解压到 /usr/local（避开发行版仓库的老版本）
+curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz \
+  | sudo tar -xJ -C /usr/local --strip-components=1
+# 方式 B：用 nodesource 的源
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 # Docker（完整功能必需）
 sudo apt install -y docker.io && sudo systemctl enable --now docker
 ```
@@ -356,6 +363,8 @@ pip install -r requirements.txt
 
 ```bash
 cd web && npm install && npm run build && cd ..
+# 若构建报 MODULE_NOT_FOUND（缺 rolldown 平台原生绑定等可选依赖）：
+#   npm install --include=optional && npm run build
 ```
 
 > **源码部署下本步必做**：`web/dist-app` 是构建产物、不入库；不构建则 API 能通但控制台页面加载不出来（空白 / 404）。用 Docker / Compose 部署时由镜像构建阶段生成，**不需要宿主装 Node**。
@@ -727,7 +736,7 @@ A：`config.json` 改动需重启（`bash serve.sh restart`），且 `sandbox.im
 A：前端产物 `web/dist-app` **不入库**，源码部署必须先构建一次：`cd web && npm install && npm run build`（Node ≥ 20.19）。用 Docker / Compose 部署时由镜像构建阶段自动生成，无需本步。
 
 **Q：`npm run build` 失败？**
-A：检查 Node 版本（需 ≥ 20.19）与 `web/node_modules` 是否残缺；删除 `web/node_modules` 后重跑 `npm install`。
+A：多数是 Node 版本（需 ≥ 20.19），或**可选原生绑定缺失** —— Vite 8 的 rolldown 需要平台绑定（如 `@rolldown/binding-linux-x64-gnu`），npm 在全新安装时可能静默跳过可选依赖，表现为 `MODULE_NOT_FOUND`。修复：`cd web && npm install --include=optional && npm run build`（`setup.sh` 已自动做这件事并重试一次）。仍失败再删 `web/node_modules` 重装。
 
 **Q：页面还是旧内容？**
 A：landing 等页面是**构建期固化**的 —— 改源码后必须重新 `cd web && npm run build`，再硬刷新浏览器（Ctrl+F5）。

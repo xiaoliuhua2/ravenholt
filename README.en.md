@@ -222,7 +222,7 @@ Capability comparison:
 
 ### 4.3 System Packages
 
-`setup.sh` installs the following Debian/Kali packages automatically; install them manually for a hand-rolled deployment.
+`setup.sh` installs the following automatically; install them manually for a hand-rolled deployment. Note **Node.js comes from the official binary** (extracted into `/usr/local`, avoiding the distro's older build) and **Docker comes from the distro package and has its daemon started automatically**.
 
 | Purpose | Packages |
 | --- | --- |
@@ -230,7 +230,7 @@ Capability comparison:
 | Database | `postgresql`, `postgresql-client` |
 | Basics | `curl`, `openssl`, `ca-certificates`, `git` |
 | Sandbox runtime | `docker.io` (plus `systemctl enable --now docker`) |
-| Frontend build (required for source deployments) | `nodejs` (≥ 20.19; nodesource 22.x recommended) |
+| Frontend build | Node.js 22.x, official binary (the script downloads it into `/usr/local`; override the source/version with `NODE_MIRROR` / `NODE_VERSION`) |
 
 > The system packages the all-in-one sandbox image needs (apktool, binwalk, 7zip, make, sqlite3, openjdk-21-jdk-headless, xvfb, x11vnc, novnc, websockify, tor, supervisor, ...) are declared in `sandbox/Dockerfile` and installed by `docker build` — they do **not** need to be installed on the host.
 
@@ -278,6 +278,10 @@ bash setup.sh --check
 #    -> Python deps -> frontend build -> all-in-one sandbox image -> self-check
 #    (--with-sandbox also builds sandbox-runtime:latest, required for the full set)
 bash setup.sh --with-sandbox
+
+# 3) Just prepare the runtime (installs Node.js / Docker) and do the rest later:
+bash setup.sh --deps-only     # installs system deps, then exits
+bash setup.sh --no-deps       # the opposite: skip system deps and Node.js / Docker
 ```
 
 The script runs 8 stages and prints results per stage:
@@ -285,11 +289,11 @@ The script runs 8 stages and prints results per stage:
 | Stage | Content |
 | --- | --- |
 | 1/8 Env check | OS/arch/Python/Node/Docker/PostgreSQL/permissions/ports/disk, each with a verdict and a fix command |
-| 2/8 System deps | Installs what's missing (apt), then re-checks hard requirements such as Python/venv |
+| 2/8 System deps | Installs what's missing (apt); **also installs Node.js (official binary 22.x) and Docker (installs it and starts the daemon)**, then re-checks hard requirements such as Python/venv |
 | 3/8 Config init | Generates `.ravenholt/config.json` (random `encrypt_key`, DB password, admin password) and **`policy.yaml`** |
 | 4/8 PostgreSQL | Starts the service, creates role and database, with credentials aligned to config.json |
 | 5/8 Python deps | Creates `.venv` and runs `pip install -r requirements.txt` |
-| 6/8 Frontend build | `npm install` + `npm run build` under `web/`, producing `web/dist-app` |
+| 6/8 Frontend build | `npm install` + `npm run build` under `web/`, producing `web/dist-app`; if it fails on a missing optional native binding (Vite 8's rolldown platform binding), it **re-installs optionals and retries once** |
 | 7/8 Sandbox image | Checks whether the upstream image has been pulled; builds the all-in-one image with `--with-sandbox` and **writes `sandbox.image` into config.json on success** |
 | 8/8 Post-install self-check | Syntax compile, config/policy loading, `create_app` assembly smoke test |
 
@@ -313,9 +317,12 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip \
                     postgresql postgresql-client \
                     curl openssl ca-certificates git
-# Node.js (only needed to rebuild the frontend; Debian/Kali's bundled version may be too old)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
+# Node.js (needed to build the frontend; pick either route — route A matches what setup.sh does)
+# Route A: official binary into /usr/local (avoids the distro's older build)
+curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz \
+  | sudo tar -xJ -C /usr/local --strip-components=1
+# Route B: the nodesource repo
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 # Docker (required for the full feature set)
 sudo apt install -y docker.io && sudo systemctl enable --now docker
 ```
@@ -356,6 +363,8 @@ pip install -r requirements.txt
 
 ```bash
 cd web && npm install && npm run build && cd ..
+# If the build reports MODULE_NOT_FOUND (missing optional native bindings such as
+# rolldown's platform binding): npm install --include=optional && npm run build
 ```
 
 > **Required for source deployments**: `web/dist-app` is build output and is not committed; without it the API works but console pages fail to load (blank / 404). Docker / Compose deployments build it inside the image — no host Node.js needed.
@@ -727,7 +736,7 @@ A: `config.json` changes need a restart (`bash serve.sh restart`), and `sandbox.
 A: The frontend output `web/dist-app` is **not committed**, so source deployments must build it first: `cd web && npm install && npm run build` (Node ≥ 20.19). Docker / Compose deployments generate it during the image build.
 
 **Q: `npm run build` fails?**
-A: Check the Node version (≥ 20.19) and whether `web/node_modules` is incomplete; delete `web/node_modules` and re-run `npm install`.
+A: Most often the Node version (< 20.19), or a **missing optional native binding** — Vite 8's rolldown needs its platform binding (e.g. `@rolldown/binding-linux-x64-gnu`), and npm can silently skip optional dependencies on a fresh install, which shows up as `MODULE_NOT_FOUND`. Fix: `cd web && npm install --include=optional && npm run build` (setup.sh does this automatically and retries once). As a last resort, delete `web/node_modules` and reinstall.
 
 **Q: The page still shows old content?**
 A: Pages such as the landing page are **frozen at build time** — after changing sources you must re-run `cd web && npm run build` and hard-refresh the browser (Ctrl+F5).
