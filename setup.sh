@@ -651,7 +651,9 @@ if [ -d "$PROJECT_DIR/web" ]; then
     if [ ! -d node_modules/openapi-typescript ] || [ ! -d node_modules/vite ]; then
       NPM_LOG="$PROJECT_DIR/web/.npm-install.log"
       info "npm install（数百个包，心跳表示仍在进行；完整日志写入 .npm-install.log）..."
-      if run_with_heartbeat "npm install" "$NPM_LOG" npm install; then
+      # 主安装就带上 --include=optional：npm 在空白环境会**静默跳过** optionalDependencies，
+      # 而 Vite 8 的 rolldown 依赖平台原生绑定（@rolldown/binding-<plat>），缺了必然构建失败。
+      if run_with_heartbeat "npm install" "$NPM_LOG" npm install --include=optional; then
         ok "前端依赖已安装"
       else
         tail -20 "$NPM_LOG"; warn "npm install 失败，跳过前端构建"
@@ -662,28 +664,52 @@ if [ -d "$PROJECT_DIR/web" ]; then
     fi
     if [ -d node_modules/vite ]; then
       BUILD_LOG="$PROJECT_DIR/web/.build.log"
+      FIX_LOG="$PROJECT_DIR/web/.npm-fix.log"
       info "npm run build（generate:api → tsc → vite build；心跳表示仍在进行）..."
       BUILD_OK=0
+      BIND_PLAT=""
       if run_with_heartbeat "npm run build" "$BUILD_LOG" npm run build; then
         BUILD_OK=1
         tail -2 "$BUILD_LOG"; ok "前端构建完成：web/dist-app"
-      else
-        # 已知坑：npm 在空白环境安装时会**静默跳过** optionalDependencies，
-        # 而 Vite 8 的 rolldown 依赖平台原生绑定（如 @rolldown/binding-linux-x64-gnu），
-        # 缺失时构建报 MODULE_NOT_FOUND。补装可选依赖后重试一次即可自愈。
-        if grep -qE "MODULE_NOT_FOUND|Cannot find module" "$BUILD_LOG"; then
-          info "构建失败疑似缺少可选依赖（原生绑定），补装后重试..."
-          npm install --include=optional >/dev/null 2>&1 || true
-          if run_with_heartbeat "npm run build（重试）" "$BUILD_LOG" npm run build; then
-            BUILD_OK=1
-            tail -2 "$BUILD_LOG"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
+      elif grep -qE "MODULE_NOT_FOUND|Cannot find module" "$BUILD_LOG"; then
+        # 自愈第 ① 步：npm install --include=optional。
+        # 实测（Kali + rolldown 1.0.2）：这一步**往往补不回** —— package-lock 里该 optional
+        # 条目已存在，npm 认为无需处理，于是依旧缺 .node；真正生效的是第 ② 步。
+        info "构建失败疑似缺少可选依赖（原生绑定），补装后重试..."
+        run_with_heartbeat "npm install --include=optional" "$FIX_LOG" npm install --include=optional || true
+        if run_with_heartbeat "npm run build（重试）" "$BUILD_LOG" npm run build; then
+          BUILD_OK=1
+          tail -2 "$BUILD_LOG"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
+        else
+          # 自愈第 ② 步：从报错里解析缺失的绑定名，按 rolldown 的实际版本显式安装该平台包。
+          # 显式安装会把下载/报错原样打印出来；不像 npm 对 optional 依赖那样一声不吭地跳过。
+          BIND_PLAT="$(sed -n 's/.*rolldown-binding\.\([A-Za-z0-9_-]*\)\.node.*/\1/p' "$BUILD_LOG" | head -n 1)"
+          RD_VER="$(node -p "try{require('rolldown/package.json').version}catch(e){''}" 2>/dev/null)"
+          if [ -n "$BIND_PLAT" ] && [ -n "$RD_VER" ]; then
+            info "缺少 $BIND_PLAT 原生绑定，按 rolldown $RD_VER 显式安装 @rolldown/binding-$BIND_PLAT ..."
+            if run_with_heartbeat "npm install @rolldown/binding-$BIND_PLAT@$RD_VER" "$FIX_LOG" \
+                 npm install --no-save --prefer-offline "@rolldown/binding-$BIND_PLAT@$RD_VER"; then
+              info "绑定包安装结果：$(tail -n 1 "$FIX_LOG")"
+              if run_with_heartbeat "npm run build（补装绑定后重试）" "$BUILD_LOG" npm run build; then
+                BUILD_OK=1
+                tail -2 "$BUILD_LOG"; ok "前端构建完成（显式安装原生绑定后成功）：web/dist-app"
+              fi
+            else
+              printf "\r%*s\r" 60 ""
+              tail -15 "$FIX_LOG"
+            fi
+          else
+            warn "未能从日志解析缺失绑定名（或 rolldown 未安装），跳过显式补装"
           fi
         fi
       fi
       if [ "$BUILD_OK" -eq 0 ]; then
-        tail -25 "$BUILD_LOG"; warn "前端构建失败，请检查上方日志"
+        tail -25 "$BUILD_LOG"
+        warn "前端构建失败，请检查上方日志"
+        info "处置：① 换 npm 源后重跑： npm config set registry https://registry.npmmirror.com"
+        info "      ② 手工补装绑定： cd web && npm install @rolldown/binding-${BIND_PLAT:-linux-x64-gnu} 再 npm run build"
       fi
-      rm -f "$BUILD_LOG"
+      rm -f "$BUILD_LOG" "$FIX_LOG"
     fi
     cd "$PROJECT_DIR"
   fi
@@ -726,6 +752,10 @@ else
       pin_sandbox_image "sandbox-runtime:latest"
     else
       warn "一体化沙箱镜像构建失败，会话将继续沿用上游镜像"
+      info "镜像构建要先拉取 Docker Hub（debian / golang）与 GHCR（usestrix/strix-sandbox）基础镜像；"
+      info "若卡在拉取阶段，请给 Docker 配镜像加速（/etc/docker/daemon.json 的 registry-mirrors）后重试，"
+      info "或在能联网的机器上 docker save 后本机 docker load（见 README 常见问题）。"
+      info "单独重试构建：cd sandbox && bash build.sh"
     fi
   else
     info "一体化沙箱镜像 sandbox-runtime:latest 未构建 —— 本次不影响渗透可用性"

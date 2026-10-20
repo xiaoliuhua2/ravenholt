@@ -293,7 +293,7 @@ The script runs 8 stages and prints results per stage:
 | 3/8 Config init | Generates `.ravenholt/config.json` (random `encrypt_key`, DB password, admin password) and **`policy.yaml`** |
 | 4/8 PostgreSQL | Starts the service, creates role and database, with credentials aligned to config.json |
 | 5/8 Python deps | Creates `.venv` and runs `pip install -r requirements.txt` |
-| 6/8 Frontend build | `npm install` + `npm run build` under `web/`, producing `web/dist-app`; if it fails on a missing optional native binding (Vite 8's rolldown platform binding), it **re-installs optionals and retries once** |
+| 6/8 Frontend build | `npm install --include=optional` + `npm run build` under `web/`, producing `web/dist-app`; if it fails on a missing optional native binding (Vite 8's rolldown platform binding), it **self-heals in two steps**: (1) re-install optionals and retry; (2) if that still fails, parse the missing binding name out of the build log and explicitly install `@rolldown/binding-<platform>` at rolldown's actual version, then retry (measured: `--include=optional` alone usually does not restore it; step 2 is what works) |
 | 7/8 Sandbox image | Checks whether the upstream image has been pulled; builds the all-in-one image with `--with-sandbox` and **writes `sandbox.image` into config.json on success** |
 | 8/8 Post-install self-check | Syntax compile, config/policy loading, `create_app` assembly smoke test |
 
@@ -365,9 +365,13 @@ pip install -r requirements.txt
 **Step 5: Build the frontend (required for source deployments)**
 
 ```bash
-cd web && npm install && npm run build && cd ..
-# If the build reports MODULE_NOT_FOUND (missing optional native bindings such as
-# rolldown's platform binding): npm install --include=optional && npm run build
+cd web && npm install --include=optional && npm run build && cd ..
+# If it still reports MODULE_NOT_FOUND (missing rolldown platform binding):
+#   read the binding name out of the error (e.g. linux-x64-gnu) and install it
+#   explicitly at rolldown's own version:
+#   rd_ver=$(node -p "require('rolldown/package.json').version")
+#   npm install --no-save "@rolldown/binding-linux-x64-gnu@$rd_ver"
+#   npm run build
 ```
 
 > **Required for source deployments**: `web/dist-app` is build output and is not committed; without it the API works but console pages fail to load (blank / 404). Docker / Compose deployments build it inside the image — no host Node.js needed.
@@ -727,7 +731,7 @@ A: Yes. `sandbox/setup_macvlan.sh` hard-codes no network range — subnet, gatew
 A: Confirm the Docker daemon is running and that the platform process can reach the Docker socket (Compose mounts `/var/run/docker.sock`).
 
 **Q: The all-in-one image build fails?**
-A: Confirm x64 architecture and sufficient disk (the build needs network access to download Ghidra / Jadx / observer_ward and to pull the `golang`, `uv`, and `debian` build-stage images). On restricted networks use `--build-arg STRIX_SANDBOX_IMAGE=<reachable-mirror>`.
+A: Two cases. **(1) It fails while resolving images** (`failed to resolve source metadata for docker.io/docker/dockerfile:1`, `connection refused`, `registry-1.docker.io` timeouts) — the host cannot reach Docker Hub / GHCR, and this image needs `debian:trixie-slim` and `golang:trixie` (Docker Hub) plus `ghcr.io/usestrix/strix-sandbox` and `ghcr.io/astral-sh/uv` (GHCR). Fixes: configure a registry mirror for Docker (`registry-mirrors` in `/etc/docker/daemon.json`, e.g. `https://docker.m.daocloud.io`) then `systemctl restart docker`; verify connectivity with `docker pull ghcr.io/usestrix/strix-sandbox:1.3.0`; if fully offline, build on a connected machine and migrate with `docker save` / `docker load`. (This repo's `sandbox/Dockerfile` deliberately omits `# syntax=docker/dockerfile:1` so that no extra frontend image has to be pulled.) **(2) It fails mid-build** — confirm x64 architecture and sufficient disk (it downloads ~1.5 GB of Ghidra and more), and on restricted networks use `--build-arg STRIX_SANDBOX_IMAGE=<reachable-mirror>`. `sandbox/build.sh` prints these steps when the build fails.
 
 **Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
 A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.
@@ -739,7 +743,16 @@ A: `config.json` changes need a restart (`bash serve.sh restart`), and `sandbox.
 A: The frontend output `web/dist-app` is **not committed**, so source deployments must build it first: `cd web && npm install && npm run build` (Node ≥ 20.19). Docker / Compose deployments generate it during the image build.
 
 **Q: `npm run build` fails?**
-A: Most often the Node version (< 20.19), or a **missing optional native binding** — Vite 8's rolldown needs its platform binding (e.g. `@rolldown/binding-linux-x64-gnu`), and npm can silently skip optional dependencies on a fresh install, which shows up as `MODULE_NOT_FOUND`. Fix: `cd web && npm install --include=optional && npm run build` (setup.sh does this automatically and retries once). As a last resort, delete `web/node_modules` and reinstall.
+A: Most often the Node version (< 20.19), or a **missing optional native binding** — Vite 8's rolldown needs its platform binding (e.g. `@rolldown/binding-linux-x64-gnu`), and the error reads `Cannot find module '../rolldown-binding.<platform>.node'`. **Measured: `npm install --include=optional` usually does not restore it** (the entry already exists in `package-lock.json`, so npm sees nothing to do). What works is installing the binding package **explicitly at rolldown's actual version**:
+
+```bash
+cd web
+rd_ver=$(node -p "require('rolldown/package.json').version")
+npm install --no-save --prefer-offline "@rolldown/binding-linux-x64-gnu@$rd_ver"
+npm run build
+```
+
+`setup.sh` step 6/8 already does both (re-install optionals first, then parse the binding name from the build log and install it by version). If both fail, switch npm registry (`npm config set registry https://registry.npmmirror.com`) or delete `web/node_modules` and reinstall.
 
 **Q: The page still shows old content?**
 A: Pages such as the landing page are **frozen at build time** — after changing sources you must re-run `cd web && npm run build` and hard-refresh the browser (Ctrl+F5).

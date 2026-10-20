@@ -1,7 +1,12 @@
-# syntax=docker/dockerfile:1
 #
 # ============================================================
 # Ravenholt 一体化沙箱镜像
+#
+# 注意：本文件刻意**不写** `# syntax=docker/dockerfile:1`。
+#   那行指令会强制 BuildKit 先从 Docker Hub 拉取 docker/dockerfile:1 这个「前端镜像」，
+#   在只能经镜像加速或内网访问 registry 的环境里，它会让整次构建在第一步就失败
+#   （failed to resolve source metadata for docker.io/docker/dockerfile:1）。
+#   本文件只使用内置解析器支持的语法（无 heredoc、无 RUN --mount、无 COPY --link）。
 #
 # 以 strix 上游镜像（自带 Caido + Kali 工具链）为基础，叠加 Ravenholt 的定制能力：
 #   - Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser-cli

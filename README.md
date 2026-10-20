@@ -293,14 +293,14 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 | 3/8 配置初始化 | 生成 `.ravenholt/config.json`（随机 `encrypt_key`、数据库口令、管理员口令）与 **`policy.yaml`** |
 | 4/8 PostgreSQL | 启动服务、建角色与数据库，口令与 config.json 对齐 |
 | 5/8 Python 依赖 | 建 `.venv` 并 `pip install -r requirements.txt` |
-| 6/8 前端构建 | `web/` 下 `npm install` + `npm run build`，产出 `web/dist-app`；若因缺少可选原生依赖（Vite 8 的 rolldown 平台绑定）失败，**自动补装并重试一次** |
+| 6/8 前端构建 | `web/` 下 `npm install --include=optional` + `npm run build`，产出 `web/dist-app`；若因缺少可选原生依赖（Vite 8 的 rolldown 平台绑定）失败，**两步自愈**：①补装可选依赖后重试；②仍失败则从报错中解析缺失的绑定名，按 rolldown 实际版本显式安装 `@rolldown/binding-<平台>` 再重试（实测仅 `--include=optional` 往往补不回，第 ② 步才生效） |
 | 7/8 沙箱镜像 | 检测上游镜像是否已拉取；未构建一体化镜像时按 `--with-sandbox` 构建，**构建成功会自动把 `sandbox.image` 写入 config.json** |
 | 8/8 安装后自检 | 语法编译、config/policy 加载、`create_app` 装配冒烟 |
 
 脚本**幂等**：已存在的 `config.json` / `policy.yaml` 不会被覆盖；`sandbox.image` 已有值时不会被改写。
 
 > [!TIP]
-> **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（`已下载 X.XX MB（N 秒）`，每秒刷新）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，数字长时间不变才是网络或源站问题（见 [11 FAQ](#十一常见问题) 的下载慢条目）。
+> **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（`已下载 X.XX MB（N 秒）`，每秒刷新）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，数字长时间不变才是网络或源站问题（处置见 [11 常见问题](#十一常见问题)）。
 
 > [!IMPORTANT]
 > 管理员口令由脚本随机生成，**只在终端打印一次**，请立即保存。
@@ -365,9 +365,12 @@ pip install -r requirements.txt
 **第 5 步：构建前端（源码部署必需）**
 
 ```bash
-cd web && npm install && npm run build && cd ..
-# 若构建报 MODULE_NOT_FOUND（缺 rolldown 平台原生绑定等可选依赖）：
-#   npm install --include=optional && npm run build
+cd web && npm install --include=optional && npm run build && cd ..
+# 若仍报 MODULE_NOT_FOUND（缺 rolldown 平台原生绑定）：
+#   从报错里读出绑定名（如 linux-x64-gnu），再按 rolldown 的版本显式安装：
+#   rd_ver=$(node -p "require('rolldown/package.json').version")
+#   npm install --no-save "@rolldown/binding-linux-x64-gnu@$rd_ver"
+#   npm run build
 ```
 
 > **源码部署下本步必做**：`web/dist-app` 是构建产物、不入库；不构建则 API 能通但控制台页面加载不出来（空白 / 404）。用 Docker / Compose 部署时由镜像构建阶段生成，**不需要宿主装 Node**。
@@ -727,7 +730,7 @@ A：能。`sandbox/setup_macvlan.sh` 不写死任何网段 —— 子网、网�
 A：确认 Docker 守护进程在运行，且平台进程能访问 Docker Socket（Compose 已挂载 `/var/run/docker.sock`）。
 
 **Q：一体化镜像构建失败？**
-A：确认 x64 架构与足够磁盘（构建过程需联网下载 Ghidra / Jadx / observer_ward，并拉取 `golang`、`uv`、`debian` 等构建阶段镜像）。受限网络可用 `--build-arg STRIX_SANDBOX_IMAGE=<可用镜像源>` 换基础镜像。
+A：分两种情况。**(1) 卡在拉取阶段**（报 `failed to resolve source metadata for docker.io/docker/dockerfile:1`、`connection refused`、`registry-1.docker.io` 超时）—— 说明本机到 Docker Hub / GHCR 不通；本镜像需要 `debian:trixie-slim`、`golang:trixie`（Docker Hub）与 `ghcr.io/usestrix/strix-sandbox`、`ghcr.io/astral-sh/uv`（GHCR）。处置：给 Docker 配镜像加速（`/etc/docker/daemon.json` 的 `registry-mirrors`，如 `https://docker.m.daocloud.io`）后 `systemctl restart docker`；先手工 `docker pull ghcr.io/usestrix/strix-sandbox:1.3.0` 验证通路；完全离线时在能联网的机器上构建后 `docker save` / `docker load` 迁移。（本仓库的 `sandbox/Dockerfile` 已刻意不写 `# syntax=docker/dockerfile:1`，避免为此多拉一个前端镜像。）**(2) 构建中途失败** —— 确认 x64 架构与足够磁盘（要下载约 1.5 GB 的 Ghidra 等），受限网络可用 `--build-arg STRIX_SANDBOX_IMAGE=<可用镜像源>` 换基础镜像。`sandbox/build.sh` 在失败时会把上述处置打印出来。
 
 **Q：沙箱里 `curl` 目标返回 502，页面标题是 `Caido`？**
 A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 HTTP 都经容器内 Caido 代理，目标不可达时由代理代为报错。用 `curl -s <url> | grep -A8 'c-title"'` 看真实原因（`Failed to query DNS` / `Connection refused` / TLS 握手失败 / timeout），修正 URL 后重试。
@@ -739,7 +742,16 @@ A：`config.json` 改动需重启（`bash serve.sh restart`），且 `sandbox.im
 A：前端产物 `web/dist-app` **不入库**，源码部署必须先构建一次：`cd web && npm install && npm run build`（Node ≥ 20.19）。用 Docker / Compose 部署时由镜像构建阶段自动生成，无需本步。
 
 **Q：`npm run build` 失败？**
-A：多数是 Node 版本（需 ≥ 20.19），或**可选原生绑定缺失** —— Vite 8 的 rolldown 需要平台绑定（如 `@rolldown/binding-linux-x64-gnu`），npm 在全新安装时可能静默跳过可选依赖，表现为 `MODULE_NOT_FOUND`。修复：`cd web && npm install --include=optional && npm run build`（`setup.sh` 已自动做这件事并重试一次）。仍失败再删 `web/node_modules` 重装。
+A：多数是 Node 版本（需 ≥ 20.19），或**可选原生绑定缺失** —— Vite 8 的 rolldown 需要平台绑定（如 `@rolldown/binding-linux-x64-gnu`），报错为 `Cannot find module '../rolldown-binding.<平台>.node'`。**实测：`npm install --include=optional` 往往补不回**（`package-lock.json` 里该条目已存在，npm 认为无需处理）；有效做法是**按 rolldown 的实际版本显式安装该绑定包**：
+
+```bash
+cd web
+rd_ver=$(node -p "require('rolldown/package.json').version")
+npm install --no-save --prefer-offline "@rolldown/binding-linux-x64-gnu@$rd_ver"
+npm run build
+```
+
+`setup.sh` 第 6/8 段已自动做这两步（先补装、失败再从构建日志解析绑定名并按版本显式安装）。两条都失败时，换 npm 源重试：`npm config set registry https://registry.npmmirror.com`，或删掉 `web/node_modules` 重装。
 
 **Q：页面还是旧内容？**
 A：landing 等页面是**构建期固化**的 —— 改源码后必须重新 `cd web && npm run build`，再硬刷新浏览器（Ctrl+F5）。
