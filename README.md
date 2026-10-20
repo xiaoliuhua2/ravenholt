@@ -296,7 +296,7 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 | 段 | 内容 |
 | --- | --- |
 | 1/8 环境检测 | 系统/架构/Python/Node/Docker/PostgreSQL/权限/端口/磁盘，逐项给出结论与修复命令 |
-| 2/8 系统依赖 | 缺什么装什么（apt）；**并自动安装 Node.js（官方二进制 22.x）与 Docker（安装 + 启动守护进程）**，装完复检 Python/venv 等硬性依赖 |
+| 2/8 系统依赖 | 缺什么装什么（apt）；**并自动安装 Node.js（官方二进制 22.x）与 Docker（安装 + 启动守护进程）**；开头会**并发测速挑选最快的镜像源**（PyPI / npm / Node / apt），装完复检 Python/venv 等硬性依赖 |
 | 3/8 配置初始化 | 生成 `.ravenholt/config.json`（随机 `encrypt_key`、数据库口令、管理员口令）与 **`policy.yaml`** |
 | 4/8 PostgreSQL | 启动服务、建角色与数据库，口令与 config.json 对齐 |
 | 5/8 Python 依赖 | 建 `.venv` 并 `pip install -r requirements.txt` |
@@ -310,6 +310,11 @@ bash setup.sh --no-deps       # 反向：不自动装系统依赖与 Node.js / D
 
 > [!TIP]
 > **所有下载与长任务都会打印实时进度，不会静默卡住**：apt（`Get` / `Setting up` 行）、Node.js 二进制（curl 自带进度条：百分比 / 速率 / 剩余时间）、pip、`npm install` 与 `npm run build`（`进行中 N 秒` 心跳，完整日志落 `.npm-install.log` / `.build.log`）、以及沙箱镜像构建里的 Ghidra / Jadx（每 3 秒刷新已下载 MB，中断自动续传重试 5 轮）。**判断是否真卡住：看这一行的数字是否还在增长**，长时间不动才是网络或源站问题（处置见 [11 常见问题](#十一常见问题)）。
+
+> [!TIP]
+> **镜像源自动选优**：脚本内置多组候选（PyPI：阿里云 / 清华 / 中科大；npm：淘宝 npmmirror / 华为云 / 腾讯云；Node.js 二进制：官方 / 清华 / 阿里；apt：阿里云 / 清华 / 中科大 **外加当前在用的那个源**），启动时**并发测速**（各取前 256 KB，约 8 秒）后自动使用最快的那个 —— 不必再手工换源。
+> apt 源只在当前不是最快时才切换（逐文件备份为 `*.ravenholt.bak`，日志里给出回滚方式，且只改源行、不碰注释）；当前源本来就最快时**完全不动机器**。传统 `/etc/apt/sources.list` 与 deb822 格式的 `sources.list.d/*.sources` 都支持。
+> 想固定某个源，用环境变量覆盖即可：`PIP_INDEX_URL=` / `NPM_REGISTRY=` / `NODE_MIRROR=`；想跳过测速加 `--no-mirror-probe`。
 
 > [!IMPORTANT]
 > 管理员口令由脚本随机生成，**只在终端打印一次**，请立即保存。
@@ -574,9 +579,9 @@ bash config-tool.sh clear                                 # 清空所有 Key
 cd sandbox && bash build.sh        # 产出 sandbox-runtime:latest
 # 换基础镜像（例如国内镜像源）：
 # docker build --build-arg STRIX_SANDBOX_IMAGE=<镜像地址> -t sandbox-runtime:latest .
-# 换 GitHub 加速前缀（默认 https://gh-proxy.com/；置空则直连）：
-# GITHUB_MIRROR=https://ghfast.top/ bash build.sh
-# GITHUB_MIRROR= bash build.sh
+# 换 GitHub 加速前缀（不指定时**自动测速挑最快通道**：直连 / gh-proxy / ghfast）：
+# GITHUB_MIRROR=https://ghfast.top/ bash build.sh   # 显式指定
+# GITHUB_MIRROR= bash build.sh                      # 强制直连
 ```
 
 > [!TIP]

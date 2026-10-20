@@ -296,7 +296,7 @@ The script runs 8 stages and prints results per stage:
 | Stage | Content |
 | --- | --- |
 | 1/8 Env check | OS/arch/Python/Node/Docker/PostgreSQL/permissions/ports/disk, each with a verdict and a fix command |
-| 2/8 System deps | Installs what's missing (apt); **also installs Node.js (official binary 22.x) and Docker (installs it and starts the daemon)**, then re-checks hard requirements such as Python/venv |
+| 2/8 System deps | Installs what's missing (apt); **also installs Node.js (official binary 22.x) and Docker (installs it and starts the daemon)**; starts by **concurrently probing mirrors and picking the fastest** (PyPI / npm / Node / apt), then re-checks hard requirements such as Python/venv |
 | 3/8 Config init | Generates `.ravenholt/config.json` (random `encrypt_key`, DB password, admin password) and **`policy.yaml`** |
 | 4/8 PostgreSQL | Starts the service, creates role and database, with credentials aligned to config.json |
 | 5/8 Python deps | Creates `.venv` and runs `pip install -r requirements.txt` |
@@ -310,6 +310,11 @@ Upgrade to a newer version with [`update.sh`](#7-running--operations): `bash upd
 
 > [!TIP]
 > **Every download and long-running step reports live progress, so nothing looks frozen**: apt (`Get` / `Setting up` lines), the Node.js binary (curl's own progress bar with percentage / rate / ETA), pip, `npm install` and `npm run build` (`running… N s` heartbeat, full logs in `.npm-install.log` / `.build.log`), and Ghidra / Jadx inside the sandbox image build (downloaded MB refreshed every 3 seconds, with automatic resume and 5 retries). **To tell whether it is really stuck, watch whether that number still grows** — only a flat number over a long time means a network or mirror problem (see [11 FAQ](#11-faq) for remedies).
+
+> [!TIP]
+> **Automatic mirror selection**: several candidate mirrors are built in (PyPI: Aliyun / Tsinghua / USTC; npm: taobao npmmirror / Huawei / Tencent; Node.js binaries: official / Tsinghua / Aliyun; apt: Aliyun / Tsinghua / USTC **plus whichever one you are already using**). At startup they are **probed concurrently** (~8 s, first 256 KB each) and the fastest is used — no manual mirror switching.
+> The apt source is rewritten only when the current one is not the fastest (each file backed up as `*.ravenholt.bak`, rollback command printed, and only source lines are touched — comments are left alone); if the current source is already fastest, **nothing on the machine is modified**. Both legacy `/etc/apt/sources.list` and deb822 `sources.list.d/*.sources` are supported.
+> To pin a specific mirror, override with env vars: `PIP_INDEX_URL=` / `NPM_REGISTRY=` / `NODE_MIRROR=`; to skip probing, pass `--no-mirror-probe`.
 
 > [!IMPORTANT]
 > The admin password is randomly generated and printed **only once** — save it immediately.
@@ -575,9 +580,9 @@ To reach the local SearXNG from inside a sandbox, use the **host LAN IP** (e.g. 
 cd sandbox && bash build.sh        # produces sandbox-runtime:latest
 # switch the base image (e.g. a regional mirror):
 # docker build --build-arg STRIX_SANDBOX_IMAGE=<image> -t sandbox-runtime:latest .
-# switch the GitHub accelerator prefix (default https://gh-proxy.com/; empty = direct):
-# GITHUB_MIRROR=https://ghfast.top/ bash build.sh
-# GITHUB_MIRROR= bash build.sh
+# switch the GitHub accelerator prefix (unset = auto-probe for the fastest of direct / gh-proxy / ghfast):
+# GITHUB_MIRROR=https://ghfast.top/ bash build.sh   # explicit
+# GITHUB_MIRROR= bash build.sh                      # force direct
 ```
 
 > [!TIP]

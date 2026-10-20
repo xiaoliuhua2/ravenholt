@@ -13,6 +13,7 @@
 #   bash setup.sh --no-deps       # 跳过系统依赖与 Node.js / Docker 的自动安装
 #   bash setup.sh --with-sandbox  # 额外自动构建沙箱镜像（下载量大、耗时长）
 #   bash setup.sh --rebuild-frontend  # 强制重建前端产物（默认 web/dist-app 已存在时跳过）
+#   bash setup.sh --no-mirror-probe   # 跳过镜像源测速（直接用默认源或环境变量指定的源）
 #
 # 说明：本脚本只针对 ravenholt 当前结构；幂等，已存在的配置不会被覆盖。
 # ============================================================
@@ -43,6 +44,7 @@ Ravenholt 一键部署脚本
   bash setup.sh --no-deps       跳过系统依赖与 Node.js / Docker 的自动安装
   bash setup.sh --with-sandbox  额外自动构建沙箱镜像（下载量大、耗时长）
   bash setup.sh --rebuild-frontend  强制重建前端产物（已存在 web/dist-app 时默认跳过）
+  bash setup.sh --no-mirror-probe   跳过镜像源测速（默认会并发测速，自动挑选最快的 PyPI / npm / Node / apt 源）
   bash setup.sh -h | --help     显示本帮助
 
 说明：更新替代，已存在的 .ravenholt/config.json、policy.yaml 不会被覆盖。
@@ -56,6 +58,7 @@ WITH_SANDBOX=0
 DEPS_ONLY=0
 NO_DEPS=0
 REBUILD_FRONTEND=0
+MIRROR_PROBE=1
 for arg in "$@"; do
   case "$arg" in
     --check|-c)         CHECK_ONLY=1 ;;
@@ -63,8 +66,9 @@ for arg in "$@"; do
     --no-deps)          NO_DEPS=1 ;;
     --with-sandbox)     WITH_SANDBOX=1 ;;
     --rebuild-frontend) REBUILD_FRONTEND=1 ;;
+    --no-mirror-probe)  MIRROR_PROBE=0 ;;
     -h|--help)          usage; exit 0 ;;
-    *) printf "未知参数: %s（可用: --check / --deps-only / --no-deps / --with-sandbox / --rebuild-frontend / --help）\n" "$arg"; exit 2 ;;
+    *) printf "未知参数: %s（可用: --check / --deps-only / --no-deps / --with-sandbox / --rebuild-frontend / --no-mirror-probe / --help）\n" "$arg"; exit 2 ;;
   esac
 done
 
@@ -161,6 +165,144 @@ fetch_with_progress() {
   return 1
 }
 
+# ── 镜像源自动选优 ──────────────────────────────────────────
+# 背景：国内到各镜像站的速度差异极大（实测同一台机器上不同源可从 0 KB/s 到 60 KB/s），
+# 写死一个源很容易刚好踩到不可用的那个（Kali 官方源就曾出现 302 + 0 KB/s）。
+# 因此内置多组候选，运行时并发测速、挑最快的用；并把「当前 apt 源」也纳入候选 ——
+# 它本来就最快时就完全不动机器。环境变量 PIP_INDEX_URL / NPM_REGISTRY / NODE_MIRROR 优先。
+MIRROR_PIP=""; MIRROR_NPM=""; MIRROR_NODE=""; MIRROR_APT=""
+APT_DISTRO=""
+
+# 单源测速：只取前 N 字节，读 curl 的 speed_download，输出 KB/s（不可达为 0）
+probe_kbps() {
+  local url="$1" bytes="${2:-262144}" sp
+  sp="$(curl -sL -m 8 -r "0-$((bytes - 1))" -o /dev/null -w '%{speed_download}' "$url" 2>/dev/null)"
+  awk -v s="${sp:-0}" 'BEGIN{printf "%d", s/1024}'
+}
+
+# 并发探测所有候选（约 8 秒），按类别取最快，写入 MIRROR_* / APT_DISTRO 全局变量。
+# 候选格式：类别|显示名|探针URL|使用前缀
+probe_all_mirrors() {
+  [ "${MIRROR_PROBE:-1}" -eq 1 ] || { info "已跳过镜像源测速（--no-mirror-probe）"; return 0; }
+
+  local -a specs=(
+    "pip|阿里云|https://mirrors.aliyun.com/pypi/simple/pip/|https://mirrors.aliyun.com/pypi/simple/"
+    "pip|清华|https://pypi.tuna.tsinghua.edu.cn/simple/pip/|https://pypi.tuna.tsinghua.edu.cn/simple/"
+    "pip|中科大|https://mirrors.ustc.edu.cn/pypi/simple/pip/|https://mirrors.ustc.edu.cn/pypi/simple/"
+    "npm|淘宝 npmmirror|https://registry.npmmirror.com/vue|https://registry.npmmirror.com"
+    "npm|华为云|https://repo.huaweicloud.com/repository/npm/vue|https://repo.huaweicloud.com/repository/npm/"
+    "npm|腾讯云|https://mirrors.cloud.tencent.com/npm/vue|https://mirrors.cloud.tencent.com/npm/"
+  )
+
+  # Node.js 二进制源（探针就是真实下载的那个 tar.xz，只取前 256 KB）
+  local nv="${NODE_VERSION:-v22.11.0}" na="" tball
+  case "$(uname -m)" in
+    x86_64|amd64) na=linux-x64 ;;
+    aarch64|arm64) na=linux-arm64 ;;
+  esac
+  if [ -n "$na" ]; then
+    tball="node-${nv}-${na}.tar.xz"
+    specs+=(
+      "node|官方|https://nodejs.org/dist/${nv}/${tball}|https://nodejs.org/dist"
+      "node|清华|https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/${nv}/${tball}|https://mirrors.tuna.tsinghua.edu.cn/nodejs-release"
+      "node|阿里|https://cdn.npmmirror.com/binaries/node/${nv}/${tball}|https://cdn.npmmirror.com/binaries/node"
+    )
+  fi
+
+  # apt：仅识别到 Kali / Debian 时启用；探针用 Release（几 KB，下完即止，速度可信）
+  if grep -qiE '^ID=kali' /etc/os-release 2>/dev/null; then
+    APT_DISTRO="kali"
+  elif grep -qiE '^ID=debian' /etc/os-release 2>/dev/null; then
+    APT_DISTRO="debian"
+  fi
+  if [ -n "$APT_DISTRO" ]; then
+    local rel="dists/stable/Release"
+    [ "$APT_DISTRO" = "kali" ] && rel="dists/kali-rolling/Release"
+    specs+=(
+      "apt|阿里云|https://mirrors.aliyun.com/${APT_DISTRO}/${rel}|https://mirrors.aliyun.com"
+      "apt|清华|https://mirrors.tuna.tsinghua.edu.cn/${APT_DISTRO}/${rel}|https://mirrors.tuna.tsinghua.edu.cn"
+      "apt|中科大|https://mirrors.ustc.edu.cn/${APT_DISTRO}/${rel}|https://mirrors.ustc.edu.cn"
+    )
+    # 当前源也纳入候选（deb822 的 sources.list.d/*.sources 与传统 sources.list 都覆盖）；
+    # URI 末尾可能带 "/"，去掉后再比；与已有候选 host 相同时不重复测
+    local cur_url cur_base
+    cur_url="$( { cat /etc/apt/sources.list 2>/dev/null; cat /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null; } \
+      | grep -oiE "https?://[^ ]+/${APT_DISTRO}/?\$" | head -n1 )"
+    cur_url="${cur_url%/}"
+    if [ -n "$cur_url" ] && [ "$cur_url" != "http://" ] && [ "$cur_url" != "https://" ]; then
+      cur_base="${cur_url%/${APT_DISTRO}}"
+      if ! printf '%s\n' "${specs[@]}" | grep -qF "|${cur_base}"; then
+        specs+=("apt|当前源(${cur_base#*//})|${cur_url}/${rel}|${cur_base}")
+      fi
+    fi
+  fi
+
+  info "并发测速各镜像源（约 8 秒；要跳过用 --no-mirror-probe）..."
+  local tmp; tmp="$(mktemp -d)"
+  local i=0 spec
+  for spec in "${specs[@]}"; do
+    ( IFS='|' read -r _cat _name _url _prefix <<<"$spec"
+      printf '%s|%s|%s|%s\n' "$_cat" "$(probe_kbps "$_url")" "$_name" "$_prefix" > "$tmp/$i" ) &
+    i=$((i + 1))
+  done
+  wait
+
+  local cat kbps name prefix best best_name best_prefix
+  for cat in pip npm node apt; do
+    best=-1; best_name=""; best_prefix=""
+    while IFS='|' read -r _ kbps name prefix; do
+      [ -n "$name" ] || continue
+      printf "    %-4s %-16s %5s KB/s\n" "$cat" "$name" "$kbps"
+      if [ "$kbps" -gt "$best" ]; then best="$kbps"; best_name="$name"; best_prefix="$prefix"; fi
+    done < <(grep -h "^${cat}|" "$tmp"/* 2>/dev/null | sort -t'|' -k2,2 -nr)
+    case "$cat" in
+      pip)  [ -n "$best_name" ] && { MIRROR_PIP="$best_prefix";  info "PyPI 源选用：$best_name（${best} KB/s）"; } ;;
+      npm)  [ -n "$best_name" ] && { MIRROR_NPM="$best_prefix";  info "npm  源选用：$best_name（${best} KB/s）"; } ;;
+      node) [ -n "$best_name" ] && { MIRROR_NODE="$best_prefix"; info "Node 源选用：$best_name（${best} KB/s）"; } ;;
+      apt)  [ -n "$best_name" ] && { MIRROR_APT="$best_prefix";  info "apt  源选用：$best_name（${best} KB/s）"; } ;;
+    esac
+  done
+  rm -rf "$tmp"
+}
+
+# apt 源：测速结果与当前不同才切换；逐文件备份为 *.ravenholt.bak，可随时回滚
+apply_apt_mirror() {
+  [ -n "$MIRROR_APT" ] && [ -n "$APT_DISTRO" ] || return 0
+  if [ "$(id -u)" -ne 0 ]; then
+    info "非 root，跳过 apt 换源（如需手工：把 /etc/apt/sources.list 里 ${APT_DISTRO} 源的域名换成 ${MIRROR_APT}）"
+    return 0
+  fi
+  local f n=0 need=0
+  # 只看源行（deb / deb-src / URIs:）—— 若把整文件里所有 URL 都算上，注释里的
+  # 文档链接（如 www.kali.org/docs/.../kali-apt-sources/）也会被误判、误改。
+  for f in /etc/apt/sources.list $(ls /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null); do
+    [ -f "$f" ] || continue
+    if grep -hE "^(deb(-src)?[[:space:]]+|URIs:[[:space:]]*)" "$f" 2>/dev/null \
+       | grep -oE "https?://[^ ]+/${APT_DISTRO}" \
+       | grep -qvF "${MIRROR_APT}/${APT_DISTRO}"; then
+      need=1
+      break
+    fi
+  done
+  if [ "$need" -eq 0 ]; then
+    info "apt 源无需切换（已全部指向 ${MIRROR_APT}）"
+    return 0
+  fi
+  for f in /etc/apt/sources.list $(ls /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null); do
+    [ -f "$f" ] || continue
+    grep -qE "^(deb(-src)?[[:space:]]+|URIs:[[:space:]]*)https?://" "$f" || continue
+    [ -f "${f}.ravenholt.bak" ] || cp "$f" "${f}.ravenholt.bak"
+    sed -i -E "s#^(deb(-src)?[[:space:]]+|URIs:[[:space:]]*)https?://[^ ]+/${APT_DISTRO}/?\$#\1${MIRROR_APT}/${APT_DISTRO}#g" "$f"
+    info "已换 apt 源：$f（备份 ${f}.ravenholt.bak）"
+    n=$((n + 1))
+  done
+  if [ "$n" -eq 0 ]; then
+    info "apt 源无需切换（当前已是最快）"
+  else
+    info "回滚：cp <对应 .ravenholt.bak> <原文件>，再 apt update"
+  fi
+}
+
 # 前台静默任务（npm install / npm run build）加心跳：完整日志落文件，屏幕每 3 秒刷新"进行中 N 秒"。
 # 目的同 fetch_with_progress：长任务静默会让人误判卡死。
 run_with_heartbeat() {
@@ -191,11 +333,16 @@ node_ver_ok() {
 
 # 安装 Node.js：下载官方二进制解压到 /usr/local。
 # 不依赖发行版仓库版本（Debian 12 的 nodejs 只有 18），也不引入 nodesource 第三方源。
-# 官方源不可达时自动回退清华镜像；可用 NODE_MIRROR / NODE_VERSION 覆盖。
+# 源由测速结果决定（见 probe_all_mirrors），下载失败时再按备用源顺序重试；可用 NODE_MIRROR / NODE_VERSION 覆盖。
 install_node() {
   local node_version="${NODE_VERSION:-v22.11.0}"
-  local node_mirror="${NODE_MIRROR:-https://nodejs.org/dist}"
-  local fallback_mirror="https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/"
+  # 源优先级：显式 NODE_MIRROR > 测速选出的最快源 > 官方（下载失败时再按顺序试备用源）
+  local node_mirror="${NODE_MIRROR:-${MIRROR_NODE:-https://nodejs.org/dist}}"
+  local -a fallbacks=(
+    "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release"
+    "https://cdn.npmmirror.com/binaries/node"
+    "https://nodejs.org/dist"
+  )
   local narch
   case "$(uname -m)" in
     x86_64|amd64)  narch=linux-x64 ;;
@@ -213,10 +360,14 @@ install_node() {
   local tmp; tmp="$(mktemp -d)" || return 1
   local src="${node_mirror}/${node_version}/${tarball}"
 
-  if ! fetch_with_progress "$src" "$tmp/$tarball" "Node.js ${node_version}"; then
-    info "官方源不可达，改用镜像源"
-    src="${fallback_mirror}${node_version}/${tarball}"
-    if ! fetch_with_progress "$src" "$tmp/$tarball" "Node.js ${node_version}（镜像源）"; then
+  if ! fetch_with_progress "$src" "$tmp/$tarball" "Node.js ${node_version}（源：${node_mirror}）"; then
+    local got=0 fb
+    for fb in "${fallbacks[@]}"; do
+      [ "$fb" = "$node_mirror" ] && continue
+      info "换用备用源：$fb"
+      if fetch_with_progress "$fb/${node_version}/${tarball}" "$tmp/$tarball" "Node.js ${node_version}（备用源）"; then got=1; break; fi
+    done
+    if [ "$got" -eq 0 ]; then
       rm -rf "$tmp"
       warn "Node.js 下载失败（网络受限？）—— 可设置 NODE_MIRROR=<可用镜像> 后重跑"
       return 1
@@ -376,6 +527,11 @@ fi
 # 2. 系统依赖（安装 + 硬性依赖复检）
 # ============================================================
 step "2/8 安装系统依赖"
+# 先做镜像源测速选优（PyPI / npm / Node / apt 各挑最快的那个），后面的下载点都用它；
+# 传 --no-mirror-probe 可跳过；PIP_INDEX_URL / NPM_REGISTRY / NODE_MIRROR 环境变量优先级更高。
+probe_all_mirrors
+# 只有本次真要装 apt 包时才切换 apt 源（--no-deps 不动机器）
+[ "$NO_DEPS" -eq 0 ] && apply_apt_mirror
 PKGS=""
 have psql || PKGS="$PKGS postgresql postgresql-client"
 have python3 || PKGS="$PKGS python3"
@@ -621,11 +777,12 @@ fi
 PY="$VENV_DIR/bin/python"
 # 输出精简：pip 会把每个已满足的依赖都打印一行 "Requirement already satisfied: ..."（几十行、
 # 没有信息量），因此成功路径改为 -q 静默 + 心跳，只有失败时才把完整日志打印出来。
-info "pip 安装依赖（阿里云镜像；成功只打印一行，失败会打印完整日志）..."
-"$PY" -m pip install -q --no-input -i https://mirrors.aliyun.com/pypi/simple/ --upgrade pip || true
+PIP_INDEX="${PIP_INDEX_URL:-${MIRROR_PIP:-https://mirrors.aliyun.com/pypi/simple/}}"
+info "pip 安装依赖（源：${PIP_INDEX}；成功只打印一行，失败会打印完整日志）..."
+"$PY" -m pip install -q --no-input -i "$PIP_INDEX" --upgrade pip || true
 PIP_LOG="$PROJECT_DIR/.pip-install.log"
 if run_with_heartbeat "pip install" "$PIP_LOG" \
-     "$PY" -m pip install -q --no-input -i https://mirrors.aliyun.com/pypi/simple/ -r "$PROJECT_DIR/requirements.txt"; then
+     "$PY" -m pip install -q --no-input -i "$PIP_INDEX" -r "$PROJECT_DIR/requirements.txt"; then
   rm -f "$PIP_LOG"
   ok "Python 依赖已安装（requirements.txt）"
 else
@@ -647,6 +804,13 @@ if [ -d "$PROJECT_DIR/web" ]; then
     ok "前端产物已存在：web/dist-app（跳过构建；需要重建请加 --rebuild-frontend）"
   else
     cd "$PROJECT_DIR/web"
+    # npm 源：显式 NPM_REGISTRY > 测速选出的最快源（都为空时用 npm 自带默认源）
+    NPM_REG="${NPM_REGISTRY:-${MIRROR_NPM:-}}"
+    NPM_REG_ARGS=()
+    if [ -n "$NPM_REG" ]; then
+      NPM_REG_ARGS=(--registry "$NPM_REG")
+      info "npm 使用源：$NPM_REG"
+    fi
     # web/openapi.json 已随仓库提交；缺失时回退根 openapi.json
     if [ ! -f "$PROJECT_DIR/web/openapi.json" ] && [ -f "$PROJECT_DIR/openapi.json" ]; then
       ln -sf "$PROJECT_DIR/openapi.json" "$PROJECT_DIR/web/openapi.json"
@@ -657,7 +821,7 @@ if [ -d "$PROJECT_DIR/web" ]; then
       info "npm install（数百个包，心跳表示仍在进行；完整日志写入 .npm-install.log）..."
       # 主安装就带上 --include=optional：npm 在空白环境会**静默跳过** optionalDependencies，
       # 而 Vite 8 的 rolldown 依赖平台原生绑定（@rolldown/binding-<plat>），缺了必然构建失败。
-      if run_with_heartbeat "npm install" "$NPM_LOG" npm install --include=optional; then
+      if run_with_heartbeat "npm install" "$NPM_LOG" npm install --include=optional ${NPM_REG_ARGS[@]+"${NPM_REG_ARGS[@]}"}; then
         ok "前端依赖已安装"
       else
         tail -20 "$NPM_LOG"; warn "npm install 失败，跳过前端构建"
@@ -680,7 +844,7 @@ if [ -d "$PROJECT_DIR/web" ]; then
         # 实测（Kali + rolldown 1.0.2）：这一步**往往补不回** —— package-lock 里该 optional
         # 条目已存在，npm 认为无需处理，于是依旧缺 .node；真正生效的是第 ② 步。
         info "构建失败疑似缺少可选依赖（原生绑定），补装后重试..."
-        run_with_heartbeat "npm install --include=optional" "$FIX_LOG" npm install --include=optional || true
+        run_with_heartbeat "npm install --include=optional" "$FIX_LOG" npm install --include=optional ${NPM_REG_ARGS[@]+"${NPM_REG_ARGS[@]}"} || true
         if run_with_heartbeat "npm run build（重试）" "$BUILD_LOG" npm run build; then
           BUILD_OK=1
           tail -2 "$BUILD_LOG"; ok "前端构建完成（补装可选依赖后重试成功）：web/dist-app"
@@ -692,7 +856,7 @@ if [ -d "$PROJECT_DIR/web" ]; then
           if [ -n "$BIND_PLAT" ] && [ -n "$RD_VER" ]; then
             info "缺少 $BIND_PLAT 原生绑定，按 rolldown $RD_VER 显式安装 @rolldown/binding-$BIND_PLAT ..."
             if run_with_heartbeat "npm install @rolldown/binding-$BIND_PLAT@$RD_VER" "$FIX_LOG" \
-                 npm install --no-save --prefer-offline "@rolldown/binding-$BIND_PLAT@$RD_VER"; then
+                 npm install --no-save --prefer-offline ${NPM_REG_ARGS[@]+"${NPM_REG_ARGS[@]}"} "@rolldown/binding-$BIND_PLAT@$RD_VER"; then
               info "绑定包安装结果：$(tail -n 1 "$FIX_LOG")"
               if run_with_heartbeat "npm run build（补装绑定后重试）" "$BUILD_LOG" npm run build; then
                 BUILD_OK=1

@@ -2,14 +2,51 @@
 # 构建 Ravenholt 一体化沙箱镜像（sandbox-runtime:latest）
 set -eu
 
-# GitHub Releases 在本验证环境直连会被 RST（curl 35/56），默认走加速前缀。
-# 实测 gh-proxy.com 可完整下载（jadx 58MB 一次成功、ghidra 稳定传输）。
-# 需要换通道：GITHUB_MIRROR=https://ghfast.top/ bash build.sh
-# 需要退回直连：GITHUB_MIRROR= bash build.sh   （注意必须用 `-` 而不是 `:-`，
-#   否则空串也会被默认值覆盖，脚本里就没有「关闭加速前缀」的开关了）
-GITHUB_MIRROR="${GITHUB_MIRROR-https://gh-proxy.com/}"
+# GitHub 加速前缀：显式指定优先；指定空串 = 直连；未指定时自动测速挑最快通道。
+#   GITHUB_MIRROR=https://ghfast.top/ bash build.sh     指定通道
+#   GITHUB_MIRROR= bash build.sh                        退回直连（必须用 `-` 而不是 `:-`，
+#     否则空串也会被默认值覆盖，脚本里就没有「关闭加速前缀」的开关了）
 
-echo "GitHub 加速前缀: ${GITHUB_MIRROR:-<直连>}"
+# 单通道测速：取前 64 KB 读 curl 的 speed_download，输出 KB/s（不可达为 0）
+probe_kbps() {
+  curl -sL -m 8 -r 0-65535 -o /dev/null -w '%{speed_download}' "$1" 2>/dev/null | awk '{printf "%d", $1/1024}'
+}
+
+# 并发测速各通道并返回最快的那个前缀（日志走 stderr，只有返回值走 stdout）
+pick_github_mirror() {
+  local probe="https://github.com/usestrix/strix/raw/main/README.md"
+  local -a names=( "直连" "gh-proxy" "ghfast" )
+  local -a prefixes=( "" "https://gh-proxy.com/" "https://ghfast.top/" )
+  local tmp i kbps best=-1 best_prefix="" best_name=""
+  tmp="$(mktemp -d)"
+  echo "  测速 GitHub 通道（并发，各取前 64 KB）..." >&2
+  for i in 0 1 2; do
+    ( printf '%s|%s\n' "$(probe_kbps "${prefixes[$i]}${probe}")" "${prefixes[$i]}" > "$tmp/$i" ) &
+  done
+  wait
+  while IFS='|' read -r kbps pfx; do
+    [ -n "${kbps:-}" ] || continue
+    if [ "$kbps" -gt "$best" ]; then best="$kbps"; best_prefix="$pfx"; fi
+  done < <(cat "$tmp"/* 2>/dev/null | sort -t'|' -k1,1 -nr)
+  for i in 0 1 2; do
+    [ "${prefixes[$i]}" = "$best_prefix" ] && best_name="${names[$i]}"
+  done
+  rm -rf "$tmp"
+  if [ "$best" -le 0 ]; then
+    echo "  ⚠ 所有通道都不可达 —— 退回直连（若仍失败，请检查网络后再试）" >&2
+    best_prefix=""
+  else
+    echo "  ✓ 选用通道：${best_name}${best_prefix:+（$best_prefix）}（${best} KB/s）" >&2
+  fi
+  printf '%s' "$best_prefix"
+}
+
+if [ -n "${GITHUB_MIRROR+x}" ]; then
+  echo "GitHub 加速前缀（显式指定）: ${GITHUB_MIRROR:-<直连>}"
+else
+  GITHUB_MIRROR="$(pick_github_mirror)"
+  echo "GitHub 加速前缀（自动选择）: ${GITHUB_MIRROR:-<直连>}"
+fi
 
 if ! docker info >/dev/null 2>&1; then
   echo "✗ Docker 守护进程不可用 —— 先启动： systemctl enable --now docker（或 service docker start）" >&2
