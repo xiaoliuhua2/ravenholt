@@ -781,6 +781,10 @@ docker tag  ghcr.io/<你的用户名>/ravenholt-sandbox:latest sandbox-runtime:l
 
 > `setup.sh` 第 7/8 段现在**会自动检测并拉取**这个镜像（拉成功就 `docker tag` 成 `sandbox-runtime:latest` 并写入 `config.json`），不需要手工执行上面的命令 —— 前提是它已发布且可访问；拉不到才回退本地构建（见 [6.6](#66-沙箱镜像构建与启用)）。
 
+**Q：`apt install` 报「无法定位软件包」（例如 `docker.io`）？**
+A：绝大多数是**换了 apt 源之后没有刷新包索引** —— 换源只改配置，索引仍是旧源（新机器上甚至为空）留下的，apt 自然"找不到"任何包。`setup.sh` 现在会在换源后**无条件执行 `apt-get update`**，且索引刷新失败时自动回滚到原源；手工操作时请记住：换源后必须先 `apt update`。
+若刷新后仍然找不到 `docker.io`，说明该镜像源缺这个包：换回官方源（`http.kali.org` / `kali.download`）再装，或直接用 Docker 官方脚本 `curl -fsSL https://get.docker.com | sh`（脚本本身会告诉你这个方案）。
+
 **Q：沙箱里 `curl` 目标返回 502，页面标题是 `Caido`？**
 A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 HTTP 都经容器内 Caido 代理，目标不可达时由代理代为报错。用 `curl -s <url> | grep -A8 'c-title"'` 看真实原因（`Failed to query DNS` / `Connection refused` / TLS 握手失败 / timeout），修正 URL 后重试。
 

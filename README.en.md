@@ -782,6 +782,10 @@ That avoids pulling base images and downloading ~1.5 GB of Ghidra locally. Note:
 
 > `setup.sh` step 7/8 now **detects and pulls that image automatically** (on success it is `docker tag`ged to `sandbox-runtime:latest` and written into `config.json`), so the commands above are no longer needed by hand — as long as the package is published and reachable; only if that fails does it fall back to a local build (see [6.6](#66-sandbox-image-build--enable)).
 
+**Q: `apt install` says "Unable to locate package" (e.g. `docker.io`)?**
+A: Almost always because the apt source was switched without refreshing the package index — changing a mirror only edits the config, while the index on disk still belongs to the old source (or is empty on a fresh machine), so apt "cannot find" anything. `setup.sh` now runs `apt-get update` unconditionally after switching sources, and rolls back to the original source if the refresh fails; when doing it by hand, remember `apt update` after any mirror change.
+If `docker.io` is still missing after the refresh, that mirror lacks the package: switch back to an official source (`http.kali.org` / `kali.download`), or use Docker's official script `curl -fsSL https://get.docker.com | sh` (the script itself suggests this path).
+
 **Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
 A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.
 

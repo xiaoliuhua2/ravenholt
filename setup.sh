@@ -172,6 +172,8 @@ fetch_with_progress() {
 # 它本来就最快时就完全不动机器。环境变量 PIP_INDEX_URL / NPM_REGISTRY / NODE_MIRROR 优先。
 MIRROR_PIP=""; MIRROR_NPM=""; MIRROR_NODE=""; MIRROR_APT=""
 APT_DISTRO=""
+# 本次换源改过哪些文件（apt update 失败时据此回滚）
+APT_MIRROR_BACKUPS=()
 
 # 单源测速：只取前 N 字节，读 curl 的 speed_download，输出 KB/s（不可达为 0）
 probe_kbps() {
@@ -293,6 +295,7 @@ apply_apt_mirror() {
     grep -qE "^(deb(-src)?[[:space:]]+|URIs:[[:space:]]*)https?://" "$f" || continue
     [ -f "${f}.ravenholt.bak" ] || cp "$f" "${f}.ravenholt.bak"
     sed -i -E "s#^(deb(-src)?[[:space:]]+|URIs:[[:space:]]*)https?://[^ ]+/${APT_DISTRO}/?\$#\1${MIRROR_APT}/${APT_DISTRO}#g" "$f"
+    APT_MIRROR_BACKUPS+=("$f")
     info "已换 apt 源：$f（备份 ${f}.ravenholt.bak）"
     n=$((n + 1))
   done
@@ -301,6 +304,36 @@ apply_apt_mirror() {
   else
     info "回滚：cp <对应 .ravenholt.bak> <原文件>，再 apt update"
   fi
+}
+
+# 刷新 apt 包索引 —— 换源之后**必须**做这一步：否则索引还是旧源（新环境里甚至为空）留下的，
+# apt 会报「无法定位软件包」（实测踩过：换源后因为没刷索引，连 docker.io 都"找不到"）。
+# 若 update 失败且本次刚换过源，则回滚到备份源再试一次，避免把用户的 apt 留在不可用状态。
+refresh_apt_index() {
+  local APT
+  if [ "$(id -u)" -eq 0 ]; then
+    APT=(env DEBIAN_FRONTEND=noninteractive apt-get)
+  else
+    APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get)
+  fi
+  info "apt-get update（刷新包索引；换源后必须执行，否则找不到包）..."
+  if "${APT[@]}" update -q; then
+    return 0
+  fi
+  if [ "${#APT_MIRROR_BACKUPS[@]}" -gt 0 ]; then
+    warn "新源刷新索引失败 —— 回滚到换源前的配置后重试"
+    local f
+    for f in "${APT_MIRROR_BACKUPS[@]}"; do
+      [ -f "${f}.ravenholt.bak" ] && cp "${f}.ravenholt.bak" "$f" && info "已回滚 $f"
+    done
+    APT_MIRROR_BACKUPS=()
+    if "${APT[@]}" update -q; then
+      ok "已回滚，并用原源刷新索引成功"
+      return 0
+    fi
+  fi
+  warn "apt 索引刷新失败 —— 后续 apt 安装可能不可用；请检查网络，或换源后手动执行：apt update"
+  return 1
 }
 
 # 前台静默任务（npm install / npm run build）加心跳：完整日志落文件，屏幕每 3 秒刷新"进行中 N 秒"。
@@ -406,10 +439,15 @@ install_docker() {
     APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get)
   fi
 
+  # 安装前先刷新索引：本函数可能被单独调用，而且换源之后索引必须重建，否则会「无法定位软件包」
+  "${APT[@]}" update -q || true
   info "apt 安装 docker.io（含 containerd/runc/iptables 等依赖，视网络需下载数十至百余 MB）..."
-  info "apt 的 Get/Setting up 行即为进展；若长时间没有新行，请看提示：换 Kali 镜像源，或等其它 apt 进程释放锁"
+  info "apt 的 Get/Setting up 行即为进展；若长时间没有新行，请检查源是否可用，或等其它 apt 进程释放锁"
   if ! "${APT[@]}" install -y docker.io; then
-    warn "Docker 安装未完成 —— 请手动执行：sudo apt install -y docker.io（或换镜像源后重试）"
+    warn "Docker 安装未完成（Kali/Debian 的包名是 docker.io，部分镜像源里可能缺失）"
+    info "方案 A（发行版包）：apt update && apt install -y docker.io"
+    info "方案 B（Docker 官方脚本，会新增 download.docker.com 源）：curl -fsSL https://get.docker.com | sh"
+    info "装好后重跑本脚本即可；缺 Docker 时平台仍可启动，只是渗透沙箱不可用"
     return 1
   fi
   # compose：v2 插件包与 v1 独立包在不同发行版上包名不同，两者都试一次
@@ -530,8 +568,12 @@ step "2/8 安装系统依赖"
 # 先做镜像源测速选优（PyPI / npm / Node / apt 各挑最快的那个），后面的下载点都用它；
 # 传 --no-mirror-probe 可跳过；PIP_INDEX_URL / NPM_REGISTRY / NODE_MIRROR 环境变量优先级更高。
 probe_all_mirrors
-# 只有本次真要装 apt 包时才切换 apt 源（--no-deps 不动机器）
-[ "$NO_DEPS" -eq 0 ] && apply_apt_mirror
+# 只有本次真要装系统包时才动 apt：① 必要时换源 ② 无条件刷新索引（换源后索引必须重建，
+# 否则会出现"无法定位软件包"；原实现在 PKGS 为空时整段跳过，新环境因此装不上 docker）
+if [ "$NO_DEPS" -eq 0 ] && can_root; then
+  apply_apt_mirror
+  refresh_apt_index || true
+fi
 PKGS=""
 have psql || PKGS="$PKGS postgresql postgresql-client"
 have python3 || PKGS="$PKGS python3"
