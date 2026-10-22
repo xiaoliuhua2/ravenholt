@@ -785,6 +785,36 @@ docker tag  ghcr.io/<你的用户名>/ravenholt-sandbox:latest sandbox-runtime:l
 A：绝大多数是**换了 apt 源之后没有刷新包索引** —— 换源只改配置，索引仍是旧源（新机器上甚至为空）留下的，apt 自然"找不到"任何包。`setup.sh` 现在会在换源后**无条件执行 `apt-get update`**，且索引刷新失败时自动回滚到原源；手工操作时请记住：换源后必须先 `apt update`。
 若刷新后仍然找不到 `docker.io`，说明该镜像源缺这个包：换回官方源（`http.kali.org` / `kali.download`）再装，或直接用 Docker 官方脚本 `curl -fsSL https://get.docker.com | sh`（脚本本身会告诉你这个方案）。
 
+**Q：`docker pull` 一体化镜像很慢（几小时）？**
+A：瓶颈通常不是你的总带宽，而是 **docker 默认只开 3 个并发下载、每层一条单 TCP 连接**，跨境链路上单流常被限到 20~40 KB/s。实测同一个 2.16 GB / 47 层的镜像，在同一台机器上：
+
+| 并发路数 | 合计吞吐 |
+| --- | --- |
+| 1 路 | 23 KB/s |
+| 4 路 | 90 KB/s |
+| 10 路 | **183 KB/s**（已接近该链路 200 KB/s 上限） |
+
+所以把并发提到 10 能快约 8 倍：
+
+```bash
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{ "max-concurrent-downloads": 10 }
+EOF
+sudo systemctl restart docker
+docker pull ghcr.io/xiaoliuhua2/ravenholt-sandbox:latest   # 已下完的层会复用，不会重下
+```
+
+关于换国内 GHCR 加速站 —— 实测多数不可用，收益有限：
+
+| 站点 | 实测 |
+| --- | --- |
+| `ghcr.nju.edu.cn` | 能取 manifest，但**层 blob 下载 0 KB/s（不通）** |
+| `ghcr.m.daocloud.io` | 层下载 **HTTP 403** |
+| `ghcr.dockerproxy.com` | 不通（超时） |
+| `ghcr.chenby.cn` | **53 KB/s**，可用，比直连（25~36 KB/s）快约 1.5 倍，可作备选 |
+
+即 `docker pull ghcr.chenby.cn/xiaoliuhua2/ravenholt-sandbox:latest`。注意这是第三方个人维护的加速站，镜像内容是公开的，但可用性不受本项目控制。
+
 **Q：沙箱里 `curl` 目标返回 502，页面标题是 `Caido`？**
 A：那是**代理错误页，不是目标响应** —— 沙箱内所有出站 HTTP 都经容器内 Caido 代理，目标不可达时由代理代为报错。用 `curl -s <url> | grep -A8 'c-title"'` 看真实原因（`Failed to query DNS` / `Connection refused` / TLS 握手失败 / timeout），修正 URL 后重试。
 

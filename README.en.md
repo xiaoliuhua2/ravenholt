@@ -786,6 +786,36 @@ That avoids pulling base images and downloading ~1.5 GB of Ghidra locally. Note:
 A: Almost always because the apt source was switched without refreshing the package index — changing a mirror only edits the config, while the index on disk still belongs to the old source (or is empty on a fresh machine), so apt "cannot find" anything. `setup.sh` now runs `apt-get update` unconditionally after switching sources, and rolls back to the original source if the refresh fails; when doing it by hand, remember `apt update` after any mirror change.
 If `docker.io` is still missing after the refresh, that mirror lacks the package: switch back to an official source (`http.kali.org` / `kali.download`), or use Docker's official script `curl -fsSL https://get.docker.com | sh` (the script itself suggests this path).
 
+**Q: `docker pull` of the all-in-one image is extremely slow (hours)?**
+A: The bottleneck is usually not your total bandwidth but **docker's default of 3 concurrent downloads, one TCP stream per layer** — cross-border single streams are often throttled to 20-40 KB/s. Measured on the same 2.16 GB / 47-layer image from the same machine:
+
+| Streams | Aggregate throughput |
+| --- | --- |
+| 1 | 23 KB/s |
+| 4 | 90 KB/s |
+| 10 | **183 KB/s** (close to the link's ~200 KB/s ceiling) |
+
+So raising concurrency to 10 is roughly 8x faster:
+
+```bash
+sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+{ "max-concurrent-downloads": 10 }
+EOF
+sudo systemctl restart docker
+docker pull ghcr.io/xiaoliuhua2/ravenholt-sandbox:latest   # completed layers are reused, not re-downloaded
+```
+
+Regional GHCR mirrors — most measured unusable, with limited benefit:
+
+| Host | Measured |
+| --- | --- |
+| `ghcr.nju.edu.cn` | Serves manifests, but **layer blobs download at 0 KB/s (unreachable)** |
+| `ghcr.m.daocloud.io` | Layer download **HTTP 403** |
+| `ghcr.dockerproxy.com` | Unreachable (timeout) |
+| `ghcr.chenby.cn` | **53 KB/s**, works, ~1.5x faster than direct (25-36 KB/s); usable as a fallback |
+
+i.e. `docker pull ghcr.chenby.cn/xiaoliuhua2/ravenholt-sandbox:latest`. Note it is a third-party, individually operated accelerator: the image content is public, but its availability is outside this project's control.
+
 **Q: Inside a sandbox, `curl` to a target returns 502 with a `Caido` title?**
 A: That is a **proxy error page, not the target's response** — all in-sandbox egress goes through the container's Caido proxy, which answers on behalf of an unreachable target. Use `curl -s <url> | grep -A8 'c-title"'` to see the real cause (`Failed to query DNS` / `Connection refused` / TLS handshake failure / timeout), then fix the URL and retry.
 
