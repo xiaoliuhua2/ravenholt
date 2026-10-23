@@ -82,6 +82,36 @@ export type UpdateInstanceConfigResponse = JsonResponse<paths["/api/system-confi
 export type FetchUpstreamModelsRequest = JsonRequestBody<paths["/api/system-config/upstream-models"]["post"]>;
 export type FetchUpstreamModelsResponse = JsonResponse<paths["/api/system-config/upstream-models"]["post"]>;
 
+// 联网检索可用性校验：手写类型（不依赖 openapi 重新导出，新增接口不影响既有生成产物）
+export type SearchProviderCheck = {
+  provider: "searxng" | "exa" | "perplexity" | "deepseek";
+  configured: boolean;
+  ok: boolean;
+  detail: string;
+  elapsed_ms: number;
+  http_status: number | null;
+};
+
+export type CheckSearchProvidersRequest = {
+  exa_api_key: string;
+  perplexity_api_key: string;
+  deepseek_api_key: string;
+  searxng_base_url: string;
+  deepseek_base_url?: string;
+};
+
+export type CheckSearchProvidersData = {
+  results: SearchProviderCheck[];
+  recommended: string | null;
+};
+
+// 与其它接口一致：整包是 CommonResponse（code / message / data）
+export type CheckSearchProvidersResponse = {
+  code: number;
+  message: string;
+  data?: CheckSearchProvidersData;
+};
+
 export type QuerySandboxImagesParams = QueryParameters<paths["/api/sandbox-images"]["get"]>;
 export type QuerySandboxImagesResponse = JsonResponse<paths["/api/sandbox-images"]["get"]>;
 export type QuerySandboxImagesData = NonNullable<QuerySandboxImagesResponse["data"]>;

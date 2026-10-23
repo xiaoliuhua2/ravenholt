@@ -1,11 +1,14 @@
 from schema.common.responses import CommonResponse
 from schema.system_config.config import (
+    CheckSearchProvidersRequest,
+    CheckSearchProvidersResponse,
     FetchUpstreamModelsRequest,
     FetchUpstreamModelsResponse,
     UpdateInstanceConfigRequest,
     UpdateInstanceConfigResponse,
 )
 from service.system_config.config import (
+    check_search_providers,
     fetch_upstream_models,
     get_instance_config,
     update_instance_config,
@@ -25,3 +28,14 @@ async def update_instance_config_handler(request: UpdateInstanceConfigRequest) -
 async def fetch_upstream_models_handler(request: FetchUpstreamModelsRequest) -> CommonResponse:
     models = await fetch_upstream_models(request.base_url, request.api_key)
     return CommonResponse(data=FetchUpstreamModelsResponse(models=models))
+
+
+async def check_search_providers_handler(request: CheckSearchProvidersRequest) -> CommonResponse:
+    result = await check_search_providers(
+        exa_api_key=request.exa_api_key,
+        perplexity_api_key=request.perplexity_api_key,
+        deepseek_api_key=request.deepseek_api_key,
+        searxng_base_url=request.searxng_base_url,
+        deepseek_base_url=request.deepseek_base_url,
+    )
+    return CommonResponse(data=result)

@@ -843,6 +843,70 @@
   font-size: 11px;
 }
 
+/* 联网检索「可用性校验」：探测结果表 */
+.cfg-check {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--z-line-soft);
+}
+
+.cfg-check-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cfg-check-head strong {
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.cfg-check-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.cfg-check-table th,
+.cfg-check-table td {
+  padding: 5px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--z-line-soft);
+  vertical-align: top;
+}
+
+.cfg-check-table th {
+  color: var(--z-text-subtle);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cfg-check-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.cfg-check-badge.ok {
+  background: var(--z-success-bg);
+  color: var(--z-success);
+}
+
+.cfg-check-badge.bad {
+  background: var(--z-danger-bg);
+  color: var(--z-danger);
+}
+
+.cfg-check-badge.idle {
+  background: var(--z-line-soft);
+  color: var(--z-text-subtle);
+}
+
 /* 折叠块 */
 .cfg-fold {
   display: flex;

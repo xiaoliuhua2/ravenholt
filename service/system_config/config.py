@@ -21,7 +21,12 @@ from config import (
 from core.delegation.subagents import start_subagent_runtime, stop_subagent_runtime
 from core.runtime.session import AgentSessionPool, get_agent_pool, replace_agent_pool
 from logger import get_logger
-from schema.system_config.config import InstanceConfigSchema, UpdateInstanceConfigRequest
+from schema.system_config.config import (
+    CheckSearchProvidersResponse,
+    InstanceConfigSchema,
+    SearchProviderCheckSchema,
+    UpdateInstanceConfigRequest,
+)
 
 
 logger = get_logger(__name__)
@@ -367,3 +372,271 @@ def _instance_config_from_global(cfg: GlobalConfig) -> InstanceConfigSchema:
         agent_runtime=cfg.agent_runtime,
         integrations=cfg.integrations,
     )
+
+
+# ============================================================
+# 联网检索 provider 可用性校验
+# ============================================================
+# 目的：保存前就能知道「这把 key / 这个地址到底能不能用」，而不是等到 agent 真正
+# 调用 web_search 时才失败（失败信息淹没在会话里，很难定位）。
+#
+# 每个 provider 的探测方式与 strix/tools/web_search/tool.py 的真实调用保持一致，
+# 否则「校验通过但实际用不了」会比不校验更糟。
+_SEARCH_CHECK_TIMEOUT_SECONDS = 15.0
+# 探测用的固定查询串：短、无歧义，尽量让上游少消耗配额
+_SEARCH_PROBE_QUERY = "openai"
+# DeepSeek 官方检索接口的计费最小单位是「一次检索」，因此先用 /models（零费用）验 key，
+# 只有该端点不存在时才退回真实的 /v1/tools/search 探测。
+_DEEPSEEK_DEFAULT_BASE = "https://api.deepseek.com"
+
+
+def _status_hint(status: int) -> str:
+    if status in (401, 403):
+        return "密钥无效或权限不足"
+    if status == 429:
+        return "配额不足或触发限流"
+    if status == 404:
+        return "接口不存在（地址可能填错）"
+    if status >= 500:
+        return "上游服务端错误"
+    if status >= 400:
+        return "请求被上游拒绝"
+    return ""
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+def _result(
+    provider: str,
+    *,
+    configured: bool,
+    ok: bool,
+    detail: str,
+    started: float,
+    http_status: int | None = None,
+) -> SearchProviderCheckSchema:
+    return SearchProviderCheckSchema(
+        provider=provider,  # type: ignore[arg-type]
+        configured=configured,
+        ok=ok,
+        detail=detail,
+        elapsed_ms=_elapsed_ms(started),
+        http_status=http_status,
+    )
+
+
+async def _check_searxng(client: httpx.AsyncClient, base_url: str) -> SearchProviderCheckSchema:
+    started = time.monotonic()
+    url = (base_url or "").strip()
+    if not url:
+        return _result("searxng", configured=False, ok=False, detail="未配置自建地址", started=started)
+    try:
+        response = await client.get(
+            f"{url.rstrip('/')}/search",
+            params={"q": _SEARCH_PROBE_QUERY, "format": "json", "safesearch": 0, "language": "all"},
+        )
+    except httpx.TimeoutException:
+        return _result("searxng", configured=True, ok=False, detail="连接超时（地址不可达）", started=started)
+    except httpx.HTTPError as exc:
+        return _result("searxng", configured=True, ok=False, detail=f"连接失败：{type(exc).__name__}", started=started)
+
+    if response.status_code != HTTPStatus.OK.value:
+        hint = _status_hint(response.status_code)
+        return _result(
+            "searxng",
+            configured=True,
+            ok=False,
+            detail=f"HTTP {response.status_code}：{hint or '检索接口无响应'}",
+            started=started,
+            http_status=response.status_code,
+        )
+    try:
+        body = response.json()
+    except ValueError:
+        return _result(
+            "searxng",
+            configured=True,
+            ok=False,
+            detail="返回的不是 JSON（实例可能未开启 format=json）",
+            started=started,
+            http_status=response.status_code,
+        )
+    count = len(body.get("results") or []) if isinstance(body, dict) else 0
+    return _result(
+        "searxng",
+        configured=True,
+        ok=True,
+        detail=f"可用，探测返回 {count} 条结果",
+        started=started,
+        http_status=response.status_code,
+    )
+
+
+async def _check_exa(client: httpx.AsyncClient, api_key: str) -> SearchProviderCheckSchema:
+    started = time.monotonic()
+    key = (api_key or "").strip()
+    if not key:
+        return _result("exa", configured=False, ok=False, detail="未配置密钥", started=started)
+    try:
+        response = await client.post(
+            "https://api.exa.ai/search",
+            headers={"x-api-key": key, "Content-Type": "application/json"},
+            json={"query": _SEARCH_PROBE_QUERY, "numResults": 1},
+        )
+    except httpx.TimeoutException:
+        return _result("exa", configured=True, ok=False, detail="连接超时", started=started)
+    except httpx.HTTPError as exc:
+        return _result("exa", configured=True, ok=False, detail=f"连接失败：{type(exc).__name__}", started=started)
+
+    if response.status_code != HTTPStatus.OK.value:
+        hint = _status_hint(response.status_code)
+        return _result(
+            "exa",
+            configured=True,
+            ok=False,
+            detail=f"HTTP {response.status_code}：{hint or '检索失败'}",
+            started=started,
+            http_status=response.status_code,
+        )
+    return _result("exa", configured=True, ok=True, detail="密钥有效，探测请求成功", started=started,
+                   http_status=response.status_code)
+
+
+async def _check_perplexity(client: httpx.AsyncClient, api_key: str) -> SearchProviderCheckSchema:
+    started = time.monotonic()
+    key = (api_key or "").strip()
+    if not key:
+        return _result("perplexity", configured=False, ok=False, detail="未配置密钥", started=started)
+    try:
+        response = await client.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": "sonar", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1},
+        )
+    except httpx.TimeoutException:
+        return _result("perplexity", configured=True, ok=False, detail="连接超时", started=started)
+    except httpx.HTTPError as exc:
+        return _result("perplexity", configured=True, ok=False,
+                       detail=f"连接失败：{type(exc).__name__}", started=started)
+
+    if response.status_code != HTTPStatus.OK.value:
+        hint = _status_hint(response.status_code)
+        return _result(
+            "perplexity",
+            configured=True,
+            ok=False,
+            detail=f"HTTP {response.status_code}：{hint or '调用失败'}",
+            started=started,
+            http_status=response.status_code,
+        )
+    return _result("perplexity", configured=True, ok=True, detail="密钥有效（已发一次最小请求）", started=started,
+                   http_status=response.status_code)
+
+
+async def _check_deepseek(
+    client: httpx.AsyncClient, api_key: str, base_url: str
+) -> SearchProviderCheckSchema:
+    started = time.monotonic()
+    key = (api_key or "").strip()
+    if not key:
+        return _result("deepseek", configured=False, ok=False, detail="未配置密钥", started=started)
+
+    base = (base_url or "").strip().rstrip("/") or _DEEPSEEK_DEFAULT_BASE
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")].rstrip("/")
+    auth = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+
+    # ① 零费用：GET /v1/models 只验密钥，不触发检索计费
+    try:
+        response = await client.get(f"{base}/v1/models", headers=auth)
+    except httpx.TimeoutException:
+        return _result("deepseek", configured=True, ok=False, detail="连接超时", started=started)
+    except httpx.HTTPError as exc:
+        return _result("deepseek", configured=True, ok=False,
+                       detail=f"连接失败：{type(exc).__name__}", started=started)
+
+    if response.status_code == HTTPStatus.OK.value:
+        return _result(
+            "deepseek",
+            configured=True,
+            ok=True,
+            detail="密钥有效（/models 校验通过；未消耗检索额度）",
+            started=started,
+            http_status=response.status_code,
+        )
+    if response.status_code not in (HTTPStatus.NOT_FOUND.value, HTTPStatus.METHOD_NOT_ALLOWED.value):
+        hint = _status_hint(response.status_code)
+        return _result(
+            "deepseek",
+            configured=True,
+            ok=False,
+            detail=f"HTTP {response.status_code}：{hint or '密钥校验失败'}",
+            started=started,
+            http_status=response.status_code,
+        )
+
+    # ② 网关没有 /models 时，退回真实检索探测（会产生一次检索计费）
+    try:
+        probe = await client.post(
+            f"{base}/v1/tools/search",
+            headers={**auth, "Content-Type": "application/json"},
+            json={"query": _SEARCH_PROBE_QUERY, "count": 1},
+        )
+    except httpx.TimeoutException:
+        return _result("deepseek", configured=True, ok=False, detail="检索接口超时", started=started)
+    except httpx.HTTPError as exc:
+        return _result("deepseek", configured=True, ok=False,
+                       detail=f"检索接口连接失败：{type(exc).__name__}", started=started)
+
+    if probe.status_code != HTTPStatus.OK.value:
+        hint = _status_hint(probe.status_code)
+        return _result(
+            "deepseek",
+            configured=True,
+            ok=False,
+            detail=f"检索接口 HTTP {probe.status_code}：{hint or '调用失败'}",
+            started=started,
+            http_status=probe.status_code,
+        )
+    return _result(
+        "deepseek",
+        configured=True,
+        ok=True,
+        detail="密钥有效，检索接口可用（本次探测产生 1 次检索费用）",
+        started=started,
+        http_status=probe.status_code,
+    )
+
+
+async def check_search_providers(
+    *,
+    exa_api_key: str,
+    perplexity_api_key: str,
+    deepseek_api_key: str,
+    searxng_base_url: str,
+    deepseek_base_url: str = "",
+) -> CheckSearchProvidersResponse:
+    """并发校验四个检索 provider，返回逐项结果与 auto 模式下会选中的那个。
+
+    只做探测，**不写配置**。未配置的 provider 标记为 configured=False（不算失败）。
+    """
+    async with httpx.AsyncClient(timeout=_SEARCH_CHECK_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        searxng, exa, perplexity, deepseek = await asyncio.gather(
+            _check_searxng(client, searxng_base_url),
+            _check_exa(client, exa_api_key),
+            _check_perplexity(client, perplexity_api_key),
+            _check_deepseek(client, deepseek_api_key, deepseek_base_url),
+        )
+
+    # auto 的实际优先级（见 strix/tools/web_search/tool.py 的 provider 排序）
+    order = ["exa", "searxng", "perplexity"]
+    by_name = {r.provider: r for r in (exa, searxng, perplexity, deepseek)}
+    recommended = next((name for name in order if by_name[name].ok), None)
+
+    return CheckSearchProvidersResponse(
+        results=[searxng, exa, perplexity, deepseek],
+        recommended=recommended,
+    )
+

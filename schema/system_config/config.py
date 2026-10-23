@@ -77,3 +77,36 @@ class FetchUpstreamModelsRequest(BaseModel):
 
 class FetchUpstreamModelsResponse(BaseModel):
     models: list[str]
+
+
+class CheckSearchProvidersRequest(BaseModel):
+    """校验联网检索各 provider 的配置是否可用（不落盘，仅测试）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    exa_api_key: str = Field(default="", max_length=4096)
+    perplexity_api_key: str = Field(default="", max_length=4096)
+    deepseek_api_key: str = Field(default="", max_length=4096)
+    searxng_base_url: str = Field(default="", max_length=1024)
+    # DeepSeek 检索走官方 /v1/tools/search，base 可自定义（例如自建网关）。
+    deepseek_base_url: str = Field(default="", max_length=1024)
+
+
+class SearchProviderCheckSchema(BaseModel):
+    """单个 provider 的检查结果。"""
+
+    provider: Literal["searxng", "exa", "perplexity", "deepseek"]
+    # 是否已配置（未配置的 provider 不计为失败，只是不可用）
+    configured: bool
+    ok: bool
+    # 人读的一行结论，例如「密钥有效」「未配置密钥」「HTTP 401：密钥无效」
+    detail: str
+    elapsed_ms: int
+    http_status: int | None = None
+
+
+class CheckSearchProvidersResponse(BaseModel):
+    results: list[SearchProviderCheckSchema]
+    # auto 模式实际会选中的 provider（按 Exa → SearXNG → Perplexity 的既有优先级取第一个可用）
+    recommended: str | None = None
+

@@ -1,13 +1,14 @@
 import { Button, Spin, TabPane, Tabs } from "@douyinfe/semi-ui";
 import { ChevronRight, Eraser, Eye, EyeOff, Save, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { getInstanceConfig, updateInstanceConfig } from "../../shared/api/systemConfig";
+import { getInstanceConfig, updateInstanceConfig, checkSearchProviders } from "../../shared/api/systemConfig";
 import { showApiError, showApiSuccess } from "../../shared/api/feedback";
 import { cx } from "../../shared/lib/className";
 import type {
   AgentConfig,
   AgentPoolConfig,
   AgentRuntimeConfig,
+  CheckSearchProvidersResponse,
   InstanceConfig,
   IntegrationsConfig,
   UpdateInstanceConfigRequest,
@@ -182,6 +183,37 @@ export function SystemConfigPage() {
   const [integrationsOpen, setIntegrationsOpen] = useState(true);
   // 屏幕阅读器播报位（保存结果 / 放弃修改），不再只依赖 toast。
   const [announcement, setAnnouncement] = useState("");
+  // 联网检索可用性校验结果（只探测、不保存）
+  const [searchCheck, setSearchCheck] = useState<CheckSearchProvidersResponse["data"] | null>(null);
+  const [searchChecking, setSearchChecking] = useState(false);
+
+  const runSearchCheck = useCallback(async () => {
+    if (!values) return;
+    setSearchChecking(true);
+    try {
+      const response = await checkSearchProviders({
+        exa_api_key: values.integrations.exa_api_key ?? "",
+        perplexity_api_key: values.integrations.perplexity_api_key ?? "",
+        deepseek_api_key: values.integrations.deepseek_api_key ?? "",
+        searxng_base_url: values.integrations.searxng_base_url ?? "",
+        deepseek_base_url: (savedValues?.integrations as { deepseek_base_url?: string } | undefined)?.deepseek_base_url ?? "",
+      });
+      const data = response.data;
+      if (data) {
+        setSearchCheck(data);
+        const failed = data.results.filter((item) => item.configured && !item.ok).length;
+        if (failed === 0) {
+          showApiSuccess({ code: 200, message: "检索配置校验通过" });
+        } else {
+          showApiError(new Error(`${failed} 个已配置的 provider 校验未通过`));
+        }
+      }
+    } catch (error) {
+      showApiError(error);
+    } finally {
+      setSearchChecking(false);
+    }
+  }, [values, savedValues]);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -541,6 +573,57 @@ export function SystemConfigPage() {
                         searxng_general_engines: !(values.integrations.searxng_general_engines ?? false),
                       })}
                     />
+                  </div>
+                  <div className="cfg-check">
+                    <div className="cfg-check-head">
+                      <div>
+                        <strong>可用性校验</strong>
+                        <span className="project-form-hint">
+                          逐个探测已填的 provider（不保存配置）。Exa / Perplexity / 无 /models 的 DeepSeek 网关会发起一次真实请求，可能产生极小费用。
+                        </span>
+                      </div>
+                      <Button
+                        type="primary"
+                        theme="borderless"
+                        size="small"
+                        loading={searchChecking}
+                        onClick={() => void runSearchCheck()}
+                      >
+                        测试连通性
+                      </Button>
+                    </div>
+                    {searchCheck ? (
+                      <>
+                        <table className="cfg-check-table">
+                          <thead>
+                            <tr>
+                              <th>Provider</th>
+                              <th>结果</th>
+                              <th>说明</th>
+                              <th>耗时</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {searchCheck.results.map((item) => (
+                              <tr key={item.provider}>
+                                <td>{item.provider}</td>
+                                <td>
+                                  <span className={cx("cfg-check-badge", item.ok ? "ok" : item.configured ? "bad" : "idle")}>
+                                    {item.ok ? "可用" : item.configured ? "不可用" : "未配置"}
+                                  </span>
+                                </td>
+                                <td>{item.detail}</td>
+                                <td>{item.elapsed_ms} ms</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="project-form-hint">
+                          auto 模式当前会选中：
+                          <strong>{searchCheck.recommended ?? "无可用 provider（检索将降级为内置安全数据库）"}</strong>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                   <div className="cfg-legend">
                     <span>密钥经环境变量注入沙箱 · provider=searxng 时用自建实例，无需 key；provider=deepseek 时检索走 DeepSeek（按次计费、账号级 5 QPS），页面抓取也用它，密钥留空则自动跟随「模型配置」里已填的 DeepSeek key；「自动拉起容器」= 本机 SearXNG 不可达时平台自动 docker start / run（关掉则只注入配置、不碰容器）；「通用引擎」= 打开后平台改写 SearXNG 配置把 Google / Bing / DuckDuckGo / Brave 设为启用并重启容器（默认关：这几个引擎在部分网络被墙或要验证码）</span>
