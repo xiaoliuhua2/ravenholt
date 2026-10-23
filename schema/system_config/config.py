@@ -46,6 +46,12 @@ class UpdateIntegrationsRequest(BaseModel):
     searxng_auto_provision: bool = True
     # 「通用引擎」开关：打开后平台改写 SearXNG 配置（Google/Bing/DuckDuckGo/Brave）并重启容器。
     searxng_general_engines: bool = False
+    # 下面两项在控制台没有编辑入口，但**读取接口会返回它们**，而「快捷导入」是把
+    # GET /instance 的 integrations 原样回传的；若请求体不接受这两个字段，
+    # pydantic 的 extra="forbid" 会直接 422（表现为「批量导入 · request validation failed」）。
+    # 更新语义：仅当传入非空值时才写回，避免把配置里的默认值清空。
+    deepseek_base_url: str = Field(default="", max_length=1024)
+    searxng_bind_addr: str = Field(default="", max_length=64)
 
 
 class UpdateInstanceConfigRequest(BaseModel):

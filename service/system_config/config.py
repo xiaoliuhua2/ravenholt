@@ -63,19 +63,29 @@ async def update_instance_config(request: UpdateInstanceConfigRequest) -> Instan
                 "context_window": patch.context_window,
             })
 
+        # integrations：7 个可编辑项总是覆盖；另外两项（deepseek_base_url /
+        # searxng_bind_addr）只在请求里给了非空值时才写回 —— 它们随 GET 结果原样回传，
+        # 这样既让「快捷导入」不再 422，也不会把配置里的默认值清空。
+        ig = request.integrations
+        ig_update = {
+            "web_search_provider": ig.web_search_provider,
+            "exa_api_key": ig.exa_api_key,
+            "perplexity_api_key": ig.perplexity_api_key,
+            "deepseek_api_key": ig.deepseek_api_key,
+            "searxng_base_url": ig.searxng_base_url,
+            "searxng_auto_provision": ig.searxng_auto_provision,
+            "searxng_general_engines": ig.searxng_general_engines,
+        }
+        if ig.deepseek_base_url.strip():
+            ig_update["deepseek_base_url"] = ig.deepseek_base_url.strip()
+        if ig.searxng_bind_addr.strip():
+            ig_update["searxng_bind_addr"] = ig.searxng_bind_addr.strip()
+
         next_cfg = current.model_copy(update={
             "agents": agents,
             "agent_pool": request.agent_pool,
             "agent_runtime": request.agent_runtime,
-            "integrations": current.integrations.model_copy(update={
-                "web_search_provider": request.integrations.web_search_provider,
-                "exa_api_key": request.integrations.exa_api_key,
-                "perplexity_api_key": request.integrations.perplexity_api_key,
-                "deepseek_api_key": request.integrations.deepseek_api_key,
-                "searxng_base_url": request.integrations.searxng_base_url,
-                "searxng_auto_provision": request.integrations.searxng_auto_provision,
-                "searxng_general_engines": request.integrations.searxng_general_engines,
-            }),
+            "integrations": current.integrations.model_copy(update=ig_update),
         })
         write_config_file(next_cfg)
         return await _apply_instance_config_from_file(next_cfg)
