@@ -1195,6 +1195,71 @@
         "title": "Body_upload_work_project_source_route_api_work_projects_source_uploads_post",
         "type": "object"
       },
+      "CheckSearchProvidersRequest": {
+        "additionalProperties": false,
+        "description": "校验联网检索各 provider 的配置是否可用（不落盘，仅测试）。",
+        "properties": {
+          "deepseek_api_key": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Deepseek Api Key",
+            "type": "string"
+          },
+          "deepseek_base_url": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Deepseek Base Url",
+            "type": "string"
+          },
+          "exa_api_key": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Exa Api Key",
+            "type": "string"
+          },
+          "perplexity_api_key": {
+            "default": "",
+            "maxLength": 4096,
+            "title": "Perplexity Api Key",
+            "type": "string"
+          },
+          "searxng_base_url": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Searxng Base Url",
+            "type": "string"
+          }
+        },
+        "title": "CheckSearchProvidersRequest",
+        "type": "object"
+      },
+      "CheckSearchProvidersResponse": {
+        "properties": {
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchProviderCheckSchema"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "CheckSearchProvidersResponse",
+        "type": "object"
+      },
       "CommonResponse": {
         "properties": {
           "code": {
@@ -1315,6 +1380,32 @@
           }
         },
         "title": "CommonResponse[BlackboardSnapshotSchema]",
+        "type": "object"
+      },
+      "CommonResponse_CheckSearchProvidersResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckSearchProvidersResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[CheckSearchProvidersResponse]",
         "type": "object"
       },
       "CommonResponse_ContainerFileReadResponse_": {
@@ -2149,6 +2240,32 @@
         "title": "CommonResponse[QuerySystemUsersResponse]",
         "type": "object"
       },
+      "CommonResponse_QueryWorkProjectAssetsResponse_": {
+        "properties": {
+          "code": {
+            "default": 200,
+            "title": "Code",
+            "type": "integer"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryWorkProjectAssetsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "default": "success",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "title": "CommonResponse[QueryWorkProjectAssetsResponse]",
+        "type": "object"
+      },
       "CommonResponse_QueryWorkProjectsResponse_": {
         "properties": {
           "code": {
@@ -2903,7 +3020,7 @@
             "items": {
               "$ref": "#/components/schemas/WorkProjectAssetRequest"
             },
-            "maxItems": 500,
+            "maxItems": 5000,
             "minItems": 1,
             "title": "Assets",
             "type": "array"
@@ -3401,6 +3518,11 @@
             "title": "Deepseek Api Key",
             "type": "string"
           },
+          "deepseek_base_url": {
+            "default": "https://api.deepseek.com",
+            "title": "Deepseek Base Url",
+            "type": "string"
+          },
           "exa_api_key": {
             "default": "",
             "title": "Exa Api Key",
@@ -3419,6 +3541,11 @@
           "searxng_base_url": {
             "default": "http://127.0.0.1:8888",
             "title": "Searxng Base Url",
+            "type": "string"
+          },
+          "searxng_bind_addr": {
+            "default": "0.0.0.0",
+            "title": "Searxng Bind Addr",
             "type": "string"
           },
           "searxng_general_engines": {
@@ -4293,6 +4420,37 @@
         "title": "QuerySystemUsersResponse",
         "type": "object"
       },
+      "QueryWorkProjectAssetsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkProjectAssetSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "size",
+          "total",
+          "items"
+        ],
+        "title": "QueryWorkProjectAssetsResponse",
+        "type": "object"
+      },
       "QueryWorkProjectsResponse": {
         "properties": {
           "items": {
@@ -4905,6 +5063,57 @@
           }
         },
         "title": "ScopeConfig",
+        "type": "object"
+      },
+      "SearchProviderCheckSchema": {
+        "description": "单个 provider 的检查结果。",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "enum": [
+              "searxng",
+              "exa",
+              "perplexity",
+              "deepseek"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "configured",
+          "ok",
+          "detail",
+          "elapsed_ms"
+        ],
+        "title": "SearchProviderCheckSchema",
         "type": "object"
       },
       "SessionType": {
@@ -5772,6 +5981,12 @@
             "title": "Deepseek Api Key",
             "type": "string"
           },
+          "deepseek_base_url": {
+            "default": "",
+            "maxLength": 1024,
+            "title": "Deepseek Base Url",
+            "type": "string"
+          },
           "exa_api_key": {
             "maxLength": 4096,
             "title": "Exa Api Key",
@@ -5791,6 +6006,12 @@
             "default": "",
             "maxLength": 1024,
             "title": "Searxng Base Url",
+            "type": "string"
+          },
+          "searxng_bind_addr": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Searxng Bind Addr",
             "type": "string"
           },
           "searxng_general_engines": {
@@ -6123,7 +6344,7 @@
             "items": {
               "$ref": "#/components/schemas/WorkProjectAssetRequest"
             },
-            "maxItems": 500,
+            "maxItems": 5000,
             "minItems": 1,
             "title": "Assets",
             "type": "array"
@@ -7011,6 +7232,11 @@
             "title": "Assets",
             "type": "array"
           },
+          "assets_total": {
+            "default": 0,
+            "title": "Assets Total",
+            "type": "integer"
+          },
           "findings": {
             "items": {
               "$ref": "#/components/schemas/WorkProjectFindingSchema"
@@ -7038,6 +7264,11 @@
             },
             "title": "Agent Summaries",
             "type": "array"
+          },
+          "asset_count": {
+            "default": 0,
+            "title": "Asset Count",
+            "type": "integer"
           },
           "assets": {
             "items": {
@@ -12062,6 +12293,72 @@
         ]
       }
     },
+    "/api/system-config/search-providers/check": {
+      "post": {
+        "operationId": "check_search_providers_handler_api_system_config_search_providers_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckSearchProvidersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_CheckSearchProvidersResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Check Search Providers Handler",
+        "tags": [
+          "system-config"
+        ]
+      }
+    },
     "/api/system-config/upstream-models": {
       "post": {
         "operationId": "fetch_upstream_models_handler_api_system_config_upstream_models_post",
@@ -12819,6 +13116,126 @@
           }
         ],
         "summary": "Delete Work Project Handler",
+        "tags": [
+          "work-projects"
+        ]
+      }
+    },
+    "/api/work-projects/{id}/assets": {
+      "get": {
+        "operationId": "query_work_project_assets_route_api_work_projects__id__assets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Keyword",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Asset Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_QueryWorkProjectAssetsResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Work project not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommonResponse_Any_"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "AccessTokenAuth": []
+          }
+        ],
+        "summary": "Query Work Project Assets Route",
         "tags": [
           "work-projects"
         ]

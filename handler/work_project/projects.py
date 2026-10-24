@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 from middleware.auth import AuthUser
 from schema.common.responses import CommonResponse
+from schema.work_project.assets import WorkProjectAssetType
 from schema.work_project.projects import (
     CreateWorkProjectRequest,
     CreateWorkProjectSessionResponse,
@@ -11,6 +12,7 @@ from schema.work_project.projects import (
     UpdateWorkProjectMetadataRequest,
 )
 from service.work_project.findings import get_work_project_finding_evidence
+from service.work_project.assets import query_work_project_assets
 from service.work_project.projects import (
     can_access_work_project,
     cancel_work_project,
@@ -42,6 +44,37 @@ async def get_work_project_record_snapshot_handler(id: int, user: AuthUser) -> C
     if snapshot is None:
         return CommonResponse(code=HTTPStatus.NOT_FOUND.value, message="work project not found")
     return CommonResponse(data=snapshot)
+
+
+async def query_work_project_assets_handler(
+    id: int,
+    page: int,
+    size: int,
+    keyword: str,
+    asset_type: str,
+    user: AuthUser,
+) -> CommonResponse:
+    """分页读项目资产：快照只带前 N 条，资产页用这个接口翻页取全量。"""
+    if not await can_access_work_project(id, user.id, user.role):
+        return CommonResponse(code=HTTPStatus.NOT_FOUND.value, message="work project not found")
+    type_value: WorkProjectAssetType | None = None
+    raw_type = (asset_type or "").strip().lower()
+    if raw_type:
+        try:
+            type_value = WorkProjectAssetType(raw_type)
+        except ValueError:
+            return CommonResponse(
+                code=HTTPStatus.BAD_REQUEST.value,
+                message="asset_type must be domain|service|network|binary",
+            )
+    page_result = await query_work_project_assets(
+        id,
+        page=page,
+        size=size,
+        keyword=keyword,
+        asset_type=type_value,
+    )
+    return CommonResponse(data=paginated_payload(page_result, page_result.items))
 
 
 async def get_work_project_finding_evidence_handler(

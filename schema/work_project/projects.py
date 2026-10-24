@@ -118,6 +118,7 @@ class WorkProjectSchema(BaseModel):
     sandbox_container_ids: list[int]
     sandbox_containers: list[SandboxContainerSchema] = Field(default_factory=list)
     assets: list[WorkProjectAssetSchema]
+    asset_count: int = 0
     tasks: list[WorkProjectTaskSchema]
     agent_summaries: list[WorkProjectAgentSummarySchema]
     progress: float = Field(default=0, ge=0, le=100)
@@ -141,7 +142,9 @@ class WorkProjectMetadataRequest(BaseModel):
     description: str = Field(default="", max_length=2000)
     owner_user_ids: list[int] = Field(default_factory=list, max_length=100)
     sandbox_container_ids: list[int] = Field(default_factory=list, max_length=100)
-    assets: list[WorkProjectAssetRequest] = Field(min_length=1, max_length=500)
+    # 批量导入真实测绘清单动辄上千条（子域 / host:port / 网段）；上限只防滥用，
+    # 不是业务约束，500 曾让 900+ 条的导入直接 422「request validation failed」。
+    assets: list[WorkProjectAssetRequest] = Field(min_length=1, max_length=5000)
     type: WorkProjectType = WorkProjectType.PENETRATION_TEST
 
     @field_validator("name", "description", mode="before")
@@ -185,6 +188,11 @@ class ListWorkProjectSessionsResponse(BaseModel):
 
 # query work projects response schema
 class QueryWorkProjectsResponse(PaginatedResponse[WorkProjectSchema]):
+    pass
+
+
+# paginated asset list (projects with thousands of assets page through this)
+class QueryWorkProjectAssetsResponse(PaginatedResponse[WorkProjectAssetSchema]):
     pass
 
 

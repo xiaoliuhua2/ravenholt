@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, cast, or_, update
+from sqlalchemy import String, cast, func, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -28,12 +28,15 @@ async def query_work_project_assets(
     page: int,
     size: int,
     keyword: str,
+    asset_type: WorkProjectAssetType | None = None,
 ) -> Page[WorkProjectAssetSchema]:
     statement = (
         select(WorkProjectAsset)
         .where(WorkProjectAsset.project_id == project_id)
         .order_by(WorkProjectAsset.id)
     )
+    if asset_type is not None:
+        statement = statement.where(WorkProjectAsset.type == asset_type)
     keyword = keyword.strip()
     if keyword:
         pattern = f"%{keyword}%"
@@ -50,6 +53,62 @@ async def query_work_project_assets(
         total=page_result.total,
         items=[WorkProjectAssetSchema.model_validate(item) for item in page_result.items],
     )
+
+
+async def count_work_project_assets(
+    project_id: int,
+    *,
+    origin: WorkProjectAssetOrigin | None = None,
+) -> int:
+    filters = [WorkProjectAsset.project_id == project_id]
+    if origin is not None:
+        filters.append(WorkProjectAsset.origin == origin)
+    async with get_async_session() as session:
+        total = (await session.exec(
+            select(func.count()).select_from(WorkProjectAsset).where(*filters)
+        )).one()
+    return int(total or 0)
+
+
+async def search_work_project_assets(
+    project_id: int,
+    *,
+    keyword: str = "",
+    asset_type: WorkProjectAssetType | None = None,
+    origin: WorkProjectAssetOrigin | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[int, list[WorkProjectAssetSchema]]:
+    """按类型 / 来源 / 关键字分页查资产（agent 侧「取具体标识」用）。
+
+    千级资产不会整份注入提示词，模型需要具体子域、端口时靠这里按需取；返回总数以便
+    它自己判断是否还有下一页。
+    """
+    filters = [WorkProjectAsset.project_id == project_id]
+    if asset_type is not None:
+        filters.append(WorkProjectAsset.type == asset_type)
+    if origin is not None:
+        filters.append(WorkProjectAsset.origin == origin)
+    keyword = keyword.strip()
+    if keyword:
+        pattern = f"%{keyword}%"
+        filters.append(or_(
+            WorkProjectAsset.identifier.ilike(pattern),
+            WorkProjectAsset.host.ilike(pattern),
+            WorkProjectAsset.path.ilike(pattern),
+        ))
+    async with get_async_session() as session:
+        total = (await session.exec(
+            select(func.count()).select_from(WorkProjectAsset).where(*filters)
+        )).one()
+        rows = (await session.exec(
+            select(WorkProjectAsset)
+            .where(*filters)
+            .order_by(WorkProjectAsset.id)
+            .offset(offset)
+            .limit(limit)
+        )).all()
+    return int(total or 0), [WorkProjectAssetSchema.model_validate(row) for row in rows]
 
 
 async def create_work_project_asset(

@@ -46,6 +46,11 @@ from service.work_project.progress import (
     derive_work_project_status,
 )
 
+# 资产上量后的响应边界：列表页每个项目只带前 N 条（用于详情弹窗预览），总数走 asset_count；
+# 快照带前 M 条（图与发现标签用），资产页靠 /work-projects/{id}/assets 分页取全量。
+_LIST_ASSET_PREVIEW = 50
+_SNAPSHOT_ASSET_LIMIT = 1000
+
 
 logger = get_logger(__name__)
 _PROJECT_SESSION_TITLE_PATTERN = re.compile(r"^session (?P<number>\d+)$")
@@ -138,11 +143,16 @@ async def work_project_source_paths(project_id: int) -> list[str]:
     return paths
 
 
-async def work_project_scope_targets(project_id: int) -> list[str]:
-    """项目声明为授权范围的资产标识（domain / service / network，按 id 有序、去重）。
+async def work_project_scope_assets(
+    project_id: int,
+) -> list[tuple[WorkProjectAssetType, str]]:
+    """项目声明为授权范围的资产（domain / service / network，按 id 有序、去重）。
 
     渗透会话起手时把这份清单注入任务文本：root 只看用户原话（例如「开始测试」）会
     判定「没有可测目标」而去反问用户，项目里配好的范围必须由平台补给它。
+
+    返回类型而不是纯标识：千级清单需要按类型折叠（主域聚合 / 主机聚合），只拿字符串
+    无法区分「sjtu.edu.cn:443」是服务还是主机。
     """
     async with get_async_session() as session:
         rows = (await session.exec(
@@ -153,13 +163,19 @@ async def work_project_scope_targets(project_id: int) -> list[str]:
             )
             .order_by(WorkProjectAsset.id)
         )).all()
-    targets: list[str] = []
+    targets: list[tuple[WorkProjectAssetType, str]] = []
+    seen: set[tuple[WorkProjectAssetType, str]] = set()
     for row in rows:
         if row.type == WorkProjectAssetType.BINARY:
             continue
         identifier = (row.identifier or "").strip()
-        if identifier and identifier not in targets:
-            targets.append(identifier)
+        if not identifier:
+            continue
+        key = (row.type, identifier)
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(key)
     return targets
 
 
@@ -202,7 +218,7 @@ async def get_work_project_record_snapshot_for_user(
         project = await session.get(WorkProject, id)
         if project is None:
             return None
-        project_schema = await _project_schema(session, project)
+        project_schema = await _project_schema(session, project, asset_limit=_SNAPSHOT_ASSET_LIMIT)
         assets = project_schema.assets
         findings = (await session.exec(
             select(WorkProjectFinding)
@@ -215,6 +231,7 @@ async def get_work_project_record_snapshot_for_user(
         project=project_schema,
         records=WorkProjectRecordsSchema(
             assets=assets,
+            assets_total=project_schema.asset_count,
             findings=[WorkProjectFindingSchema.model_validate(item) for item in findings],
             graph=graph,
         ),
@@ -450,13 +467,18 @@ async def work_project_allows_sandbox_container(
 async def _project_schema(
     session,
     project: WorkProject,
+    *,
+    asset_limit: int | None = None,
 ) -> WorkProjectSchema:
     activity = await _activity_for_project(session, project.id or 0)
+    rows = await _assets_for_project(session, project.id or 0)
+    assets = rows if asset_limit is None else rows[:asset_limit]
     return WorkProjectSchema(**_project_schema_payload(
         project=project,
         owners=await _owners_for_project(session, project.id or 0),
         sandbox_containers=await _sandbox_containers_for_project(session, project.id or 0),
-        assets=await _assets_for_project(session, project.id or 0),
+        assets=assets,
+        asset_count=len(rows),
         session_count=await _session_count_in_tx(session, project.id or 0),
         activity=activity,
     ))
@@ -527,11 +549,13 @@ async def _query_work_projects(
     projects = page_result.items
 
     async with get_async_session() as session:
-        counts = await _session_counts(session, [project.id or 0 for project in projects])
-        owners = await _owners_by_project(session, [project.id or 0 for project in projects])
-        sandbox_containers = await _sandbox_containers_by_project(session, [project.id or 0 for project in projects])
-        assets = await _assets_by_project(session, [project.id or 0 for project in projects])
-        activities = await derive_project_activity_in_tx(session, [project.id or 0 for project in projects])
+        ids = [project.id or 0 for project in projects]
+        counts = await _session_counts(session, ids)
+        owners = await _owners_by_project(session, ids)
+        sandbox_containers = await _sandbox_containers_by_project(session, ids)
+        asset_counts = await _asset_counts_by_project(session, ids)
+        assets = await _assets_preview_by_project(session, ids, _LIST_ASSET_PREVIEW)
+        activities = await derive_project_activity_in_tx(session, ids)
 
         items = [
             WorkProjectSchema(**_project_schema_payload(
@@ -539,6 +563,7 @@ async def _query_work_projects(
                 owners=owners.get(project.id or 0, []),
                 sandbox_containers=sandbox_containers.get(project.id or 0, []),
                 assets=assets.get(project.id or 0, []),
+                asset_count=asset_counts.get(project.id or 0, 0),
                 session_count=counts.get(project.id or 0, 0),
                 activity=activities.get(project.id or 0, ProjectActivity()),
             ))
@@ -552,6 +577,7 @@ def _project_schema_payload(
     owners: list[WorkProjectOwnerSchema],
     sandbox_containers: list[SandboxContainerSchema],
     assets: list[WorkProjectAsset],
+    asset_count: int,
     session_count: int,
     activity: ProjectActivity,
 ) -> dict[str, object]:
@@ -575,6 +601,7 @@ def _project_schema_payload(
         "sandbox_container_ids": [container.id for container in sandbox_containers],
         "sandbox_containers": sandbox_containers,
         "assets": assets,
+        "asset_count": asset_count,
         "tasks": tasks,
         "agent_summaries": activity.agent_summaries,
         "progress": progress,
@@ -670,6 +697,56 @@ async def _assets_by_project(session, project_ids: list[int]) -> dict[int, list[
 
 async def _assets_for_project(session, project_id: int) -> list[WorkProjectAsset]:
     return (await _assets_by_project(session, [project_id])).get(project_id, [])
+
+
+async def _asset_counts_by_project(session, project_ids: list[int]) -> dict[int, int]:
+    ids = [project_id for project_id in project_ids if project_id > 0]
+    if not ids:
+        return {}
+    rows = (await session.exec(
+        select(WorkProjectAsset.project_id, func.count())
+        .where(WorkProjectAsset.project_id.in_(ids))
+        .group_by(WorkProjectAsset.project_id)
+    )).all()
+    return {int(project_id): int(count) for project_id, count in rows if project_id is not None}
+
+
+async def _assets_preview_by_project(
+    session,
+    project_ids: list[int],
+    limit: int,
+) -> dict[int, list[WorkProjectAsset]]:
+    """每个项目只取前 ``limit`` 条资产。
+
+    列表页只需要「有没有资产 + 少量预览」，几千条资产全量装进响应会让项目列表变成
+    MB 级 JSON；这里先按轻量列取 id 再回表，避免把每个项目的全量行都读进内存。
+    """
+    ids = [project_id for project_id in project_ids if project_id > 0]
+    if not ids:
+        return {}
+    rows = (await session.exec(
+        select(WorkProjectAsset.project_id, WorkProjectAsset.id)
+        .where(WorkProjectAsset.project_id.in_(ids))
+        .order_by(WorkProjectAsset.project_id, WorkProjectAsset.id)
+    )).all()
+    preview_ids: list[int] = []
+    taken: dict[int, int] = {}
+    for project_id, asset_id in rows:
+        if taken.get(project_id, 0) >= limit:
+            continue
+        taken[project_id] = taken.get(project_id, 0) + 1
+        preview_ids.append(asset_id)
+    result: dict[int, list[WorkProjectAsset]] = {project_id: [] for project_id in ids}
+    if not preview_ids:
+        return result
+    assets = (await session.exec(
+        select(WorkProjectAsset)
+        .where(WorkProjectAsset.id.in_(preview_ids))
+        .order_by(WorkProjectAsset.project_id, WorkProjectAsset.id)
+    )).all()
+    for asset in assets:
+        result.setdefault(asset.project_id, []).append(asset)
+    return result
 
 
 def _owner_schema(user: SystemUser) -> WorkProjectOwnerSchema:

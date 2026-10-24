@@ -9,6 +9,7 @@ from handler.work_project.projects import (
     get_work_project_record_snapshot_handler,
     get_work_project_finding_evidence_handler,
     list_work_project_sessions_handler,
+    query_work_project_assets_handler,
     query_work_projects_handler,
     retry_work_project_handler,
     update_work_project_metadata_handler,
@@ -21,6 +22,7 @@ from schema.work_project.projects import (
     CreateWorkProjectSessionResponse,
     DeleteWorkProjectResponse,
     ListWorkProjectSessionsResponse,
+    QueryWorkProjectAssetsResponse,
     QueryWorkProjectsResponse,
     UpdateWorkProjectMetadataRequest,
     WorkProjectSchema,
@@ -67,6 +69,19 @@ async def get_work_project_finding_evidence_route(
     user: AuthUser = Depends(require_user),
 ) -> CommonResponse[WorkProjectFindingEvidenceSchema]:
     return await get_work_project_finding_evidence_handler(id=id, finding_id=finding_id, user=user)
+
+
+async def query_work_project_assets_route(
+    id: int,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=100, ge=1, le=200),
+    keyword: str = Query(default=""),
+    asset_type: str = Query(default=""),
+    user: AuthUser = Depends(require_user),
+) -> CommonResponse[QueryWorkProjectAssetsResponse]:
+    return await query_work_project_assets_handler(
+        id=id, page=page, size=size, keyword=keyword, asset_type=asset_type, user=user
+    )
 
 
 async def update_work_project_metadata_route(
@@ -136,6 +151,14 @@ router.add_api_route(
     update_work_project_metadata_route,
     methods=["PATCH"],
     response_model=CommonResponse[WorkProjectSchema],
+    responses={**COMMON_ERROR_RESPONSES, **BAD_REQUEST_RESPONSE, **NOT_FOUND_RESPONSE},
+)
+
+router.add_api_route(
+    "/{id}/assets",
+    query_work_project_assets_route,
+    methods=["GET"],
+    response_model=CommonResponse[QueryWorkProjectAssetsResponse],
     responses={**COMMON_ERROR_RESPONSES, **BAD_REQUEST_RESPONSE, **NOT_FOUND_RESPONSE},
 )
 
