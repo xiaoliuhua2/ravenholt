@@ -32,6 +32,21 @@ SUBAGENT_KEY_PREFIX = "sa:"
 _INTERRUPTED_SUBAGENT_ERROR = "Subagent task was interrupted by backend restart."
 
 
+def sanitize_timeline_payload(payload: str) -> str:
+    """让 payload 始终能被 PostgreSQL 的 ``jsonb`` 解析。
+
+    工具输出可能带二进制 NUL（PDF 头、压缩流），序列化后会变成 ``\\u0000`` 转义存进
+    TEXT 列；``cast(payload AS jsonb)`` 的查询（项目活动聚合、启动时子代理状态收尾）
+    会被 PG 拒收（unsupported Unicode escape sequence）并抛 500。这里在落库前把该
+    转义替换成 U+FFFD，代价只是展示层少一个空字符。
+    """
+    if "\\u0000" in payload:
+        return payload.replace("\\u0000", "\\ufffd")
+    if "\x00" in payload:
+        return payload.replace("\x00", "")
+    return payload
+
+
 async def load_timeline_head(session_id: str) -> tuple[int, dict[str, int]]:
     """Return (max_seq, {item_key: seq}) so an in-memory counter can resume.
 
@@ -62,7 +77,7 @@ async def upsert_timeline_events(
             "session_id": session_id,
             "item_key": item_key,
             "seq": seq,
-            "payload": payload,
+            "payload": sanitize_timeline_payload(payload),
             "created_at": created_at,
         }
         for item_key, seq, payload, created_at in rows
@@ -109,7 +124,7 @@ async def persist_subagent_event_unpooled(session_id: str, event: Any) -> None:
             session_id=session_id,
             item_key=item_key,
             seq=seq,
-            payload=event.model_dump_json(),
+            payload=sanitize_timeline_payload(event.model_dump_json()),
             created_at=event.created_at,
         )
         statement = statement.on_conflict_do_update(
@@ -161,7 +176,7 @@ async def settle_stale_running_subagent_events() -> int:
                     table.c.session_id == row.session_id,
                     table.c.item_key == row.item_key,
                 )
-                .values(payload=json.dumps(payload, ensure_ascii=False))
+                .values(payload=sanitize_timeline_payload(json.dumps(payload, ensure_ascii=False)))
             )
             settled += 1
         if settled:
