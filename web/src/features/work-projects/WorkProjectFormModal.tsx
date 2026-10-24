@@ -64,6 +64,7 @@ const BULK_PLACEHOLDER = [
   "# 每行一个资产，# 开头的行忽略",
   "192.168.1.10:8080",
   "app.example.com",
+  "https://app.example.com:8443/login",
   "10.0.0.0/24",
   "/opt/source",
 ].join("\n");
@@ -212,7 +213,7 @@ export function WorkProjectFormModal({ open, saving, project, onCancel, onSubmit
       }
       seen.add(identity);
       accepted.push(parsed.asset);
-      report.push({ raw, status: "ok", message: "已追加到资产列表", asset: parsed.asset });
+      report.push({ raw, status: "ok", message: parsed.note ?? "已追加到资产列表", asset: parsed.asset });
     }
     if (accepted.length) {
       appendAssets(accepted);
@@ -492,9 +493,60 @@ const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 const IPV6_RE = /^[0-9a-fA-F:]+$/;
 const HOST_PORT_RE = /^([^:\s]+):(\d{1,5})$/;
 const DOMAIN_RE = /^[a-zA-Z0-9*][a-zA-Z0-9.*_-]*$/;
+// 带协议头的 URL（http://、https://、wss:// 等）。
+// 粘贴 URL 是最常见的输入习惯，而 URL 中的 ":" 会被「主机:端口」规则误判成端口
+// 分隔符（https://a.com/ → 「冒号后应为 1-65535 的端口号」），所以必须先单独处理。
+const URL_LIKE_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 
-function parseBulkLine(raw: string): { asset?: WorkProjectAssetRequest; error?: string } {
+type ParsedBulkLine = { asset?: WorkProjectAssetRequest; error?: string; note?: string };
+
+/** 带协议头地址的 authority 段（去掉协议、路径、查询与锚点）。 */
+function urlAuthority(token: string): string {
+  return token.replace(URL_LIKE_RE, "").split(/[/?#]/)[0] ?? "";
+}
+
+/**
+ * 解析带协议头的 URL：剥离协议与路径，只保留主机与显式端口。
+ * 默认端口（http:80 / https:443）由 `new URL` 抹掉，因此端口从原始 authority 里取，
+ * 以尊重用户「我写了 :443 就是要按服务资产记」的意图。
+ */
+function parseUrlLine(token: string): ParsedBulkLine {
+  let url: URL;
+  try {
+    url = new URL(token);
+  } catch {
+    return { error: "URL 格式非法，应形如 https://app.example.com:8443/" };
+  }
+  // URL.hostname 对 IPv6 会带方括号（[::1]），后端要的是裸地址。
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host) {
+    return { error: "URL 中没有主机名（本地路径请直接填 /opt/xxx）" };
+  }
+  const explicitPort = /:(\d{1,5})$/.exec(urlAuthority(token));
+  const port = explicitPort ? Number(explicitPort[1]) : (url.port ? Number(url.port) : null);
+  if (port !== null && (port < 1 || port > 65535)) {
+    return { error: `端口超出 1-65535 范围：${explicitPort?.[1] ?? url.port}` };
+  }
+  const hadPath = url.pathname !== "/" || Boolean(url.search) || Boolean(url.hash);
+  const note = hadPath ? "已按主机导入，路径与参数被忽略" : "已追加到资产列表";
+  if (port !== null) {
+    return { asset: { type: ASSET_TYPE.SERVICE, host, port, path: "" }, note };
+  }
+  if (IPV4_RE.test(host)) {
+    const cidr = normalizeCidrIPv4(`${host}/32`);
+    if (!cidr) return { error: "IPv4 地址非法" };
+    return { asset: { type: ASSET_TYPE.NETWORK, host: cidr, port: null, path: "" }, note };
+  }
+  if (host.includes(":")) {  // IPv6 字面量
+    return { asset: { type: ASSET_TYPE.NETWORK, host, port: null, path: "" }, note };
+  }
+  return { asset: { type: ASSET_TYPE.DOMAIN, host, port: null, path: "" }, note };
+}
+
+function parseBulkLine(raw: string): ParsedBulkLine {
   const token = raw.trim();
+  // 先处理带协议的 URL，避免其中的 ":" 落到下面的「主机:端口」分支。
+  if (URL_LIKE_RE.test(token)) return parseUrlLine(token);
   // 以 / 开头的行是沙箱内绝对路径，按二进制（源码目录 / 文件）资产处理。
   if (token.startsWith("/")) {
     return { asset: { type: ASSET_TYPE.BINARY, host: "", port: null, path: token } };
@@ -514,9 +566,21 @@ function parseBulkLine(raw: string): { asset?: WorkProjectAssetRequest; error?: 
     return { error: "冒号后应为 1-65535 的端口号" };
   }
   if (token.includes("/")) {
-    const cidr = normalizeCidrIPv4(token);
-    if (!cidr) return { error: "网段格式非法，应形如 10.0.0.0/24" };
-    return { asset: { type: ASSET_TYPE.NETWORK, host: cidr, port: null, path: "" } };
+    const head = token.split("/")[0] ?? "";
+    // 明确是 IP / 网段意图：解析失败就报网段错误，不退化成域名。
+    if (IPV4_RE.test(head)) {
+      const cidr = normalizeCidrIPv4(token);
+      if (!cidr) return { error: "网段格式非法，应形如 10.0.0.0/24" };
+      return { asset: { type: ASSET_TYPE.NETWORK, host: cidr, port: null, path: "" } };
+    }
+    // 域名带路径（从浏览器地址栏直接复制时常见）：按域名导入，路径忽略。
+    if (DOMAIN_RE.test(head)) {
+      return {
+        asset: { type: ASSET_TYPE.DOMAIN, host: head.toLowerCase(), port: null, path: "" },
+        note: "已按域名导入，路径被忽略",
+      };
+    }
+    return { error: "网段格式非法，应形如 10.0.0.0/24" };
   }
   if (IPV4_RE.test(token)) {
     const cidr = normalizeCidrIPv4(`${token}/32`);
@@ -524,7 +588,7 @@ function parseBulkLine(raw: string): { asset?: WorkProjectAssetRequest; error?: 
     return { asset: { type: ASSET_TYPE.NETWORK, host: cidr, port: null, path: "" } };
   }
   if (!DOMAIN_RE.test(token)) {
-    return { error: "无法识别，应为 主机:端口 / IPv4 / CIDR / /路径 / 域名" };
+    return { error: "无法识别，应为 主机:端口 / IPv4 / CIDR / /路径 / 域名 / URL" };
   }
   return { asset: { type: ASSET_TYPE.DOMAIN, host: token.toLowerCase(), port: null, path: "" } };
 }
