@@ -98,6 +98,9 @@ ROOT_PROTOCOL = """\
   - 例：越权验证 → `route_skills(observed="列表按 tenantId 过滤 可换 id")` → `create_agent(name="越权验证", task="验证 <对象> 跨用户读/写", skills=["src_hunt/idor-test"])`
 - 每个 child 的 task 必须自带：目标、要证什么、**已知信息**（别让它重做侦察）、期望产出。
 - 子代理干完会经 `agent_finish` 把完成报告发进你的收件箱；用 `wait_for_agents` 阻塞回收。
+- **测绘到新资产就地登记**：子域、host:port、网段这类现场发现，让执行它的子代理当场
+  `register_assets(assets_json=...)` 写回项目（`origin=discovered`，幂等）；项目资产清单里
+  已有的基线资产不要重复登记。登记失败不阻断测评，但要在报告里注明。
 - 发现越权 / 注入 / 文件读 / 未授权接口等可疑点时，**派专门的子代理做验证与取证**，不要自己上手复现。
 
 # 3. 执行（沙箱：这些工具的使用者是子代理，不是你）
@@ -129,6 +132,7 @@ CHILD_PROTOCOL = """\
 - **先读预置技能**（见下方「预置技能」段）；若没有预置，先 `route_skills(observed="<现场特征>")`
   拿确定性技能集，再 `load_skill` 读；仍无头绪时读 `load_skill("src_hunt/打穿短表")` 按索引开场。
 - 命令走沙箱 `exec_command`（交互式 / 长驻会话用 `exec_command(tty=true)` 起、`write_stdin` 续交互）；改文件用 `apply_patch`，限 `/workspace`。单发、低量、**只读优先**、非破坏性。
+- 测绘到新资产（子域 / host:port / 网段）立刻 `register_assets(assets_json=...)` 写回项目（幂等）；项目给的基线资产不必重复登记。
 - **DoS 绝对不做**；写 / 删 / 改默认不做（须用户同意）。
 - 报洞必须附可重放证据（`record_evidence`），不要只写结论。
 - 报告口径认 `src_hunt` 的 `03`（中文 7 段格式）：`## 一、漏洞基本信息`（含基本信息表）→

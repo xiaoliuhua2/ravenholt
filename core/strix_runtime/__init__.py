@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 from agents import Agent, Model, ModelSettings, RunConfig
 from agents.sandbox import SandboxRunConfig
 
+from core.strix_runtime.asset_tools import ASSET_TOOLS
 from core.strix_runtime.evidence_tools import EVIDENCE_TOOLS
 from core.strix_runtime.prompts import with_preset_skills
 from core.strix_runtime.skill_routes import SKILL_ROUTE_TOOLS
@@ -207,10 +208,11 @@ async def run_strix_session(
     # 代理工具从运行上下文取 ``caido_client``（strix/tools/proxy/tools.py:_ctx_client）。
     run_config = RunConfig(sandbox=SandboxRunConfig(session=sandbox_session))
 
-    # 路由工具常驻；项目绑定 → 证据工具。沙箱工具由 SDK 能力提供，不再挂 ravenholt 侧实现。
+    # 路由工具常驻；项目绑定 → 证据 + 资产登记工具。沙箱工具由 SDK 能力提供，不再挂 ravenholt 侧实现。
     extra_tools: tuple[Any, ...] = (
         *SKILL_ROUTE_TOOLS,
         *(EVIDENCE_TOOLS if work_project_id is not None else ()),
+        *(ASSET_TOOLS if work_project_id is not None else ()),
     )
 
     def _build_agent(

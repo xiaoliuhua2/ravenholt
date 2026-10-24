@@ -144,6 +144,20 @@ async def upsert_work_project_asset(
     return await update_work_project_asset(project_id, winner_id, request)
 
 
+async def find_work_project_asset(
+    project_id: int,
+    asset_type: WorkProjectAssetType,
+    identifier: str,
+) -> WorkProjectAssetSchema | None:
+    """按 (type, identifier) 查项目资产。
+
+    供 agent 登记工具判断「新增 vs 已存在」，并给 service 资产补 domain→service 结构边。
+    """
+    async with get_async_session() as session:
+        asset = await _get_asset_by_identity(session, project_id, asset_type, identifier)
+    return WorkProjectAssetSchema.model_validate(asset) if asset is not None else None
+
+
 async def delete_work_project_asset(project_id: int, asset_id: int) -> str:
     async with get_async_session() as session:
         asset = await session.get(WorkProjectAsset, asset_id)
