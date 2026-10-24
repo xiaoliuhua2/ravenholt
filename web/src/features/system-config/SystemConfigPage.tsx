@@ -62,9 +62,11 @@ const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   exa_api_key: "",
   perplexity_api_key: "",
   deepseek_api_key: "",
+  deepseek_base_url: "",
   searxng_base_url: "",
   searxng_auto_provision: true,
   searxng_general_engines: false,
+  searxng_bind_addr: "",
 };
 
 function integrationsSummary(integrations: IntegrationsConfig): string {
@@ -144,9 +146,11 @@ function toPayload(values: ConfigFormValue): UpdateInstanceConfigRequest {
       exa_api_key: values.integrations.exa_api_key ?? "",
       perplexity_api_key: values.integrations.perplexity_api_key ?? "",
       deepseek_api_key: values.integrations.deepseek_api_key ?? "",
+      deepseek_base_url: values.integrations.deepseek_base_url ?? "",
       searxng_base_url: values.integrations.searxng_base_url ?? "",
       searxng_auto_provision: values.integrations.searxng_auto_provision ?? true,
       searxng_general_engines: values.integrations.searxng_general_engines ?? false,
+      searxng_bind_addr: values.integrations.searxng_bind_addr ?? "",
     },
   };
 }
