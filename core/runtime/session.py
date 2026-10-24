@@ -35,6 +35,7 @@ from schema.agent.events import (
     SandboxPhaseSchema,
     UserMessageEvent,
 )
+from schema.work_project.assets import WorkProjectAssetType
 from service.agent import notifications as agent_notifications
 
 
@@ -46,6 +47,27 @@ _SUBSCRIBER_REBASE_THRESHOLD = 512
 # apart from a genuine network drop, so it can reconnect instead of reporting a
 # misleading "stream closed before the model produced output" error.
 SUBSCRIBER_CLOSED_CODE = 4001
+
+# 授权范围注入的折叠阈值：一律按主域 / 主机聚合，聚合后最多展示 GROUP 行。
+# 千级资产逐条列出会让每回合多出上万 token，而 root 首轮只需要知道「范围覆盖哪些主域 / 主机」。
+_SCOPE_GROUP_LIMIT = 40
+_SERVICE_PORT_LIMIT = 12
+# 常见多段公共后缀：只取末两段会把 sjtu.edu.cn 折成 edu.cn，把整段教育网混成一组。
+_MULTI_LABEL_SUFFIXES = frozenset({
+    "edu.cn", "com.cn", "net.cn", "org.cn", "gov.cn", "ac.cn", "mil.cn",
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "net.uk", "sch.uk",
+    "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp",
+    "com.au", "net.au", "org.au", "edu.au", "gov.au",
+    "com.hk", "net.hk", "org.hk", "edu.hk", "gov.hk",
+    "com.tw", "net.tw", "org.tw", "edu.tw", "gov.tw",
+    "co.kr", "or.kr", "ac.kr", "go.kr",
+    "com.sg", "net.sg", "org.sg", "edu.sg", "gov.sg",
+    "co.in", "net.in", "org.in", "gen.in", "firm.in",
+    "com.br", "net.br", "org.br",
+    "co.nz", "net.nz", "org.nz", "ac.nz", "govt.nz",
+    "co.za", "org.za", "web.za",
+    "com.ru", "net.ru", "org.ru",
+})
 
 
 @dataclass(frozen=True)
@@ -186,13 +208,13 @@ class AgentSession:
         )
         # 项目资产清单 = 本次授权范围。用户原话常常只有「开始测试」，不给这段注入，
         # root 会按规程判定「没有可测目标」转而反问用户。
-        scope_targets: list[str] = []
+        scope_assets: list[tuple[WorkProjectAssetType, str]] = []
         if context.work_project_id is not None:
-            from service.work_project.projects import work_project_scope_targets
+            from service.work_project.projects import work_project_scope_assets
 
-            scope_targets = await work_project_scope_targets(context.work_project_id)
-        if scope_targets:
-            logger.info("strix scope injected project=%s targets=%s", context.work_project_id, scope_targets)
+            scope_assets = await work_project_scope_assets(context.work_project_id)
+        if scope_assets:
+            logger.info("strix scope injected project=%s total=%s", context.work_project_id, len(scope_assets))
         projector = StrixEventProjector(publish=self.publish_external, root_id=root_id)
         run_dir = WORKSPACE / "strix_runs"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -239,8 +261,8 @@ class AgentSession:
                     + "\n\n"
                     + runtime_task
                 )
-            if scope_targets:
-                runtime_task = _scope_targets_block(scope_targets) + runtime_task
+            if scope_assets:
+                runtime_task = _scope_targets_block(scope_assets) + runtime_task
             await run_strix_session(
                 task=runtime_task,
                 model=build_configured_model(agent_code, session_id=self.session_id),
@@ -915,20 +937,117 @@ async def _collect_source_mounts(
     return local_sources, roots, skipped
 
 
-def _scope_targets_block(targets: list[str]) -> str:
+def _scope_targets_block(assets: list[tuple[WorkProjectAssetType, str]]) -> str:
     """把项目资产清单写成任务前置段。
 
     清单是「基线范围」而不是穷尽范围：用户在同一条消息里另外点名的目标同样有效，
     否则 root 会把用户追加的目标判成越界。每回合都按当前项目数据重新注入，因此
     历史里可能有多份同类清单，这里声明以本条（最新）为准，避免资产删改后仍按旧清单走。
+
+    用户主动导入的资产不再逐条进提示词：无论多少条，一律折成「主域 / 主机 + 计数」摘要
+    （和 agent 自己发现的资产一样，明细按需用 ``list_project_assets`` 查）。千级清单逐条
+    铺开会让每回合多出上万 token，而 root 首轮只需要知道范围覆盖哪些主域 / 主机。
     """
-    listing = "\n".join(f"- {target}" for target in targets)
-    return (
-        "【授权测试范围（来自工作项目资产清单，由平台按当前项目数据注入，以本条为最新）】\n"
-        f"{listing}\n"
+    domains = [identifier for asset_type, identifier in assets if asset_type == WorkProjectAssetType.DOMAIN]
+    services = [identifier for asset_type, identifier in assets if asset_type == WorkProjectAssetType.SERVICE]
+    networks = [identifier for asset_type, identifier in assets if asset_type == WorkProjectAssetType.NETWORK]
+
+    counts = " / ".join(part for part in (
+        f"域名 {len(domains)}" if domains else "",
+        f"服务 {len(services)}" if services else "",
+        f"网段 {len(networks)}" if networks else "",
+    ) if part)
+
+    lines: list[str] = []
+    folded = False
+
+    if domains:
+        lines.append(f"域名（{len(domains)}）：")
+        groups = _group_domain_targets(domains)
+        # 折叠把具体子域换成了主域计数，标识与主域不一致就算「隐藏了明细」。
+        if any(_parent_domain(identifier) != identifier for identifier in domains):
+            folded = True
+        lines.extend(
+            f"- {parent}" if count == 1 else f"- {parent}（{count} 个子域）"
+            for parent, count in groups[:_SCOPE_GROUP_LIMIT]
+        )
+        if len(groups) > _SCOPE_GROUP_LIMIT:
+            lines.append(f"- …另有 {len(groups) - _SCOPE_GROUP_LIMIT} 个主域未展开")
+            folded = True
+
+    if services:
+        lines.append(f"服务（{len(services)}）：")
+        groups = _group_service_targets(services)
+        for host, ports in groups[:_SCOPE_GROUP_LIMIT]:
+            if ports:
+                if len(ports) > _SERVICE_PORT_LIMIT:
+                    folded = True
+                shown = ", ".join(ports[:_SERVICE_PORT_LIMIT])
+                suffix = f" 等 {len(ports)} 个" if len(ports) > _SERVICE_PORT_LIMIT else ""
+                lines.append(f"- {host}：{shown}{suffix}")
+            else:
+                lines.append(f"- {host}")
+        if len(groups) > _SCOPE_GROUP_LIMIT:
+            lines.append(f"- …另有 {len(groups) - _SCOPE_GROUP_LIMIT} 个主机未展开")
+            folded = True
+
+    if networks:
+        lines.append(f"网段（{len(networks)}）：")
+        lines.extend(f"- {identifier}" for identifier in networks[:_SCOPE_GROUP_LIMIT])
+        if len(networks) > _SCOPE_GROUP_LIMIT:
+            lines.append(f"- …另有 {len(networks) - _SCOPE_GROUP_LIMIT} 个网段未展开")
+            folded = True
+
+    note = (
         "以上是项目登记的基线范围；若本条用户消息另外点名了目标（域名 / URL / IP / 网段），"
-        "一并纳入本次授权范围。两者都在范围内，不要反问用户目标或范围。\n\n"
+        "一并纳入本次授权范围。两者都在范围内，不要反问用户目标或范围。\n"
     )
+    if folded:
+        note += (
+            "清单已按主域 / 主机折叠：省略的条目同样在授权范围内，折叠出的主域只是计数，"
+            "不代表该主域下未登记的子域也在范围内。需要具体标识时调用 "
+            "`list_project_assets`（可按类型 / 关键字过滤、分页），不要把整份清单重复贴回对话。\n"
+        )
+    header = f"【授权测试范围（来自工作项目资产清单，共 {counts}；由平台按当前项目数据注入，以本条为最新）】\n"
+    return header + "\n".join(lines) + "\n" + note + "\n"
+
+
+def _group_domain_targets(domains: list[str]) -> list[tuple[str, int]]:
+    """按主域聚合，数量降序。
+
+    只是计数摘要：不去猜公共后缀（``edu.cn`` 这类），取末两段足够把同域子域收在一起。
+    """
+    counts: dict[str, int] = {}
+    for identifier in domains:
+        parent = _parent_domain(identifier)
+        counts[parent] = counts.get(parent, 0) + 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+
+
+def _parent_domain(host: str) -> str:
+    labels = [label for label in host.strip(".").split(".") if label]
+    if len(labels) <= 2 or all(label.isdigit() for label in labels):
+        return host
+    # 不能只取末两段：h.sjtu.edu.cn 的注册域是 sjtu.edu.cn，末两段会把整个 edu.cn 并成一组。
+    if ".".join(labels[-2:]) in _MULTI_LABEL_SUFFIXES and len(labels) >= 3:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def _group_service_targets(services: list[str]) -> list[tuple[str, list[str]]]:
+    """按主机聚合端口，主机名升序、端口号数值升序。"""
+    ports_by_host: dict[str, list[str]] = {}
+    for identifier in services:
+        host, _, port = identifier.rpartition(":")
+        if not host or not port.isdigit():
+            host, port = identifier, ""
+        ports = ports_by_host.setdefault(host, [])
+        if port and port not in ports:
+            ports.append(port)
+    return [
+        (host, sorted(ports, key=int))
+        for host, ports in sorted(ports_by_host.items(), key=lambda item: item[0])
+    ]
 
 
 def _mount_subdir(name: str) -> str:

@@ -17,6 +17,7 @@ from typing import Any
 from agents import RunContextWrapper, function_tool
 
 from schema.work_project.assets import (
+    WorkProjectAssetOrigin,
     WorkProjectAssetRequest,
     WorkProjectAssetType,
 )
@@ -28,8 +29,10 @@ from schema.work_project.graph import (
     WorkProjectGraphEdgeType,
 )
 from service.work_project.assets import (
+    count_work_project_assets,
     find_work_project_asset,
     find_work_project_asset_by_identifier,
+    search_work_project_assets,
     upsert_work_project_asset,
 )
 from service.work_project.graph import (
@@ -41,6 +44,9 @@ from service.work_project.graph import (
 
 _MAX_BATCH = 100
 _MAX_PATH_STEPS = 20
+_MAX_LIST_LIMIT = 500
+# 单项目 agent 自发现资产上限：再多的子域罗列对测评没有增量，只会撑大资产表与攻击面图。
+_MAX_DISCOVERED_ASSETS = 5000
 _EDGE_ALREADY_EXISTS = "graph edge already exists"
 
 
@@ -139,6 +145,17 @@ async def _register_one(
     return result
 
 
+async def _discovered_limit_error(project_id: int) -> str:
+    """项目自发现资产达到上限时返回错误文案，否则返回空串。"""
+    discovered = await count_work_project_assets(project_id, origin=WorkProjectAssetOrigin.DISCOVERED)
+    if discovered < _MAX_DISCOVERED_ASSETS:
+        return ""
+    return (
+        f"project discovered asset limit reached ({discovered}/{_MAX_DISCOVERED_ASSETS}); "
+        "stop enumerating, register only assets that are actually in scope or on a path"
+    )
+
+
 @function_tool
 async def register_assets(ctx: RunContextWrapper, assets_json: str) -> str:
     """Register newly discovered assets into the bound work project.
@@ -177,6 +194,10 @@ async def register_assets(ctx: RunContextWrapper, assets_json: str) -> str:
         return _json(ok=False, error="assets_json must be a non-empty JSON array")
     if len(entries) > _MAX_BATCH:
         return _json(ok=False, error=f"too many assets in one call (max {_MAX_BATCH})")
+
+    limit_error = await _discovered_limit_error(project_id)
+    if limit_error:
+        return _json(ok=False, error=limit_error)
 
     results: list[dict[str, Any]] = []
     for entry in entries:
@@ -364,8 +385,96 @@ async def record_attack_path(
     return _json(**result)
 
 
+async def _list_assets(
+    project_id: int,
+    *,
+    asset_type: str = "",
+    query: str = "",
+    origin: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """分页读项目资产；tool 只负责取运行上下文。"""
+    type_value: WorkProjectAssetType | None = None
+    raw_type = (asset_type or "").strip().lower()
+    if raw_type:
+        try:
+            type_value = WorkProjectAssetType(raw_type)
+        except ValueError:
+            return {"ok": False, "error": "asset_type must be domain|service|network|binary"}
+    origin_value: WorkProjectAssetOrigin | None = None
+    raw_origin = (origin or "").strip().lower()
+    if raw_origin:
+        try:
+            origin_value = WorkProjectAssetOrigin(raw_origin)
+        except ValueError:
+            return {"ok": False, "error": "origin must be scope|discovered"}
+
+    page_size = max(1, min(int(limit or 50), _MAX_LIST_LIMIT))
+    start = max(0, int(offset or 0))
+    total, rows = await search_work_project_assets(
+        project_id,
+        keyword=query or "",
+        asset_type=type_value,
+        origin=origin_value,
+        limit=page_size,
+        offset=start,
+    )
+    return {
+        "ok": True,
+        "total": total,
+        "offset": start,
+        "limit": page_size,
+        "has_more": start + len(rows) < total,
+        "items": [
+            {"type": row.type.value, "identifier": row.identifier, "origin": row.origin.value}
+            for row in rows
+        ],
+    }
+
+
+@function_tool
+async def list_project_assets(
+    ctx: RunContextWrapper,
+    asset_type: str = "",
+    query: str = "",
+    origin: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> str:
+    """List the bound work project's registered assets, paginated.
+
+    The project's authorization list is injected each turn as a summary; once it is
+    large the platform folds it by parent domain / host, so exact identifiers are not
+    all in the prompt. Call this to read the real entries (e.g. the concrete subdomains
+    under a folded parent) instead of guessing or re-enumerating.
+
+    Args:
+        asset_type: optional filter: domain|service|network|binary (empty = all).
+        query: optional case-insensitive substring on identifier / host / path.
+        origin: optional filter: scope (user-declared range) | discovered (agent-found).
+        limit: page size, 1-500 (default 50).
+        offset: rows to skip, for paging (default 0).
+
+    Returns:
+        JSON with ok, total, offset, limit, has_more and items
+        (`type` / `identifier` / `origin`).
+    """
+    project_id = _inner(ctx).get("work_project_id")
+    if not isinstance(project_id, int):
+        return _json(ok=False, error="no work project bound: assets cannot be listed")
+    return _json(**await _list_assets(
+        project_id,
+        asset_type=asset_type,
+        query=query,
+        origin=origin,
+        limit=limit,
+        offset=offset,
+    ))
+
+
 # 挂给 ravenholt root/child 的资产工具（仅在绑定了 WorkProject 时挂载）。
-ASSET_TOOLS: tuple[Any, ...] = (register_assets, record_attack_path)
+ASSET_TOOLS: tuple[Any, ...] = (register_assets, record_attack_path, list_project_assets)
 
 
-__all__ = ["ASSET_TOOLS", "record_attack_path", "register_assets"]
+__all__ = ["ASSET_TOOLS", "list_project_assets", "record_attack_path", "register_assets"]
