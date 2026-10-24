@@ -214,6 +214,9 @@ export type ListWorkProjectSessionsResponse = JsonResponse<paths["/api/work-proj
 export type CreateWorkProjectSessionResponse = JsonResponse<paths["/api/work-projects/{id}/sessions"]["post"]>;
 export type DeleteWorkProjectSessionResponse = JsonResponse<paths["/api/work-projects/{id}/sessions/{session_id}"]["delete"]>;
 export type GetWorkProjectRecordSnapshotResponse = JsonResponse<paths["/api/work-projects/{id}/record-snapshot"]["get"]>;
+export type ListWorkProjectAssetsParams = QueryParameters<paths["/api/work-projects/{id}/assets"]["get"]>;
+export type ListWorkProjectAssetsResponse = JsonResponse<paths["/api/work-projects/{id}/assets"]["get"]>;
+export type ListWorkProjectAssetsData = NonNullable<ListWorkProjectAssetsResponse["data"]>;
 
 // 源码包上传（multipart）：解压后返回的 server_path 直接作为 binary 资产的 path。
 export type UploadWorkProjectSourceRequest = MultipartRequestBody<paths["/api/work-projects/source-uploads"]["post"]>;

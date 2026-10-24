@@ -1,6 +1,6 @@
-import { Empty, TabPane, Tabs, Tag } from "@douyinfe/semi-ui";
+import { Button, Empty, Input, TabPane, Tabs, Tag } from "@douyinfe/semi-ui";
 import { Boxes, Bug, Download, FileText, GitBranch, List, Network, Route } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { showApiError } from "../../shared/api/feedback";
 import { WORK_PROJECT_ASSET_TYPE } from "../../shared/api/contract";
 import type {
@@ -12,7 +12,7 @@ import type {
   WorkProjectGraphSnapshot,
   WorkProjectRecords,
 } from "../../shared/api/types";
-import { getBlackboardSnapshot } from "../../shared/api/workProjects";
+import { getBlackboardSnapshot, listWorkProjectAssets } from "../../shared/api/workProjects";
 import { cx } from "../../shared/lib/className";
 import { formatDateTime } from "../../shared/lib/date";
 import {
@@ -60,7 +60,7 @@ export function WorkProjectRecordTabs({
       defaultActiveKey={initialTab}
     >
       <TabPane tab={<TabLabel icon={<Boxes size={14} />} text="资产" />} itemKey="assets">
-        <AssetList assets={records.assets} />
+        <AssetList projectId={projectId} total={records.assets_total} />
       </TabPane>
       <TabPane tab={<TabLabel icon={<Bug size={14} />} text="发现" />} itemKey="findings">
         <FindingList findings={records.findings} assets={records.assets} projectId={projectId} />
@@ -69,7 +69,7 @@ export function WorkProjectRecordTabs({
         <AttackPathList assets={records.assets} graph={records.graph} />
       </TabPane>
       <TabPane tab={<TabLabel icon={<Network size={14} />} text="图" />} itemKey="graph">
-        <GraphView assets={records.assets} graph={records.graph} />
+        <GraphView assets={records.assets} graph={records.graph} total={records.assets_total} />
       </TabPane>
       <TabPane tab={<TabLabel icon={<GitBranch size={14} />} text="黑板" />} itemKey="blackboard">
         <BlackboardList projectId={projectId} />
@@ -78,27 +78,145 @@ export function WorkProjectRecordTabs({
   );
 }
 
-export function AssetList({ assets }: { assets: WorkProjectAsset[] }) {
-  if (!assets.length) return <RecordEmpty title="暂无资产。" />;
+const ASSET_PAGE_SIZE = 100;
+// 图布局对节点数是平方级开销，超过这个量级只画前 N 个并提示去资产页看全量。
+const GRAPH_ASSET_LIMIT = 600;
+
+export function AssetList({ projectId, total }: { projectId?: number; total: number }) {
+  const [items, setItems] = useState<WorkProjectAsset[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(total);
+  const [keyword, setKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // 快照只带前 N 条；资产页始终按页向服务端取，几千条也不会一次性渲染。
+  const fetchPage = useCallback(async (targetPage: number, search: string) => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const response = await listWorkProjectAssets(projectId, {
+        page: targetPage,
+        size: ASSET_PAGE_SIZE,
+        keyword: search,
+      });
+      const data = response.data;
+      setItems(data?.items ?? []);
+      setTotalCount(data?.total ?? 0);
+      setPage(targetPage);
+    } catch (error) {
+      showApiError(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    setAppliedKeyword("");
+    setPage(1);
+    void fetchPage(1, "");
+  }, [fetchPage]);
+
+  const applySearch = () => {
+    const search = keyword.trim();
+    setAppliedKeyword(search);
+    void fetchPage(1, search);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / ASSET_PAGE_SIZE));
+  const pageNumbers = pageWindow(page, totalPages);
+  const emptyTitle = appliedKeyword ? "没有匹配的资产。" : "暂无资产。";
+
   return (
-    <div className="project-record-list">
-      {assets.map((asset) => (
-        <article key={asset.id} className="project-record-row">
-          <header>
-            <strong>{formatWorkProjectAsset(asset)}</strong>
-            <div>
-              <Tag>{WORK_PROJECT_ASSET_TYPE_LABEL[asset.type]}</Tag>
-              <Tag color={WORK_PROJECT_ASSET_ORIGIN_COLOR[asset.origin]}>{WORK_PROJECT_ASSET_ORIGIN_LABEL[asset.origin]}</Tag>
-            </div>
-          </header>
-          <RecordDetails items={assetBaseMeta(asset)} />
-          <RecordDetails className="project-record-details-extension" items={[
-            ["横幅", asset.extra?.banner],
-          ]} />
-        </article>
-      ))}
+    <div className="project-asset-browser">
+      <div className="project-asset-toolbar">
+        <Input
+          size="small"
+          value={keyword}
+          placeholder="按标识 / 主机 / 路径搜索"
+          showClear
+          onChange={setKeyword}
+          onEnterPress={applySearch}
+        />
+        <Button size="small" onClick={applySearch} loading={loading}>搜索</Button>
+        <span className="project-asset-count">共 {totalCount} 条</span>
+      </div>
+
+      <div className="project-asset-list-area">
+        {items.length ? (
+          <div className="project-record-list">
+            {items.map((asset) => (
+              <article key={asset.id} className="project-record-row">
+                <header>
+                  <strong>{formatWorkProjectAsset(asset)}</strong>
+                  <div>
+                    <Tag>{WORK_PROJECT_ASSET_TYPE_LABEL[asset.type]}</Tag>
+                    <Tag color={WORK_PROJECT_ASSET_ORIGIN_COLOR[asset.origin]}>{WORK_PROJECT_ASSET_ORIGIN_LABEL[asset.origin]}</Tag>
+                  </div>
+                </header>
+                <RecordDetails items={assetBaseMeta(asset)} />
+                <RecordDetails className="project-record-details-extension" items={[
+                  ["横幅", asset.extra?.banner],
+                ]} />
+              </article>
+            ))}
+          </div>
+        ) : (
+          <RecordEmpty title={loading ? "加载资产中…" : emptyTitle} />
+        )}
+      </div>
+
+      {totalCount > 0 ? (
+        <nav className="project-asset-pager" aria-label="资产分页">
+          <Button
+            size="small"
+            theme="borderless"
+            disabled={page <= 1 || loading}
+            onClick={() => void fetchPage(page - 1, appliedKeyword)}
+          >
+            上一页
+          </Button>
+          {pageNumbers.map((item, index) => (
+            item === "gap" ? (
+              <span key={`gap-${index}`} className="project-asset-pager-gap">…</span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                className={cx("project-asset-pager-page", item === page && "active")}
+                disabled={loading}
+                onClick={() => void fetchPage(item, appliedKeyword)}
+              >
+                {item}
+              </button>
+            )
+          ))}
+          <span className="project-asset-pager-total">共 {totalPages} 页</span>
+          <Button
+            size="small"
+            theme="borderless"
+            disabled={page >= totalPages || loading}
+            onClick={() => void fetchPage(page + 1, appliedKeyword)}
+          >
+            下一页
+          </Button>
+        </nav>
+      ) : null}
     </div>
   );
+}
+
+/** 页码窗口：首尾页 + 当前页附近，其余用省略号（几千条时不会铺出几十个按钮）。 */
+function pageWindow(current: number, total: number): Array<number | "gap"> {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  const pages = new Set<number>([1, total, current - 1, current, current + 1]);
+  const sorted = [...pages].filter((value) => value >= 1 && value <= total).sort((a, b) => a - b);
+  const result: Array<number | "gap"> = [];
+  sorted.forEach((value, index) => {
+    if (index > 0 && value - sorted[index - 1] > 1) result.push("gap");
+    result.push(value);
+  });
+  return result;
 }
 
 export function FindingList({
@@ -217,9 +335,27 @@ export function AttackPathList({ assets, graph }: { assets: WorkProjectAsset[]; 
   );
 }
 
-export function GraphView({ assets, graph }: { assets: WorkProjectAsset[]; graph: WorkProjectGraphSnapshot }) {
+export function GraphView({
+  assets,
+  graph,
+  total,
+}: {
+  assets: WorkProjectAsset[];
+  graph: WorkProjectGraphSnapshot;
+  total: number;
+}) {
   if (!assets.length) return <RecordEmpty title="暂无可绘制的资产。" />;
-  return <ProjectGraphCanvas assets={assets} edges={graph.edges} />;
+  const shown = assets.slice(0, GRAPH_ASSET_LIMIT);
+  return (
+    <>
+      <ProjectGraphCanvas assets={shown} edges={graph.edges} />
+      {shown.length < total ? (
+        <p className="project-graph-note">
+          图只绘制前 {shown.length} 个资产（项目共 {total} 个）；完整清单见「资产」页。
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 // ── BlackboardList ──

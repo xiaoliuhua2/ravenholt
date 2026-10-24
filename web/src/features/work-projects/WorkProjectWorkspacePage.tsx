@@ -15,7 +15,7 @@ export function WorkProjectWorkspacePage() {
   const { project, records, loading } = useWorkProjectRecordSnapshot(validProjectId);
 
   const metrics = useMemo(() => [
-    { label: "资产", value: records.assets.length },
+    { label: "资产", value: records.assets_total },
     { label: "发现", value: records.findings.length },
     { label: "关系", value: records.graph.edges.length },
     { label: "会话", value: project?.session_count ?? 0 },

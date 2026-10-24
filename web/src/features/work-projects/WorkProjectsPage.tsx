@@ -88,7 +88,7 @@ export function WorkProjectsPage() {
       (acc, project) => ({
         working: acc.working + (project.status === WORK_PROJECT_STATUS.WORKING ? 1 : 0),
         sessions: acc.sessions + project.session_count,
-        assets: acc.assets + project.assets.length,
+        assets: acc.assets + project.asset_count,
       }),
       { working: 0, sessions: 0, assets: 0 },
     ),
@@ -154,7 +154,7 @@ export function WorkProjectsPage() {
     { key: "status", header: "状态", width: "104px", render: (project) => <WorkProjectStatusTag project={project} /> },
     {
       key: "records", header: "记录", width: "minmax(170px, 0.5fr)",
-      render: (project) => <ResourceText>{project.assets.length} 个资产 · {project.tasks.length} 个任务</ResourceText>,
+      render: (project) => <ResourceText>{project.asset_count} 个资产 · {project.tasks.length} 个任务</ResourceText>,
     },
     { key: "updated", header: "更新时间", width: "minmax(150px, 0.4fr)", render: (p) => formatDateTime(p.updated_at) },
     {
@@ -281,7 +281,7 @@ function WorkProjectExpanded({
       </section>
 
       <section className="work-project-detail-grid">
-        <WorkProjectPanel title="资产" empty={project.assets.length === 0 ? "暂无资产。" : ""}>
+        <WorkProjectPanel title="资产" empty={project.asset_count === 0 ? "暂无资产。" : ""}>
           <WorkProjectAssets project={project} />
         </WorkProjectPanel>
         <WorkProjectPanel title="任务" empty={project.tasks.length === 0 ? "暂无任务。" : ""}>

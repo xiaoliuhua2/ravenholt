@@ -10,11 +10,13 @@ import {
   WORK_PROJECT_ASSET_TYPE,
 } from "../../shared/api/contract";
 import { querySystemUsers } from "../../shared/api/systemUsers";
-import { uploadWorkProjectSource } from "../../shared/api/workProjects";
+import { listWorkProjectAssets, uploadWorkProjectSource } from "../../shared/api/workProjects";
+import { showApiError } from "../../shared/api/feedback";
 import type {
   CreateWorkProjectRequest,
   SystemUser,
   WorkProject,
+  WorkProjectAsset,
   WorkProjectAssetRequest,
 } from "../../shared/api/types";
 import { ResourceModal } from "../../shared/components/ResourceModal";
@@ -107,18 +109,37 @@ export function WorkProjectFormModal({ open, saving, project, onCancel, onSubmit
 
   useEffect(() => {
     if (!open) return;
-    setValues(project ? {
+    let canceled = false;
+    setBulkText("");
+    setBulkReport([]);
+    setUploadNote("");
+    setUploadError("");
+    if (!project) {
+      setValues({ ...EMPTY, assets: [{ ...EMPTY_ASSET }] });
+      return () => { canceled = true; };
+    }
+    setValues({
       name: project.name,
       description: project.description,
       owner_user_ids: project.owner_user_ids,
       sandbox_container_ids: project.sandbox_container_ids,
       assets: scopeAssetsFromProject(project),
       type: project.type,
-    } : { ...EMPTY, assets: [{ ...EMPTY_ASSET }] });
-    setBulkText("");
-    setBulkReport([]);
-    setUploadNote("");
-    setUploadError("");
+    });
+    // 列表接口只带前 50 条资产（asset_count 才是总数）。编辑必须拿全量，
+    // 否则保存时未展示的 scope 资产会被当成「已删除」。
+    if (project.assets.length < project.asset_count) {
+      void fetchAllScopeAssets(project.id)
+        .then((assets) => {
+          if (canceled) return;
+          setValues((current) => ({
+            ...current,
+            assets: assets.length ? assets : [{ ...EMPTY_ASSET }],
+          }));
+        })
+        .catch(showApiError);
+    }
+    return () => { canceled = true; };
   }, [open, project]);
 
   const userOptionList = useMemo(() => users.map((user) => ({
@@ -452,6 +473,26 @@ function scopeAssetsFromProject(project: WorkProject): AssetFormRow[] {
     .filter((asset) => asset.origin === WORK_PROJECT_ASSET_ORIGIN.SCOPE)
     .map(assetFromProject);
   return assets.length ? assets : [{ ...EMPTY_ASSET }];
+}
+
+const ASSET_FETCH_PAGE = 200;
+const ASSET_FETCH_MAX_PAGES = 50;
+
+/** 编辑项目时取全部 scope 资产：列表接口只给预览，全量在分页接口里。 */
+async function fetchAllScopeAssets(projectId: number): Promise<AssetFormRow[]> {
+  const rows: AssetFormRow[] = [];
+  let fetched = 0;
+  for (let page = 1; page <= ASSET_FETCH_MAX_PAGES; page += 1) {
+    const response = await listWorkProjectAssets(projectId, { page, size: ASSET_FETCH_PAGE });
+    const data = response.data;
+    if (!data) break;
+    fetched += data.items.length;
+    rows.push(...data.items
+      .filter((asset: WorkProjectAsset) => asset.origin === WORK_PROJECT_ASSET_ORIGIN.SCOPE)
+      .map(assetFromProject));
+    if (fetched >= data.total || !data.items.length) break;
+  }
+  return rows;
 }
 
 function normalizeAsset(asset: AssetFormRow): WorkProjectAssetRequest {

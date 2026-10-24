@@ -25,6 +25,8 @@ export function WorkProjectInfoModal({ open, projectId, initialTab = "assets", o
   return (
     <Modal
       visible={open}
+      centered
+      className="project-info-modal"
       title={<ProjectInfoTitle project={project} />}
       width="min(1440px, calc(100vw - 24px))"
       footer={null}

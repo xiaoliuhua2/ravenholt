@@ -17,6 +17,7 @@ export const EMPTY_WORK_PROJECT_GRAPH: WorkProjectGraphSnapshot = {
 
 export const EMPTY_WORK_PROJECT_RECORDS: WorkProjectRecords = {
   assets: [],
+  assets_total: 0,
   findings: [],
   graph: EMPTY_WORK_PROJECT_GRAPH,
 };

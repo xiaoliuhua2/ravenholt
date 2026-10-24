@@ -1843,11 +1843,18 @@ input.bare:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 0.68fr);
   gap: 14px 16px;
-  height: min(780px, calc(100vh - 150px));
+  /* 弹窗整体固定在视口内：高度预留标题栏 + 上下留白，滚动只发生在左右两栏内部。
+     以前按 100vh-150 算，加上未居中时的 top:100px 与标题栏会超出视口，
+     外层 modal-wrap 一滚就把整个大框顶出屏幕。 */
+  height: min(760px, calc(100vh - 200px));
   min-height: 0;
   overflow: hidden;
   padding-bottom: 18px;
   color: var(--z-text);
+}
+
+.project-info-modal .semi-modal-body {
+  overflow: hidden;
 }
 
 /* 左栏整体纵向滚动，而不是给每个面板各开一个滚动区：
@@ -1933,6 +1940,99 @@ input.bare:focus {
 .project-record-list {
   gap: 10px;
   height: 100%;
+}
+
+/* 资产页：快照只带前 N 条，这里按页从服务端取；几千条也只渲染当前页。 */
+.project-asset-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.project-asset-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.project-asset-toolbar .semi-input-wrapper {
+  width: min(320px, 100%);
+}
+
+.project-asset-list-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.project-asset-list-area .project-record-list {
+  height: 100%;
+}
+
+.project-asset-count,
+.project-asset-pager,
+.project-graph-note {
+  color: var(--z-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-asset-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.project-asset-pager-page {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--z-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.project-asset-pager-page:hover:not(:disabled) {
+  border-color: var(--z-line);
+  color: var(--z-text);
+}
+
+.project-asset-pager-page.active {
+  border-color: var(--z-line-strong);
+  color: var(--z-text-strong);
+}
+
+.project-asset-pager-page:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.project-asset-pager-gap {
+  padding: 0 2px;
+}
+
+.project-asset-pager-total {
+  margin: 0 6px;
+}
+
+.project-graph-note {
+  padding: 6px 2px 0;
+}
+
+.work-project-asset-more {
+  padding: 6px 0 2px;
+  white-space: normal;
 }
 
 .project-record-row {
@@ -2522,8 +2622,9 @@ input.bare:focus {
   }
 
   .project-info-content {
-    height: auto;
-    overflow: visible;
+    /* 窄屏改成整体滚动，但高度仍锁在视口内，外层弹窗不再跟着页面滚。 */
+    height: min(760px, calc(100vh - 200px));
+    overflow-y: auto;
   }
 
   .project-info-main {

@@ -29,6 +29,7 @@ export function WorkProjectStatusTag({ project }: { project: WorkProject }) {
 }
 
 export function WorkProjectAssets({ project }: { project: WorkProject }) {
+  const shown = project.assets.length;
   return (
     <div className="work-project-asset-list">
       {project.assets.map((asset) => (
@@ -37,6 +38,11 @@ export function WorkProjectAssets({ project }: { project: WorkProject }) {
           <span>{WORK_PROJECT_ASSET_TYPE_LABEL[asset.type]}</span>
         </div>
       ))}
+      {shown < project.asset_count ? (
+        <p className="work-project-asset-more">
+          仅显示前 {shown} 条，共 {project.asset_count} 条；完整清单见项目工作区「资产」页。
+        </p>
+      ) : null}
     </div>
   );
 }

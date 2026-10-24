@@ -847,6 +847,23 @@ export interface paths {
         patch: operations["update_instance_config_handler_api_system_config_instance_patch"];
         trace?: never;
     };
+    "/api/system-config/search-providers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Search Providers Handler */
+        post: operations["check_search_providers_handler_api_system_config_search_providers_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system-config/upstream-models": {
         parameters: {
             query?: never;
@@ -964,6 +981,23 @@ export interface paths {
         post?: never;
         /** Delete Work Project Handler */
         delete: operations["delete_work_project_handler_api_work_projects__id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-projects/{id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Work Project Assets Route */
+        get: operations["query_work_project_assets_route_api_work_projects__id__assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1718,6 +1752,44 @@ export interface components {
             /** Files */
             files: string[];
         };
+        /**
+         * CheckSearchProvidersRequest
+         * @description 校验联网检索各 provider 的配置是否可用（不落盘，仅测试）。
+         */
+        CheckSearchProvidersRequest: {
+            /**
+             * Deepseek Api Key
+             * @default
+             */
+            deepseek_api_key: string;
+            /**
+             * Deepseek Base Url
+             * @default
+             */
+            deepseek_base_url: string;
+            /**
+             * Exa Api Key
+             * @default
+             */
+            exa_api_key: string;
+            /**
+             * Perplexity Api Key
+             * @default
+             */
+            perplexity_api_key: string;
+            /**
+             * Searxng Base Url
+             * @default
+             */
+            searxng_base_url: string;
+        };
+        /** CheckSearchProvidersResponse */
+        CheckSearchProvidersResponse: {
+            /** Recommended */
+            recommended?: string | null;
+            /** Results */
+            results: components["schemas"]["SearchProviderCheckSchema"][];
+        };
         /** CommonResponse */
         CommonResponse: {
             /**
@@ -1784,6 +1856,20 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["BlackboardSnapshotSchema"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[CheckSearchProvidersResponse] */
+        CommonResponse_CheckSearchProvidersResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["CheckSearchProvidersResponse"] | null;
             /**
              * Message
              * @default success
@@ -2232,6 +2318,20 @@ export interface components {
              */
             code: number;
             data?: components["schemas"]["QuerySystemUsersResponse"] | null;
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** CommonResponse[QueryWorkProjectAssetsResponse] */
+        CommonResponse_QueryWorkProjectAssetsResponse_: {
+            /**
+             * Code
+             * @default 200
+             */
+            code: number;
+            data?: components["schemas"]["QueryWorkProjectAssetsResponse"] | null;
             /**
              * Message
              * @default success
@@ -2851,6 +2951,11 @@ export interface components {
              */
             deepseek_api_key: string;
             /**
+             * Deepseek Base Url
+             * @default https://api.deepseek.com
+             */
+            deepseek_base_url: string;
+            /**
              * Exa Api Key
              * @default
              */
@@ -2870,6 +2975,11 @@ export interface components {
              * @default http://127.0.0.1:8888
              */
             searxng_base_url: string;
+            /**
+             * Searxng Bind Addr
+             * @default 0.0.0.0
+             */
+            searxng_bind_addr: string;
             /**
              * Searxng General Engines
              * @default false
@@ -3213,6 +3323,17 @@ export interface components {
         QuerySystemUsersResponse: {
             /** Items */
             items: components["schemas"]["SystemUserSchema"][];
+            /** Page */
+            page: number;
+            /** Size */
+            size: number;
+            /** Total */
+            total: number;
+        };
+        /** QueryWorkProjectAssetsResponse */
+        QueryWorkProjectAssetsResponse: {
+            /** Items */
+            items: components["schemas"]["WorkProjectAssetSchema"][];
             /** Page */
             page: number;
             /** Size */
@@ -3586,6 +3707,27 @@ export interface components {
              * @default false
              */
             deny_private_ranges: boolean;
+        };
+        /**
+         * SearchProviderCheckSchema
+         * @description 单个 provider 的检查结果。
+         */
+        SearchProviderCheckSchema: {
+            /** Configured */
+            configured: boolean;
+            /** Detail */
+            detail: string;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Http Status */
+            http_status?: number | null;
+            /** Ok */
+            ok: boolean;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "searxng" | "exa" | "perplexity" | "deepseek";
         };
         /**
          * SessionType
@@ -4077,6 +4219,11 @@ export interface components {
              * @default
              */
             deepseek_api_key: string;
+            /**
+             * Deepseek Base Url
+             * @default
+             */
+            deepseek_base_url: string;
             /** Exa Api Key */
             exa_api_key: string;
             /** Perplexity Api Key */
@@ -4091,6 +4238,11 @@ export interface components {
              * @default
              */
             searxng_base_url: string;
+            /**
+             * Searxng Bind Addr
+             * @default
+             */
+            searxng_bind_addr: string;
             /**
              * Searxng General Engines
              * @default false
@@ -4654,6 +4806,11 @@ export interface components {
         WorkProjectRecordsSchema: {
             /** Assets */
             assets: components["schemas"]["WorkProjectAssetSchema"][];
+            /**
+             * Assets Total
+             * @default 0
+             */
+            assets_total: number;
             /** Findings */
             findings: components["schemas"]["WorkProjectFindingSchema"][];
             graph: components["schemas"]["WorkProjectGraphSnapshotSchema"];
@@ -4662,6 +4819,11 @@ export interface components {
         WorkProjectSchema: {
             /** Agent Summaries */
             agent_summaries: components["schemas"]["WorkProjectAgentSummarySchema"][];
+            /**
+             * Asset Count
+             * @default 0
+             */
+            asset_count: number;
             /** Assets */
             assets: components["schemas"]["WorkProjectAssetSchema"][];
             /**
@@ -8206,6 +8368,57 @@ export interface operations {
             };
         };
     };
+    check_search_providers_handler_api_system_config_search_providers_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckSearchProvidersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_CheckSearchProvidersResponse_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
     fetch_upstream_models_handler_api_system_config_upstream_models_post: {
         parameters: {
             query?: never;
@@ -8732,6 +8945,69 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Work project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+        };
+    };
+    query_work_project_assets_route_api_work_projects__id__assets_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                size?: number;
+                keyword?: string;
+                asset_type?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_QueryWorkProjectAssetsResponse_"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommonResponse_Any_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

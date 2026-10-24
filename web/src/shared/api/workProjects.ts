@@ -12,6 +12,8 @@ import type {
   GetBlackboardSnapshotResponse,
   GetWorkProjectFindingEvidenceResponse,
   GetWorkProjectRecordSnapshotResponse,
+  ListWorkProjectAssetsParams,
+  ListWorkProjectAssetsResponse,
   ListWorkProjectSessionsResponse,
   QueryWorkProjectsParams,
   QueryWorkProjectsResponse,
@@ -42,6 +44,11 @@ export function uploadWorkProjectSource(file: File) {
 
 export function getWorkProjectRecordSnapshot(id: WorkProjectPathParams["id"]) {
   return apiGet<GetWorkProjectRecordSnapshotResponse>(`${WORK_PROJECTS_PATH}/${id}/record-snapshot`);
+}
+
+/** 项目资产分页查询：快照只带前 N 条，资产页靠这个接口翻页取全量。 */
+export function listWorkProjectAssets(id: WorkProjectPathParams["id"], params: ListWorkProjectAssetsParams = {}) {
+  return apiGet<ListWorkProjectAssetsResponse>(`${WORK_PROJECTS_PATH}/${id}/assets${buildQuery(params)}`);
 }
 
 export function getWorkProjectFindingEvidence(id: WorkProjectPathParams["id"], findingId: number) {
