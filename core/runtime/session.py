@@ -184,6 +184,15 @@ class AgentSession:
             skipped_sources,
             self.session_id,
         )
+        # 项目资产清单 = 本次授权范围。用户原话常常只有「开始测试」，不给这段注入，
+        # root 会按规程判定「没有可测目标」转而反问用户。
+        scope_targets: list[str] = []
+        if context.work_project_id is not None:
+            from service.work_project.projects import work_project_scope_targets
+
+            scope_targets = await work_project_scope_targets(context.work_project_id)
+        if scope_targets:
+            logger.info("strix scope injected project=%s targets=%s", context.work_project_id, scope_targets)
         projector = StrixEventProjector(publish=self.publish_external, root_id=root_id)
         run_dir = WORKSPACE / "strix_runs"
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -230,6 +239,8 @@ class AgentSession:
                     + "\n\n"
                     + runtime_task
                 )
+            if scope_targets:
+                runtime_task = _scope_targets_block(scope_targets) + runtime_task
             await run_strix_session(
                 task=runtime_task,
                 model=build_configured_model(agent_code, session_id=self.session_id),
@@ -902,6 +913,22 @@ async def _collect_source_mounts(
     if local_sources:
         logger.info("source mounts ready project=%s roots=%s", project_id, roots)
     return local_sources, roots, skipped
+
+
+def _scope_targets_block(targets: list[str]) -> str:
+    """把项目资产清单写成任务前置段。
+
+    清单是「基线范围」而不是穷尽范围：用户在同一条消息里另外点名的目标同样有效，
+    否则 root 会把用户追加的目标判成越界。每回合都按当前项目数据重新注入，因此
+    历史里可能有多份同类清单，这里声明以本条（最新）为准，避免资产删改后仍按旧清单走。
+    """
+    listing = "\n".join(f"- {target}" for target in targets)
+    return (
+        "【授权测试范围（来自工作项目资产清单，由平台按当前项目数据注入，以本条为最新）】\n"
+        f"{listing}\n"
+        "以上是项目登记的基线范围；若本条用户消息另外点名了目标（域名 / URL / IP / 网段），"
+        "一并纳入本次授权范围。两者都在范围内，不要反问用户目标或范围。\n\n"
+    )
 
 
 def _mount_subdir(name: str) -> str:

@@ -138,6 +138,31 @@ async def work_project_source_paths(project_id: int) -> list[str]:
     return paths
 
 
+async def work_project_scope_targets(project_id: int) -> list[str]:
+    """项目声明为授权范围的资产标识（domain / service / network，按 id 有序、去重）。
+
+    渗透会话起手时把这份清单注入任务文本：root 只看用户原话（例如「开始测试」）会
+    判定「没有可测目标」而去反问用户，项目里配好的范围必须由平台补给它。
+    """
+    async with get_async_session() as session:
+        rows = (await session.exec(
+            select(WorkProjectAsset)
+            .where(
+                WorkProjectAsset.project_id == project_id,
+                WorkProjectAsset.origin == WorkProjectAssetOrigin.SCOPE,
+            )
+            .order_by(WorkProjectAsset.id)
+        )).all()
+    targets: list[str] = []
+    for row in rows:
+        if row.type == WorkProjectAssetType.BINARY:
+            continue
+        identifier = (row.identifier or "").strip()
+        if identifier and identifier not in targets:
+            targets.append(identifier)
+    return targets
+
+
 async def create_work_project(request: CreateWorkProjectRequest) -> WorkProjectSchema:
     now = datetime.now()
     project = WorkProject(
