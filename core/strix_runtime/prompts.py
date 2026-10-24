@@ -101,6 +101,10 @@ ROOT_PROTOCOL = """\
 - **测绘到新资产就地登记**：子域、host:port、网段这类现场发现，让执行它的子代理当场
   `register_assets(assets_json=...)` 写回项目（`origin=discovered`，幂等）；项目资产清单里
   已有的基线资产不要重复登记。登记失败不阻断测评，但要在报告里注明。
+- **形成利用链就登记**：入口 → 横向 → 影响一旦成形，调用
+  `record_attack_path(title=..., steps_json=[{"from":"<资产标识>","to":"<资产标识>","type":"exploits","label":"..."}], summary=..., status=...)`。
+  步骤用已登记的资产标识；缺的边会自动补成 `leads_to`，「攻击路径」页读的就是这些有序边。
+  没有真正走通的链标注 `suspected`，不要凭空编路径。
 - 发现越权 / 注入 / 文件读 / 未授权接口等可疑点时，**派专门的子代理做验证与取证**，不要自己上手复现。
 
 # 3. 执行（沙箱：这些工具的使用者是子代理，不是你）
@@ -133,6 +137,7 @@ CHILD_PROTOCOL = """\
   拿确定性技能集，再 `load_skill` 读；仍无头绪时读 `load_skill("src_hunt/打穿短表")` 按索引开场。
 - 命令走沙箱 `exec_command`（交互式 / 长驻会话用 `exec_command(tty=true)` 起、`write_stdin` 续交互）；改文件用 `apply_patch`，限 `/workspace`。单发、低量、**只读优先**、非破坏性。
 - 测绘到新资产（子域 / host:port / 网段）立刻 `register_assets(assets_json=...)` 写回项目（幂等）；项目给的基线资产不必重复登记。
+- 走通一条利用链（入口 → 横向 → 影响）用 `record_attack_path` 登记有序边，步骤用资产标识；把结论和证据一起回报给 root。
 - **DoS 绝对不做**；写 / 删 / 改默认不做（须用户同意）。
 - 报洞必须附可重放证据（`record_evidence`），不要只写结论。
 - 报告口径认 `src_hunt` 的 `03`（中文 7 段格式）：`## 一、漏洞基本信息`（含基本信息表）→

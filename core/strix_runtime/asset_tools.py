@@ -21,13 +21,26 @@ from schema.work_project.assets import (
     WorkProjectAssetType,
 )
 from schema.work_project.graph import (
+    WorkProjectAttackPathRequest,
+    WorkProjectAttackPathStatus,
+    WorkProjectAttackPathStepRequest,
     WorkProjectGraphEdgeRequest,
     WorkProjectGraphEdgeType,
 )
-from service.work_project.assets import find_work_project_asset, upsert_work_project_asset
-from service.work_project.graph import upsert_work_project_graph_edge
+from service.work_project.assets import (
+    find_work_project_asset,
+    find_work_project_asset_by_identifier,
+    upsert_work_project_asset,
+)
+from service.work_project.graph import (
+    create_work_project_attack_path,
+    create_work_project_attack_path_step,
+    delete_work_project_attack_path,
+    upsert_work_project_graph_edge,
+)
 
 _MAX_BATCH = 100
+_MAX_PATH_STEPS = 20
 _EDGE_ALREADY_EXISTS = "graph edge already exists"
 
 
@@ -186,8 +199,173 @@ async def register_assets(ctx: RunContextWrapper, assets_json: str) -> str:
     )
 
 
+async def _record_path(
+    project_id: int,
+    title: str,
+    steps: Any,
+    *,
+    summary: str = "",
+    status: str = "suspected",
+    agent_code: str = "",
+    session_id: str = "",
+) -> dict[str, Any]:
+    """登记一条利用链：步骤用资产标识表达，缺的边自动补。"""
+    title = (title or "").strip()
+    if not title:
+        return {"ok": False, "error": "title is required"}
+    try:
+        status_value = WorkProjectAttackPathStatus(str(status or "suspected").strip().lower())
+    except ValueError:
+        return {"ok": False, "error": "status must be suspected|validated|blocked|closed"}
+    if not isinstance(steps, list) or not steps:
+        return {"ok": False, "error": "steps must be a non-empty JSON array"}
+    if len(steps) > _MAX_PATH_STEPS:
+        return {"ok": False, "error": f"too many steps (max {_MAX_PATH_STEPS})"}
+
+    resolved: list[tuple[dict[str, Any], Any, Any]] = []
+    missing: list[str] = []
+    for entry in steps:
+        if not isinstance(entry, dict):
+            return {"ok": False, "error": "each step must be an object with from/to"}
+        source_id = str(entry.get("from") or "").strip()
+        target_id = str(entry.get("to") or "").strip()
+        if not source_id or not target_id:
+            return {"ok": False, "error": "each step needs 'from' and 'to' asset identifiers"}
+        source = await find_work_project_asset_by_identifier(project_id, source_id)
+        target = await find_work_project_asset_by_identifier(project_id, target_id)
+        if source is None:
+            missing.append(source_id)
+        if target is None:
+            missing.append(target_id)
+        resolved.append((entry, source, target))
+    if missing:
+        return {
+            "ok": False,
+            "error": "unknown asset identifiers; register them with register_assets first",
+            "missing": sorted(set(missing)),
+        }
+
+    path, error = await create_work_project_attack_path(
+        project_id,
+        WorkProjectAttackPathRequest(
+            title=title,
+            status=status_value,
+            summary=(summary or "").strip(),
+        ),
+        created_by_agent_code=agent_code,
+        created_from_session_id=session_id,
+    )
+    if path is None:
+        return {"ok": False, "error": error or "creating attack path failed"}
+
+    created_steps: list[dict[str, Any]] = []
+    edges_created = 0
+    try:
+        for index, (entry, source, target) in enumerate(resolved, start=1):
+            raw_type = str(entry.get("type") or WorkProjectGraphEdgeType.LEADS_TO.value).strip().lower()
+            try:
+                edge_type = WorkProjectGraphEdgeType(raw_type)
+            except ValueError:
+                raise ValueError(f"unknown edge type: {raw_type}")
+            edge, edge_error = await upsert_work_project_graph_edge(
+                project_id,
+                WorkProjectGraphEdgeRequest(
+                    source_asset_id=source.id,
+                    target_asset_id=target.id,
+                    type=edge_type,
+                    label=str(entry.get("label") or ""),
+                ),
+                created_by_agent_code=agent_code,
+                created_from_session_id=session_id,
+            )
+            if edge is None:
+                raise ValueError(f"edge failed: {edge_error or 'unknown'}")
+            edges_created += 1
+            step, step_error = await create_work_project_attack_path_step(
+                project_id,
+                path.id,
+                WorkProjectAttackPathStepRequest(sequence=index, edge_id=edge.id),
+                created_by_agent_code=agent_code,
+                created_from_session_id=session_id,
+            )
+            if step is None:
+                raise ValueError(f"step {index} failed: {step_error or 'unknown'}")
+            created_steps.append({
+                "sequence": index,
+                "edge_id": edge.id,
+                "from": source.identifier,
+                "to": target.identifier,
+            })
+    except Exception as exc:  # noqa: BLE001 - roll back the half-written chain
+        await delete_work_project_attack_path(project_id, path.id)
+        return {"ok": False, "error": str(exc) or "creating attack path failed"}
+
+    return {
+        "ok": True,
+        "path_id": path.id,
+        "status": path.status.value,
+        "steps": created_steps,
+        "edges": edges_created,
+    }
+
+
+@function_tool
+async def record_attack_path(
+    ctx: RunContextWrapper,
+    title: str,
+    steps_json: str,
+    summary: str = "",
+    status: str = "suspected",
+) -> str:
+    """Record one attack path (an ordered exploit chain) into the work project.
+
+    Use this once a chain is actually established: entry asset → lateral move(s) →
+    impact. Each step is a directed relation between two assets already registered
+    in the project (call `register_assets` first); a missing edge is created with
+    the step's type (default `leads_to`). The rendered 攻击路径 tab reads exactly
+    these ordered edges, so an unrecorded chain stays invisible.
+
+    Args:
+        title: short Chinese title, e.g. "SSO 登出跳转 → 用户中心接管".
+        steps_json: JSON array (max 20) of objects with keys
+            `from` (asset identifier, e.g. "api.example.com" / "10.0.0.5:8443"),
+            `to` (asset identifier), optional `type`
+            (leads_to|exploits|pivots_to|trusts|connects_to|resolves_to|hosts|related)
+            and optional `label`.
+        summary: one paragraph: what access the chain starts from and what it reaches.
+        status: suspected|validated|blocked|closed.
+
+    Returns:
+        JSON with ok, path_id, steps, edges, or an error (missing identifiers listed).
+    """
+    project_id = _inner(ctx).get("work_project_id")
+    session_id = str(_inner(ctx).get("session_id") or "")
+    agent_code = str(_inner(ctx).get("agent_id") or "")
+    if not isinstance(project_id, int):
+        return _json(ok=False, error="no work project bound: attack paths cannot be recorded")
+
+    raw = (steps_json or "").strip()
+    if not raw:
+        return _json(ok=False, error="steps_json is required")
+    try:
+        steps = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        return _json(ok=False, error=f"steps_json is not valid JSON: {exc}")
+
+    result = await _record_path(
+        project_id,
+        title,
+        steps,
+        summary=summary,
+        status=status,
+        agent_code=agent_code,
+        session_id=session_id,
+    )
+    return _json(**result)
+
+
 # 挂给 ravenholt root/child 的资产工具（仅在绑定了 WorkProject 时挂载）。
-ASSET_TOOLS: tuple[Any, ...] = (register_assets,)
+ASSET_TOOLS: tuple[Any, ...] = (register_assets, record_attack_path)
 
 
-__all__ = ["ASSET_TOOLS", "register_assets"]
+__all__ = ["ASSET_TOOLS", "record_attack_path", "register_assets"]

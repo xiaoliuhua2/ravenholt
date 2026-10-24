@@ -158,6 +158,30 @@ async def find_work_project_asset(
     return WorkProjectAssetSchema.model_validate(asset) if asset is not None else None
 
 
+async def find_work_project_asset_by_identifier(
+    project_id: int,
+    identifier: str,
+) -> WorkProjectAssetSchema | None:
+    """按 identifier 查项目资产（不限类型，多个命中取最早一条）。
+
+    攻击路径的步骤用资产标识表达（如 ``api.example.com:8443``），这里负责把它还原成
+    资产 id；调用方应先确认标识确实已登记。
+    """
+    target = (identifier or "").strip()
+    if not target:
+        return None
+    async with get_async_session() as session:
+        row = (await session.exec(
+            select(WorkProjectAsset)
+            .where(
+                WorkProjectAsset.project_id == project_id,
+                WorkProjectAsset.identifier == target,
+            )
+            .order_by(WorkProjectAsset.id)
+        )).first()
+    return WorkProjectAssetSchema.model_validate(row) if row is not None else None
+
+
 async def delete_work_project_asset(project_id: int, asset_id: int) -> str:
     async with get_async_session() as session:
         asset = await session.get(WorkProjectAsset, asset_id)
