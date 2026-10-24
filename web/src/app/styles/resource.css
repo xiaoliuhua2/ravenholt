@@ -1850,12 +1850,29 @@ input.bare:focus {
   color: var(--z-text);
 }
 
+/* 左栏整体纵向滚动，而不是给每个面板各开一个滚动区：
+   描述是可选节点，固定行数网格会整体错位；面板各自限高又会把任务列表压到只剩一两行。
+   现在任务/摘要按内容展开，滚动交给左栏，任何一条都能滚到。 */
 .project-info-main {
-  display: grid;
-  grid-template-rows: max-content max-content max-content minmax(120px, 0.58fr) minmax(180px, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.project-info-main > * {
+  flex: 0 0 auto;
+}
+
+.project-info-main > .project-info-panel {
+  overflow: visible;
+}
+
+.project-info-main > .project-info-panel .project-info-scroll-list {
+  overflow: visible;
+  padding-right: 0;
 }
 
 .project-info-meta {
@@ -2507,6 +2524,15 @@ input.bare:focus {
   .project-info-content {
     height: auto;
     overflow: visible;
+  }
+
+  .project-info-main {
+    display: block;
+    overflow: visible;
+  }
+
+  .project-info-main > * + * {
+    margin-top: 10px;
   }
 
   .project-record-panel {

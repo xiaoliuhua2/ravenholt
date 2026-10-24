@@ -75,6 +75,8 @@ const LIVE_FLUSH_INTERVAL_MS = 33;
 // 服务端主动重建事件流（配置更新 / 空闲淘汰）时用它关闭连接。
 const STREAM_RESTART_CLOSE_CODE = 4001;
 const STREAM_RESTART_DELAY_MS = 800;
+// 回合进行中被异常断开时的重连上限；用尽后才在对话里落一条「连接已关闭」。
+const STREAM_RECONNECT_LIMIT = 3;
 
 type AgentSessionContextValue = {
   sessions: AgentSessionSummary[];
@@ -138,8 +140,10 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   const liveFrameEventsRef = useRef<Map<string, AgentStreamEvent[]>>(new Map());
   const manualBlankSessionRef = useRef(false);
   const restartTimersRef = useRef<Map<string, number>>(new Map());
+  // 异常断开后在回合仍进行时的重连次数（网络抖动 / 休眠不应伪装成「流已关闭」）
+  const streamReconnectRef = useRef<Map<string, number>>(new Map());
   // 服务端主动重建事件流后自动重连；赋值在 tryConnectFor 定义之后
-  const scheduleStreamRestartRef = useRef<((sessionId: string) => void) | null>(null);
+  const scheduleStreamRestartRef = useRef<((sessionId: string, delayMs?: number) => void) | null>(null);
 
   const clearDeletedMarkerLater = useCallback((sessionId: string) => {
     const existing = deletedMarkerTimersRef.current.get(sessionId);
@@ -361,6 +365,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
 
     const onOpen = () => {
       if (socketsRef.current.get(sessionId) !== socket) return;
+      streamReconnectRef.current.delete(sessionId);
       updateRuntime(sessionId, (r) => ({ ...r, status: "open" }));
       markActivity(sessionId);
       // a reconnect may have missed frames; the live projection covers the
@@ -388,9 +393,21 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const attempts = streamReconnectRef.current.get(sessionId) ?? 0;
+      const shouldReconnect = attempts < STREAM_RECONNECT_LIMIT;
+      if (shouldReconnect) {
+        streamReconnectRef.current.set(sessionId, attempts + 1);
+      }
+
       updateRuntime(sessionId, (r) => {
         if (!r.store.streaming) {
           return { ...r, status: "closed" };
+        }
+        // 回合仍在进行却被断开：先按退避重连，历史回放会把状态重新投影出来。
+        // 直接插「连接已关闭」会把网络抖动（切标签页、休眠、Wi-Fi 抖动）伪装成测试失败。
+        if (shouldReconnect) {
+          const store = endStreaming(r.store);
+          return { ...r, status: "closed", store, state: deriveChatState(store) };
         }
         const errored = ingestEvents(r.store, [{
           type: "error",
@@ -405,6 +422,11 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
         const store = endStreaming(errored);
         return { ...r, status: "closed", store, state: deriveChatState(store) };
       });
+
+      if (shouldReconnect) {
+        // 0.8s / 1.6s / 3.2s 退避；重连成功后 onOpen 归零计数
+        scheduleStreamRestartRef.current?.(sessionId, Math.min(800 * 2 ** attempts, 4000));
+      }
     };
     socket.addEventListener("close", onTerminate);
     socket.addEventListener("error", onTerminate);
@@ -489,7 +511,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   }, [loadHistory]);
 
   // 服务端重建事件流之后的自动重连：合并历史把中断的轮次重新投影出来
-  const scheduleStreamRestart = useCallback((sessionId: string) => {
+  const scheduleStreamRestart = useCallback((sessionId: string, delayMs = STREAM_RESTART_DELAY_MS) => {
     if (restartTimersRef.current.has(sessionId)) return;
     const timer = window.setTimeout(() => {
       restartTimersRef.current.delete(sessionId);
@@ -498,7 +520,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
       if (!tryConnectFor(sessionId)) return;
       mergeLatestHistory(sessionId);
       loadHistory(sessionId, ensuredRef.current.has(sessionId));
-    }, STREAM_RESTART_DELAY_MS);
+    }, delayMs);
     restartTimersRef.current.set(sessionId, timer);
   }, [loadHistory, mergeLatestHistory, tryConnectFor]);
 
@@ -718,6 +740,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
       socketsRef.current.clear();
       socketCleanupRef.current.clear();
       restartTimersRef.current.clear();
+      streamReconnectRef.current.clear();
       idleTimersRef.current.clear();
       deletedMarkerTimersRef.current.clear();
       liveFlushTimersRef.current.clear();
