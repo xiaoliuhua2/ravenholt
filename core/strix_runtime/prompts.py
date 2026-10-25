@@ -102,7 +102,7 @@ ROOT_PROTOCOL = """\
   `register_assets(assets_json=...)` 写回项目（`origin=discovered`，幂等）；项目资产清单里
   已有的基线资产不要重复登记。登记失败不阻断测评，但要在报告里注明。
 - **形成利用链就登记**：入口 → 横向 → 影响一旦成形，调用
-  `record_attack_path(title=..., steps_json=[{"from":"<资产标识>","to":"<资产标识>","type":"exploits","label":"..."}], summary=..., status=...)`。
+  `record_attack_path(title=..., steps_json=[{{"from":"<资产标识>","to":"<资产标识>","type":"exploits","label":"..."}}], summary=..., status=...)`。
   步骤用已登记的资产标识；缺的边会自动补成 `leads_to`，「攻击路径」页读的就是这些有序边。
   没有真正走通的链标注 `suspected`，不要凭空编路径。
 - **范围清单可能是折叠摘要**：项目资产上千条时，注入的范围只按主域 / 主机聚合计数，
