@@ -2091,19 +2091,7 @@ input.bare:focus {
   outline: none;
 }
 
-.project-record-row-preview {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-
-/* 卡片右下角的导出按钮（导出 .md） */
-.project-record-row-foot {
-  display: flex;
-  justify-content: flex-end;
-}
-
+/* 发现卡片右上角的导出按钮（导出 .md） */
 .project-record-row-export {
   display: inline-flex;
   align-items: center;
@@ -2125,6 +2113,154 @@ input.bare:focus {
 .project-record-row-export:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+/* 发现页：顶部严重度统计条 + 可滚动列表。 */
+.project-findings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.finding-severity-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.finding-severity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--z-line);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--z-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+
+.finding-severity-chip:hover:not(:disabled) {
+  border-color: var(--z-line-strong);
+  color: var(--z-text);
+}
+
+.finding-severity-chip.active {
+  border-color: var(--z-line-strong);
+  background: var(--z-surface-muted);
+  color: var(--z-text-strong);
+}
+
+.finding-severity-chip:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.finding-severity-chip strong {
+  color: var(--z-text-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.finding-severity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--finding-sev, var(--z-text-subtle));
+}
+
+.finding-severity-chip[data-severity="critical"],
+.finding-severity-chip[data-severity="high"] {
+  --finding-sev: var(--z-danger);
+}
+
+.finding-severity-chip[data-severity="medium"] {
+  --finding-sev: var(--z-warning);
+}
+
+.finding-severity-chip[data-severity="low"] {
+  --finding-sev: var(--z-info);
+}
+
+.finding-severity-chip[data-severity="info"] {
+  --finding-sev: var(--z-text-subtle);
+}
+
+/* 发现列表：紧凑两行式卡片。
+   标题 / 严重度 / 状态 / 导出在同一行，元信息一行；
+   左侧 2px 色条标记严重度，卡片间距收到 6px，一屏能看到更多条。 */
+.project-findings-list {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  gap: 6px;
+}
+
+.project-finding-row {
+  gap: 3px;
+  padding: 6px 9px;
+  border-left-width: 2px;
+}
+
+.project-finding-row[data-severity="critical"],
+.project-finding-row[data-severity="high"] {
+  border-left-color: var(--z-danger);
+}
+
+.project-finding-row[data-severity="medium"] {
+  border-left-color: var(--z-warning);
+}
+
+.project-finding-row[data-severity="low"] {
+  border-left-color: var(--z-info);
+}
+
+.project-finding-headline {
+  align-items: center;
+  gap: 6px;
+}
+
+.project-finding-headline strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-finding-headline .semi-tag {
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.project-finding-export {
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.project-finding-meta {
+  gap: 2px 10px;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.project-finding-meta span {
+  white-space: nowrap;
 }
 
 /* 漏洞报告（规范版）抽屉：点开发现卡片后展示 7 段结构报告 */

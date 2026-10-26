@@ -8,6 +8,7 @@ import type {
   WorkProjectAsset,
   WorkProjectAttackPathStep,
   WorkProjectFinding,
+  WorkProjectFindingSeverity,
   WorkProjectGraphEdge,
   WorkProjectGraphSnapshot,
   WorkProjectRecords,
@@ -34,7 +35,7 @@ import {
 } from "../../shared/lib/labels";
 import { ProjectGraphCanvas } from "./ProjectGraphCanvas";
 import { BlackboardGraphCanvas } from "./BlackboardGraphCanvas";
-import { exportFindingReport, reportPreviewText, VulnReportModal } from "./VulnReportModal";
+import { exportFindingReport, VulnReportModal } from "./VulnReportModal";
 import { filledDetailItems, type DetailItem } from "./workProjectDetails";
 import { formatWorkProjectAsset } from "./workProjectView";
 
@@ -81,6 +82,8 @@ export function WorkProjectRecordTabs({
 const ASSET_PAGE_SIZE = 100;
 // 图布局对节点数是平方级开销，超过这个量级只画前 N 个并提示去资产页看全量。
 const GRAPH_ASSET_LIMIT = 600;
+// 发现页顶部统计的顺序：从最严重到信息。
+const FINDING_SEVERITY_ORDER: WorkProjectFindingSeverity[] = ["critical", "high", "medium", "low", "info"];
 
 export function AssetList({ projectId, total }: { projectId?: number; total: number }) {
   const [items, setItems] = useState<WorkProjectAsset[]>([]);
@@ -232,6 +235,20 @@ export function FindingList({
   // 点开发现卡片 → 展示按 src-hunt 规范版（7 段）排版的详细漏洞报告。
   const [reportFinding, setReportFinding] = useState<WorkProjectFinding | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
+  const [severity, setSeverity] = useState<WorkProjectFindingSeverity | "all">("all");
+
+  // 顶部按严重度统计；点 chip 就地过滤，计数口径始终是全部发现。
+  const severityCounts = useMemo(() => {
+    const counts: Partial<Record<WorkProjectFindingSeverity, number>> = {};
+    for (const finding of findings) {
+      counts[finding.severity] = (counts[finding.severity] ?? 0) + 1;
+    }
+    return counts;
+  }, [findings]);
+  const visibleFindings = severity === "all"
+    ? findings
+    : findings.filter((finding) => finding.severity === severity);
+
   if (!findings.length) return <RecordEmpty title="暂无发现。" />;
 
   const handleExport = async (finding: WorkProjectFinding) => {
@@ -246,54 +263,76 @@ export function FindingList({
   };
 
   return (
-    <div className="project-record-list">
-      {findings.map((finding) => (
-        <article
-          key={finding.id}
-          className="project-record-row project-record-row-clickable"
-          role="button"
-          tabIndex={0}
-          aria-label={`查看漏洞报告：${finding.title}`}
-          onClick={() => setReportFinding(finding)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              setReportFinding(finding);
-            }
-          }}
+    <div className="project-findings-panel">
+      <div className="finding-severity-bar" role="group" aria-label="按严重度筛选发现">
+        <button
+          type="button"
+          className={cx("finding-severity-chip", severity === "all" && "active")}
+          onClick={() => setSeverity("all")}
         >
-          <header>
-            <strong>{finding.title}</strong>
-            <div>
+          全部 <strong>{findings.length}</strong>
+        </button>
+        {FINDING_SEVERITY_ORDER.map((item) => {
+          const count = severityCounts[item] ?? 0;
+          return (
+            <button
+              key={item}
+              type="button"
+              data-severity={item}
+              className={cx("finding-severity-chip", severity === item && "active")}
+              disabled={count === 0}
+              onClick={() => setSeverity(item)}
+            >
+              <i className="finding-severity-dot" aria-hidden="true" />
+              {WORK_PROJECT_FINDING_SEVERITY_LABEL[item]} <strong>{count}</strong>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="project-record-list project-findings-list">
+        {visibleFindings.map((finding) => (
+          <article
+            key={finding.id}
+            className="project-record-row project-record-row-clickable project-finding-row"
+            data-severity={finding.severity}
+            role="button"
+            tabIndex={0}
+            aria-label={`查看漏洞报告：${finding.title}`}
+            onClick={() => setReportFinding(finding)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                setReportFinding(finding);
+              }
+            }}
+          >
+            <header className="project-finding-headline">
+              <strong title={finding.title}>{finding.title}</strong>
               <Tag color={WORK_PROJECT_FINDING_SEVERITY_COLOR[finding.severity]}>{WORK_PROJECT_FINDING_SEVERITY_LABEL[finding.severity]}</Tag>
               <Tag color={WORK_PROJECT_FINDING_STATUS_COLOR[finding.status]}>{WORK_PROJECT_FINDING_STATUS_LABEL[finding.status]}</Tag>
-            </div>
-          </header>
-          <p className="project-record-row-preview">
-            {reportPreviewText(finding.description) || finding.impact || "暂无描述"}
-          </p>
-          <RecordDetails items={[
-            ["资产", finding.asset_id ? assetLabels.get(finding.asset_id) ?? `#${finding.asset_id}` : undefined],
-            ["关联边", finding.edge_id ? `#${finding.edge_id}` : undefined],
-            ["更新时间", formatDateTime(finding.updated_at)],
-          ]} />
-          <footer className="project-record-row-foot">
-            <button
-              type="button"
-              className="project-record-row-export"
-              onClick={(event) => {
-                event.stopPropagation();
-                void handleExport(finding);
-              }}
-              disabled={exportingId === finding.id}
-              aria-label={`导出漏洞报告（.md）：${finding.title}`}
-            >
-              <Download size={13} />
-              {exportingId === finding.id ? "导出中…" : "导出 .md"}
-            </button>
-          </footer>
-        </article>
-      ))}
+              <button
+                type="button"
+                className="project-record-row-export project-finding-export"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleExport(finding);
+                }}
+                disabled={exportingId === finding.id}
+                aria-label={`导出漏洞报告（.md）：${finding.title}`}
+              >
+                <Download size={13} />
+                {exportingId === finding.id ? "导出中…" : "导出 .md"}
+              </button>
+            </header>
+            <RecordDetails className="project-finding-meta" items={[
+              ["资产", finding.asset_id ? assetLabels.get(finding.asset_id) ?? `#${finding.asset_id}` : undefined],
+              ["关联边", finding.edge_id ? `#${finding.edge_id}` : undefined],
+              ["更新时间", formatDateTime(finding.updated_at)],
+            ]} />
+          </article>
+        ))}
+      </div>
       <VulnReportModal
         open={reportFinding !== null}
         finding={reportFinding}

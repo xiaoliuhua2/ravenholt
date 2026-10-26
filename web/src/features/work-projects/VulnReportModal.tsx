@@ -450,21 +450,7 @@ export async function saveMarkdownFile(fileName: string, markdown: string): Prom
   return "downloaded";
 }
 
-/** 发现卡片上的一行预览：规范正文取「二、漏洞概述」，并去掉 Markdown 记号。 */
-export function reportPreviewText(description: string): string {
-  const text = (description ?? "").trim();
-  if (!/^#\s*安全漏洞报告/.test(text)) return text;
-  const matched = text.match(/##\s*二、漏洞概述\s*\n+([\s\S]*?)(?:\n---|\n##\s|$)/);
-  return (matched?.[1] ?? text)
-    .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith("|"))
-    .join(" ")
-    .replace(/[*`>#]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** 导出整份报告（与抽屉所见一致）为 `.md`，供发现卡片右下角的「导出」按钮调用。 */
+/** 导出整份报告（与抽屉所见一致）为 `.md`，供发现卡片右上角的「导出」按钮调用。 */
 export async function exportFindingReport(
   projectId: number | undefined,
   finding: WorkProjectFinding,
