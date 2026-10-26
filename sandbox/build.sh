@@ -53,8 +53,18 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+BUILD_ARGS=(--build-arg "GITHUB_MIRROR=${GITHUB_MIRROR}")
+# 构建阶段下载基础镜像/工具/依赖需要出网：把宿主代理透传给 build（apt 与 curl 都认）。
+if [ -n "${HTTP_PROXY:-}" ]; then
+  BUILD_ARGS+=(
+    --build-arg "HTTP_PROXY=${HTTP_PROXY}"
+    --build-arg "HTTPS_PROXY=${HTTPS_PROXY:-${HTTP_PROXY}}"
+    --build-arg "NO_PROXY=${NO_PROXY:-}"
+  )
+fi
+
 if docker build \
-     --build-arg "GITHUB_MIRROR=${GITHUB_MIRROR}" \
+     "${BUILD_ARGS[@]}" \
      -t sandbox-runtime:latest .; then
   echo "✓ 构建完成：sandbox-runtime:latest"
 else

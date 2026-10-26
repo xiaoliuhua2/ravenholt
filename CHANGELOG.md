@@ -6,6 +6,33 @@
 
 ---
 
+## [Unreleased]
+
+### 新增
+
+- **报告路径支持可重放请求包**：`create_vulnerability_report` 新增 `request_url` / `request_headers` / `request_body` / `baseline_status` / `baseline_body` / `probe_status` / `probe_body`。报告镜像落库前由平台保存证据并重放，`reproduced` 才置为「已验证」；缺包、复验失败或 `refuted` 保持「疑似」。
+- **沙箱镜像内置 hurl 8.0.1**：支持可评审的多步 HTTP 请求链与断言；其兼容库（libxml2 / libicu72）隔离在 `/opt/hurl/lib`，仅对 hurl 进程生效，不影响系统库。
+- **构建代理透传**：`sandbox/build.sh` 在宿主设置 `HTTP_PROXY` / `HTTPS_PROXY` 时自动透传给 `docker build`（`NO_PROXY` 一并传递）。
+- **资产规模治理**：项目资产导入上限提升到 5000；项目列表只带前 50 条资产、快照前 1000 条、图前 600 节点；新增资产分页接口与 `list_project_assets` 查询工具；编辑弹窗分页回填全部 scope 资产。
+- **发现页紧凑排版**：卡片两行、去掉描述预览；顶部严重度统计条（全部 / 严重 / 高危 / 中危 / 低危 / 信息）可点击过滤。
+
+### 变更
+
+- **报告正文**：长度上限由 8000 提升到 30000；危害面取 `impact` 的第一条列表项并跳过导语；第五段只放复现步骤，`evidence` 独立为「证据摘录（agent 自述，非平台重放）」。
+- **授权范围注入**：无论用户导入还是 agent 发现，都按主域 / 主机折叠注入，不逐条进入提示词。
+- **沙箱镜像构建**：Debian builder stage 在构建时切换 apt 源到国内镜像，避免代理证书校验失败与直连超时。
+
+### 修复
+
+- **沙箱 `/app/.venv` 在系统 Python 升级后失效**：Kali rolling 已升级到 Python 3.14，上游镜像里建于 3.13 的 venv 看不到原 site-packages，`jwt_tool` / `requests` / `caido-sdk-client` 等全部 import 失败；现在构建时按当前 Python 重建 venv 并装回上游依赖。
+- **证据路径 finding 过不了报告结构门**：`record_evidence` 原先不关联资产，线上 `report_gate.require_asset=true` 时即使复验 `reproduced` 也只能停在「疑似」；现在按目标 host / port 自动匹配项目资产。
+- **渗透回合 `KeyError '"from"'`**：`ROOT_PROTOCOL` 经 `str.format()` 时把 JSON 示例里的 `{"from": ...}` 当作占位符；已改为双花括号并补充渲染验证。
+- **报告六、七段为空**：证据路径补齐 `technical_analysis` / `remediation_steps` / `poc_description` / `cwe` / `cve` / `endpoint_source`，统一用 7 段骨架落库。
+- **大资产项目创建 422**：`assets` 字段上限由 500 提升到 5000。
+- **资产页「加载更多」不符预期**：改为页码窗口 + 上一页 / 下一页；搜索无结果时保留工具栏并提示空态。
+
+---
+
 ## [0.2.1] - 2026-10-16
 
 ### 新增

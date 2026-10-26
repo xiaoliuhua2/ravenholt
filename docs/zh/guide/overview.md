@@ -29,7 +29,7 @@ Ravenholt 是一个开源的**红队智能体协作平台**，以 [strix](https:
 | 会话 | 一次 run（单次扫描） | 多会话：中断 / 取消 / 恢复、会话池、后台子智能体任务与唤醒 |
 | 编排 | 进程内 root agent 派生 | 平台 `AgentCoordinator` + 邮箱回收 + 可视图谱 |
 | 过程沉淀 | 报告文件（markdown / SARIF） | WorkProject：资产 / 发现 / 关系图 / 攻击路径 / 可回放时间线 |
-| 证据 | agent 自述即结论 | 差分级证据 + 独立验证器（重放 baseline/probe 裁决，`reproduced` 才可离开草稿态） |
+| 证据 | agent 自述即结论 | 差分级证据 + 独立验证器（重放 baseline/probe 裁决，`reproduced` 才可离开草稿态；报告工具也可随报告携带请求包走同一闸门） |
 | 治理 | 无 | 红线策略（fail-closed）+ 审批队列 + 审计日志 + 出口代理 |
 | 沙箱 | 上游镜像（Caido + Kali 工具链） | 一体化镜像：叠加逆向工具、容器内 Go 控制面、桌面栈、技能资源 |
 | 联网检索 | Exa / Perplexity | 扩展本机 SearXNG（零配置）与 DeepSeek，失败时自动降级 |

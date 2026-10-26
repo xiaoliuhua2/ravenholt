@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 from schema.work_project.findings import (
     WorkProjectFindingRequest,
@@ -33,7 +34,7 @@ SEVERITY_MAP: dict[str, WorkProjectFindingSeverity] = {
     "informational": WorkProjectFindingSeverity.INFO,
 }
 
-_MAX_TEXT_CHARS = 8000
+_MAX_TEXT_CHARS = 30000
 
 _SEVERITY_LABEL: dict[WorkProjectFindingSeverity, str] = {
     WorkProjectFindingSeverity.CRITICAL: "严重",
@@ -56,11 +57,22 @@ def _cell(value: str) -> str:
 
 
 def _first_sentence(text: str) -> str:
-    trimmed = (text or "").strip()
-    if not trimmed:
+    """表格单元格用的一句话：优先取第一条列表项的正文，跳过「逐条取了一遍，结果如下」这类导语。"""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    lead = ""
+    for line in lines:
+        matched = re.match(r"^(?:[-*+]|\d+[.)])\s+(.*)$", line)
+        if matched:
+            lead = matched.group(1)
+            break
+    if not lead:
+        lead = " ".join(lines)
+    if not lead:
         return ""
-    match = re.search(r"[。！？\n]", trimmed)
-    return trimmed[: match.end()] if match else trimmed
+    match = re.search(r"[。！？\n]", lead)
+    sentence = lead[: match.end()] if match else lead
+    # 危害面是表格单元格，过长会把表格撑变形；超长按句截断。
+    return sentence if len(sentence) <= 200 else sentence[:197].rstrip("，、；,; ") + "…"
 
 
 def _spec_section(title: str, body: str) -> list[str]:
@@ -106,8 +118,17 @@ def _code_location_section(report: dict[str, Any]) -> list[str]:
     return ["## 代码位置", "", *rows, "", "---", ""]
 
 
-def report_to_finding_request(report: dict[str, Any]) -> WorkProjectFindingRequest:
-    """ravenholt 漏洞报告 dict → ``WorkProjectFindingRequest``（纯映射，不落库）。"""
+def report_to_finding_request(
+    report: dict[str, Any],
+    *,
+    evidence_id: int | None = None,
+    asset_id: int | None = None,
+) -> WorkProjectFindingRequest:
+    """ravenholt 漏洞报告 dict → ``WorkProjectFindingRequest``（纯映射，不落库）。
+
+    带可重放证据时请求 ``validated``（由 evidence gate 按实际 verdict 复核，未复现仍会
+    降回 ``suspected``）；没有证据时直接按草稿提交，绝不自行宣布已验证。
+    """
     severity = SEVERITY_MAP.get(
         str(report.get("severity") or "").strip().lower(),
         WorkProjectFindingSeverity.INFO,
@@ -116,8 +137,13 @@ def report_to_finding_request(report: dict[str, Any]) -> WorkProjectFindingReque
     return WorkProjectFindingRequest(
         title=title[:255],
         severity=severity,
-        # 无 evidence ⇒ 只能草稿；即便上游声称 validated 也被 gate 降级。
-        status=WorkProjectFindingStatus.SUSPECTED,
+        asset_id=asset_id,
+        status=(
+            WorkProjectFindingStatus.VALIDATED
+            if evidence_id is not None
+            else WorkProjectFindingStatus.SUSPECTED
+        ),
+        evidence_id=evidence_id,
         description=_compose_description(report),
         impact=str(report.get("impact") or "").strip()[:_MAX_TEXT_CHARS],
     )
@@ -148,6 +174,7 @@ def _compose_description(report: dict[str, Any]) -> str:
     remediation = str(report.get("remediation_steps") or "").strip()
 
     source = str(report.get("id") or "").strip()
+    endpoint_source = str(report.get("endpoint_source") or "").strip()
     agent = str(report.get("agent_name") or report.get("agent_id") or "").strip()
     origin = " / ".join(
         part
@@ -159,7 +186,18 @@ def _compose_description(report: dict[str, Any]) -> str:
     )
     account = "未登录（匿名）" if _ANONYMOUS_PATTERN.search(f"{title} {description}") else "—"
     interface = " ".join(part for part in (method, endpoint) if part)
-    reproduce = "\n\n".join(part for part in (poc_description, evidence) if part)
+    # 目标 URL 优先用「能直接打开的完整地址」：endpoint 是完整 URL 时用它，否则退回 target。
+    target_url = endpoint if endpoint.lower().startswith(("http://", "https://")) else target
+    # 五段只放步骤；agent 的 evidence 常混着响应原文，单独标成「证据摘录」，不混进步骤。
+    reproduce = poc_description
+    if evidence:
+        reproduce = "\n\n".join(
+            part for part in (
+                reproduce,
+                f"**证据摘录（agent 自述，非平台重放）**\n\n{evidence}",
+            )
+            if part
+        )
     type_parts = " / ".join(part for part in (cve, cwe) if part)
 
     lines: list[str] = [
@@ -171,7 +209,7 @@ def _compose_description(report: dict[str, Any]) -> str:
         "| --- | --- |",
         f"| 漏洞标题 | {_cell(title)} |",
         f"| 目标系统 | {_cell(target)} |",
-        f"| 目标 URL | {_cell(target)} |",
+        f"| 目标 URL | {_cell(target_url)} |",
         f"| 漏洞类型 | {_cell(type_parts)} |",
         f"| 漏洞等级 | {_cell(_SEVERITY_LABEL[severity])} |",
         f"| 危害面 | {_cell(_first_sentence(impact))} |",
@@ -185,7 +223,7 @@ def _compose_description(report: dict[str, Any]) -> str:
         "",
         "| 序号 | 接口 | 说明 | 来源 |",
         "| --- | --- | --- | --- |",
-        f"| 1 | {_cell(interface)} | {_cell(title)} | {_cell(origin)} |",
+        f"| 1 | {_cell(interface)} | {_cell(title)} | {_cell(endpoint_source or origin)} |",
         "",
         "---",
         "",
@@ -195,6 +233,141 @@ def _compose_description(report: dict[str, Any]) -> str:
         *_code_location_section(report),
     ]
     return "\n".join(lines).rstrip()[:_MAX_TEXT_CHARS]
+
+
+def build_spec_report_markdown(report: dict[str, Any]) -> str:
+    """把报告字段拼成 src-hunt 规范 7 段正文（报告路径与证据路径共用同一套骨架）。"""
+    return _compose_description(report)
+
+
+def _report_url(report: dict[str, Any]) -> str:
+    """取报告里最能代表目标的可重放地址：请求包 URL → endpoint → target。"""
+    replay = report.get("replay")
+    if isinstance(replay, dict):
+        url = str(replay.get("url") or "").strip()
+        if url:
+            return url
+    for key in ("endpoint", "target"):
+        value = str(report.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+async def _resolve_asset_id(project_id: int, report: dict[str, Any]) -> int | None:
+    """按报告目标地址在项目资产里找对应资产，供报告结构门（require_asset）使用。"""
+    raw = _report_url(report)
+    if not raw:
+        return None
+    split = urlsplit(raw if "://" in raw else f"//{raw}")
+    host = (split.hostname or "").strip().lower()
+    if not host:
+        return None
+    port = split.port
+    if port is None:
+        port = 443 if split.scheme == "https" else 80
+
+    from sqlmodel import select
+
+    from database import get_async_session
+    from model.work_project.assets import WorkProjectAsset
+
+    async with get_async_session() as session:
+        rows = (
+            await session.exec(
+                select(WorkProjectAsset).where(
+                    WorkProjectAsset.project_id == project_id,
+                    WorkProjectAsset.host == host,
+                )
+            )
+        ).all()
+        if not rows:
+            # 资产只登记了 URL（host 为空）时，按 identifier 里的完整主机名回退；
+            # 用边界匹配，避免把 a.example.com 误配到 example.com。
+            token = re.compile(rf"(?<![a-z0-9.-]){re.escape(host)}(?![a-z0-9.-])")
+            rows = [
+                row
+                for row in (
+                    await session.exec(
+                        select(WorkProjectAsset).where(
+                            WorkProjectAsset.project_id == project_id,
+                            WorkProjectAsset.identifier.contains(host),
+                        )
+                    )
+                ).all()
+                if token.search(str(row.identifier or "").lower())
+            ]
+    if not rows:
+        return None
+    exact = [row for row in rows if row.port == port]
+    if exact:
+        return exact[0].id
+    portless = [row for row in rows if row.port is None]
+    if portless:
+        return portless[0].id
+    return None
+
+
+async def _persist_replay(report: dict[str, Any]) -> int | None:
+    """把报告附带的请求包落成 evidence 并交平台复验；返回 ``evidence_id``。
+
+    报告里的请求包（``replay``）是唯一能让报告路径进入「已验证」的入口：没有它只能
+    维持草稿。保存或复验失败时返回原 evidence id（若已保存）或 ``None``，由 gate 按
+    实际 verdict 决定状态，绝不在这里自行判定「已验证」。
+    """
+    replay = report.get("replay")
+    if not isinstance(replay, dict):
+        return None
+    url = str(replay.get("url") or "").strip()
+    if not url:
+        return None
+
+    method = str(report.get("method") or "GET").strip().upper() or "GET"
+    headers = replay.get("headers")
+    request_package: dict[str, Any] = {
+        "method": method,
+        "url": url,
+        "headers": (
+            {str(key): str(value) for key, value in headers.items()}
+            if isinstance(headers, dict)
+            else {}
+        ),
+    }
+    body = replay.get("body")
+    if isinstance(body, str) and body:
+        request_package["body"] = body
+
+    from service.evidence.store import save_evidence
+    from service.evidence.verifier import verify_evidence
+
+    try:
+        evidence = await save_evidence(
+            target=str(report.get("target") or url).strip() or url,
+            method=method,
+            url=url,
+            request=request_package,
+            baseline_status=int(replay.get("baseline_status") or 0),
+            baseline_body=str(replay.get("baseline_body") or ""),
+            probe_status=int(replay.get("probe_status") or 0),
+            probe_body=str(replay.get("probe_body") or ""),
+        )
+    except Exception:  # noqa: BLE001 - 证据保存失败不允许吞掉 finding
+        logger.exception("saving replay evidence for report %s failed", report.get("id"))
+        return None
+
+    try:
+        run = await verify_evidence(evidence.id)
+    except Exception:  # noqa: BLE001 - 复验失败仍保留证据，gate 会拒绝 validated
+        logger.exception("replaying evidence %s failed", evidence.id)
+        return evidence.id
+
+    logger.info(
+        "replay verdict for report %s: evidence=%s verdict=%s",
+        report.get("id"),
+        evidence.id,
+        run.verdict,
+    )
+    return evidence.id
 
 
 class WorkProjectFindingMirror:
@@ -213,13 +386,21 @@ class WorkProjectFindingMirror:
             self._pending.append(dict(report))
 
     async def flush(self) -> list[int]:
-        """把已收集的报告落库为草稿 finding，返回新建 finding id 列表。"""
+        """把已收集的报告落库为 finding，返回新建 finding id 列表。
+
+        报告带可重放请求包时先保存证据并交平台复验，再请求 ``validated``（gate 按
+        verdict 复核）；没有请求包的报告按草稿落库。
+        """
         from service.work_project.findings import create_work_project_finding
 
         created: list[int] = []
         while self._pending:
             report = self._pending.pop(0)
-            request = report_to_finding_request(report)
+            asset_id = await _resolve_asset_id(self._project_id, report)
+            evidence_id = await _persist_replay(report)
+            request = report_to_finding_request(
+                report, evidence_id=evidence_id, asset_id=asset_id
+            )
             finding, error = await create_work_project_finding(
                 self._project_id,
                 request,

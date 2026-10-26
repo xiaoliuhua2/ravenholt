@@ -29,7 +29,7 @@ In one sentence: **strix is a single-machine CLI / TUI pentest agent; ravenholt 
 | Sessions | One run (a single scan) | Multiple sessions: interrupt / cancel / resume, session pool, background subagent tasks with wake-up |
 | Orchestration | In-process root agent spawning | Platform `AgentCoordinator` + mailbox collection + a graph view |
 | Process record | Report files (markdown / SARIF) | WorkProject: assets / findings / relationship graph / attack paths / replayable timeline |
-| Evidence | The agent's own narrative is the conclusion | Differential evidence + an independent verifier (replays baseline/probe; only `reproduced` may leave the draft state) |
+| Evidence | The agent's own narrative is the conclusion | Differential evidence + an independent verifier (replays baseline/probe; only `reproduced` may leave the draft state; the reporting tool can also carry a replay package through the same gate) |
 | Governance | None | Red-line policy (fail-closed) + approval queue + audit log + egress proxies |
 | Sandbox | Upstream image (Caido + Kali toolchain) | All-in-one image: reverse-engineering tools, in-container Go control plane, desktop stack, skill resources |
 | Web search | Exa / Perplexity | Adds a local SearXNG (zero-config) and DeepSeek, with automatic failover |

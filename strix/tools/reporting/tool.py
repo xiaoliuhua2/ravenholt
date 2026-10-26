@@ -227,6 +227,92 @@ _HTTP_EXCHANGE_DROPPED_WARNING = (
     "them. Attach them with update_vulnerability_report when the proxy responds again."
 )
 
+_REPLAY_FIELDS = (
+    "request_url",
+    "request_headers",
+    "request_body",
+    "baseline_status",
+    "baseline_body",
+    "probe_status",
+    "probe_body",
+)
+
+
+def _normalize_replay_package(
+    *,
+    request_url: str | None,
+    request_headers: str | None,
+    request_body: str | None,
+    baseline_status: int | None,
+    baseline_body: str | None,
+    probe_status: int | None,
+    probe_body: str | None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """把报告附带的请求包整理成验证器可重放的结构。
+
+    全部留空表示「这份报告没有可重放证据」，返回 ``(None, [])``；只填一部分则报错，
+    避免半包被误当成可验证证据。
+    """
+    provided = {
+        "request_url": request_url,
+        "request_headers": request_headers,
+        "request_body": request_body,
+        "baseline_status": baseline_status,
+        "baseline_body": baseline_body,
+        "probe_status": probe_status,
+        "probe_body": probe_body,
+    }
+    if all(provided[name] is None for name in _REPLAY_FIELDS):
+        return None, []
+
+    errors: list[str] = []
+    url = (request_url or "").strip()
+    if not url:
+        errors.append("request_url is required when a replay package is attached")
+    elif not url.lower().startswith(("http://", "https://")):
+        errors.append("request_url must be an absolute http(s) URL the platform can replay")
+
+    headers: dict[str, str] = {}
+    raw_headers = (request_headers or "").strip()
+    if raw_headers:
+        try:
+            parsed = json.loads(raw_headers)
+        except (TypeError, ValueError):
+            errors.append("request_headers must be a JSON object string")
+        else:
+            if not isinstance(parsed, dict):
+                errors.append("request_headers must be a JSON object string")
+            else:
+                headers = {str(key): str(value) for key, value in parsed.items()}
+
+    for name, value in (("baseline_status", baseline_status), ("probe_status", probe_status)):
+        if value is None:
+            errors.append(f"{name} is required when a replay package is attached")
+        elif not isinstance(value, int) or value <= 0:
+            errors.append(f"{name} must be a positive HTTP status code")
+
+    if errors:
+        return None, errors
+
+    if baseline_status == probe_status and (baseline_body or "") == (probe_body or ""):
+        errors.append(
+            "baseline and probe are identical: there is no differential for the platform to reproduce"
+        )
+        return None, errors
+
+    return (
+        {
+            "url": url,
+            "headers": headers,
+            "body": request_body or "",
+            "baseline_status": baseline_status,
+            "baseline_body": baseline_body or "",
+            "probe_status": probe_status,
+            "probe_body": probe_body or "",
+        },
+        [],
+    )
+
 
 async def _verify_http_exchange_ids(
     ctx: RunContextWrapper,
@@ -799,6 +885,14 @@ async def _do_create(
     cve: str | None,
     cwe: str | None,
     code_locations: list[dict[str, Any]] | None,
+    endpoint_source: str | None = None,
+    request_url: str | None = None,
+    request_headers: str | None = None,
+    request_body: str | None = None,
+    baseline_status: int | None = None,
+    baseline_body: str | None = None,
+    probe_status: int | None = None,
+    probe_body: str | None = None,
     http_exchange_ids: list[str] | None = None,
     confidence_rationale: str | None = None,
     fix_verification: str | None = None,
@@ -849,6 +943,17 @@ async def _do_create(
         http_exchange_ids
     )
     errors.extend(http_exchange_errors)
+
+    replay, replay_errors = _normalize_replay_package(
+        request_url=request_url,
+        request_headers=request_headers,
+        request_body=request_body,
+        baseline_status=baseline_status,
+        baseline_body=baseline_body,
+        probe_status=probe_status,
+        probe_body=probe_body,
+    )
+    errors.extend(replay_errors)
 
     if errors:
         return {"success": False, "error": "Validation failed", "errors": errors}
@@ -904,6 +1009,8 @@ async def _do_create(
             "cvss": cvss_score,
             "cvss_breakdown": cvss_breakdown,
             "endpoint": endpoint,
+            "endpoint_source": endpoint_source,
+            "replay": replay,
             "method": method,
             "cve": cve,
             "cwe": cwe,
@@ -998,6 +1105,14 @@ async def create_vulnerability_report(
     cvss_breakdown: dict[str, str],
     endpoint: str | None = None,
     method: str | None = None,
+    endpoint_source: str | None = None,
+    request_url: str | None = None,
+    request_headers: str | None = None,
+    request_body: str | None = None,
+    baseline_status: int | None = None,
+    baseline_body: str | None = None,
+    probe_status: int | None = None,
+    probe_body: str | None = None,
     cve: str | None = None,
     cwe: str | None = None,
     code_locations: list[dict[str, Any]] | None = None,
@@ -1294,6 +1409,24 @@ async def create_vulnerability_report(
         cvss_breakdown: 8-metric object per the format above.
         endpoint: API path / Git path (e.g. ``/api/login``).
         method: HTTP method when relevant.
+        endpoint_source: 接口来源：取自 JS 的完整 JS 地址、页面文档 URL 或前端 bundle 路径；
+            留空时平台用「报告 ID / 报告代理」填充。
+        request_url: Optional. The absolute http(s) URL the platform will replay.
+            Attach the replay package (request_url + request_headers/request_body +
+            baseline_* + probe_*) when the finding is dynamically reproducible: the
+            platform then re-issues the request itself and only a reproduced
+            differential lets the finding leave 'suspected'. Leave every replay field
+            empty for findings that cannot be replayed (static config, source-only).
+        request_headers: Optional. JSON object string of headers sent on replay
+            (cookies / auth included).
+        request_body: Optional. Request body sent on replay.
+        baseline_status: Required with a replay package. Status of the control
+            response, i.e. the same endpoint without the flaw (e.g. 401/403 on an
+            unauthenticated request that SHOULD be rejected).
+        baseline_body: Control response body.
+        probe_status: Required with a replay package. Status of the attack response
+            that demonstrates the flaw (e.g. 200 with leaked data).
+        probe_body: Attack response body.
         cve: ``CVE-YYYY-NNNNN`` if certain, else omit.
         cwe: ``CWE-NNN`` (most specific child) if certain, else omit.
         code_locations: White-box findings — list of location objects.
@@ -1447,6 +1580,14 @@ async def create_vulnerability_report(
         fix_effort=fix_effort,
         cvss_breakdown=cvss_breakdown,
         endpoint=endpoint,
+        endpoint_source=endpoint_source,
+        request_url=request_url,
+        request_headers=request_headers,
+        request_body=request_body,
+        baseline_status=baseline_status,
+        baseline_body=baseline_body,
+        probe_status=probe_status,
+        probe_body=probe_body,
         method=method,
         cve=cve,
         cwe=cwe,

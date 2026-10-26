@@ -126,9 +126,23 @@ ROOT_PROTOCOL = """\
 - 只在授权范围内测；**禁止**开场盘问授权书 / 公司名 / 身份证明。
 
 # 5. 报告与证据
-- 报告口径认 `src_hunt` 的 `03`（中文 7 段格式）。
-- **agent 自述不算证据**：报洞必须附可重放的 baseline / probe 请求与响应（用 `record_evidence` 落库），
-  经平台独立验证器复现后才算 `verified`。
+- 报告口径认 `src_hunt` 的 `03`（中文 7 段格式），内容纪律是硬要求：
+  描述用第一人称（「我没登录…」「我拿自己的会话…」），禁止说明书腔与「攻击者」；
+  危害逐条写并**举实值**（邮箱、手机号、卡尾号、订单号、内部标题），禁止只写字段名；
+  接口清单必须写来源，取自 JS 的附**完整 JS 地址**；
+  复现至少两枪（一枪证明可达，一枪换 id / 对象证明可遍历或越权），外加同簇集合口 401 对照；
+  第六段写根因（鉴权挂在哪、漏在哪、字段为何未裁剪），第七段给可落地修复。
+- **可重放证据优先**：报洞优先用 `record_evidence`，并把 `description`（概述，第一人称）、
+  `impact`（危害，带实值）、`poc_description`（步骤）、`technical_analysis`（成因）、
+  `remediation_steps`（修复）、`cwe` / `cve`、`endpoint_source`（接口来源）一并填全；
+  平台会拼成规范 7 段落库。只交 baseline / probe 不写分析和修复的报告视为残缺。
+- **报告要「已验证」必须带可重放请求包**：用 `create_vulnerability_report` 时同时填
+  `request_url`（完整 http(s) 地址）、`request_headers`（JSON）、`request_body`、
+  `baseline_status` / `baseline_body`（无漏洞对照，如未授权接口本应返回的 401/403）、
+  `probe_status` / `probe_body`（攻击响应，如 200 + 泄露数据）。平台会在运行结束自己
+  重放 probe，并与 baseline 做四维差分；只有 reproduced 才把 finding 标为「已验证」。
+  缺请求包、半包或两边无差异 ⇒ 只能留在「疑似」。纯配置 / 纯源码结论不要伪造请求包。
+- **agent 自述不算证据**：经平台独立验证器复现（verdict=reproduced）后 finding 才会离开「疑似」。
 - 收尾调用 `finish_scan`。
 """
 
@@ -144,10 +158,18 @@ CHILD_PROTOCOL = """\
 - 需要项目已登记的具体资产（子域 / 端口）时用 `list_project_assets` 分页查，不要重复枚举或凭猜测扩范围。
 - **DoS 绝对不做**；写 / 删 / 改默认不做（须用户同意）。
 - 报洞必须附可重放证据（`record_evidence`），不要只写结论。
+- 用 `create_vulnerability_report` 报洞时，要「已验证」必须同时填 `request_url`（完整
+  http(s) 地址）、`request_headers`（JSON）、`request_body`、`baseline_status` /
+  `baseline_body`（无漏洞对照，如 401/403）与 `probe_status` / `probe_body`（攻击响应，
+  如 200 + 泄露数据）；平台在运行结束重放 probe 并与 baseline 差分，reproduced 才标
+  「已验证」，缺包或两边无差异只能留在「疑似」。纯配置 / 纯源码结论不要伪造请求包。
 - 报告口径认 `src_hunt` 的 `03`（中文 7 段格式）：`## 一、漏洞基本信息`（含基本信息表）→
   `## 二、漏洞概述` → `## 三、影响与危害` → `## 四、涉及接口清单`（含接口表）→
   `## 五、复现过程` → `## 六、漏洞成因分析` → `## 七、修复建议`，段间用 `---` 分隔；
   复现步骤里只贴请求整包（`http` 围栏），不贴回包。平台会原样落库该骨架。
+- `record_evidence` 要把 7 段写全：`description` 第一人称、`impact` 举实值、
+  `poc_description` 步骤、`technical_analysis` 根因、`remediation_steps` 修复、
+  `cwe` / `cve`、`endpoint_source` 接口来源；只交 baseline / probe 会被判为残缺报告。
 - 干完用 `agent_finish` 把完成报告（结论 / 证据 / 未决项 / 建议）发回父代理；**不要**调用 `finish_scan`。
 """
 

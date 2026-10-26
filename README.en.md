@@ -56,7 +56,7 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 | **strix runtime** (vendored) | Execution engine: agent orchestration, skill library, sandbox toolchain, Caido capture, reporting |
 | **Control plane** (this repo) | Unified entry point for sessions / projects / users / hosts / system config; REST + WebSocket, permission and resource boundaries |
 | **Policy governance & evidence plane** | Red-line policy (fail-closed), action approvals, audit log, WorkProject evidence, replayable timeline |
-| **All-in-one sandbox image** | `sandbox-runtime:latest`, built by this repo's `sandbox/`: upstream capabilities (Caido + Kali toolchain) plus the customized toolchain (Ghidra / Jadx / observer_ward / agent-browser), an in-container control plane, and skill resources |
+| **All-in-one sandbox image** | `sandbox-runtime:latest`, built by this repo's `sandbox/`: upstream capabilities (Caido + Kali toolchain) plus the customized toolchain (Ghidra / Jadx / observer_ward / agent-browser / hurl), an in-container control plane, and skill resources |
 
 ### 1.1 Relationship to upstream strix
 
@@ -72,7 +72,7 @@ At its core it uses [strix](https://github.com/usestrix/strix) as the penetratio
 | Sessions | One run (a single scan) | Multiple sessions: interrupt / cancel / resume, session pool, background sub-agent tasks with wake-up |
 | Orchestration | In-process root agent spawning | Platform-side `AgentCoordinator` + mailbox collection + a graph view (child completion reports return to the parent) |
 | Process record | Report files (markdown / SARIF) | **WorkProject**: scope assets, findings, relationship graph, attack paths, replayable timeline |
-| Evidence | The agent's own narrative is the conclusion | **Differential evidence + an independent verifier**: the platform replays baseline / probe, and only `reproduced` may leave the draft state |
+| Evidence | The agent's own narrative is the conclusion | **Differential evidence + an independent verifier**: the platform replays baseline / probe, and only `reproduced` may leave the draft state; `create_vulnerability_report` may also carry a replay package through the same gate |
 | Governance | None | **Red-line policy (fail-closed) + approval queue + audit log + egress proxies** |
 | Sandbox | Upstream image (Caido + Kali toolchain) | The same base image plus reverse-engineering tools, an in-container Go control plane, a desktop stack, and in-container skill resources |
 | Web search | Exa / Perplexity | Adds **a local SearXNG (zero-config) and DeepSeek**; `auto` ranks by availability and fails over |
@@ -180,6 +180,7 @@ Capability comparison:
 | Kali toolchain (nmap / sqlmap / nuclei / ffuf / katana / httpx / semgrep / trivy / chromium / node / python / uv) | ✅ | ✅ |
 | Ghidra / Jadx / apktool / binwalk | ❌ | ✅ |
 | observer_ward / agent-browser-cli | ❌ | ✅ |
+| hurl (reviewable multi-step HTTP assertions / regression) | ❌ | ✅ |
 | In-container Go control plane (terminal / files / noVNC / live egress refresh) | ❌ | ✅ |
 | In-container skill resources `.agents/skills` | ❌ | ✅ |
 | Desktop stack Xvfb + x11vnc + noVNC, tor | ❌ | ✅ |
@@ -212,7 +213,7 @@ Capability comparison:
 | Component | Version / size | Provides | Consequence of skipping |
 | --- | --- | --- | --- |
 | **Docker** | 24+, daemon running | Sandbox execution plane (in-session command execution, Caido capture) | Control plane only; no pentesting |
-| **All-in-one sandbox image** | `sandbox-runtime:latest` (~5 GB+ to build) | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser, container console, live egress refresh, skill resources | Sessions still run on the upstream image, but the items above are missing |
+| **All-in-one sandbox image** | `sandbox-runtime:latest` (~5 GB+ to build) | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser/hurl, container console, live egress refresh, skill resources | Sessions still run on the upstream image, but the items above are missing |
 | **Upstream sandbox image** | `ghcr.io/usestrix/strix-sandbox:1.3.0` (~4 GB) | Caido + Kali toolchain | Pulled automatically on the first session; pre-pull for offline hosts |
 | **Node.js** | ≥ 20.19 (22 recommended) | **Building the frontend (required for source deployments)**: the repo does not ship `web/dist-app`; run `npm install && npm run build` to produce it | Without it the console pages cannot load (Docker/Compose deployments build it inside the image, so no host Node.js is needed) |
 | **Docker Compose** | v2 | The Compose deployment route | No impact if you use `serve.sh` |
@@ -585,6 +586,8 @@ cd sandbox && bash build.sh        # produces sandbox-runtime:latest
 # GITHUB_MIRROR= bash build.sh                      # force direct
 ```
 
+> The build needs network access for base images, Ghidra / Jadx, hurl, and Kali packages. When `HTTP_PROXY` / `HTTPS_PROXY` are set on the host, `build.sh` passes them (and `NO_PROXY`) to `docker build` automatically; otherwise the build goes direct.
+
 **Where the all-in-one image comes from** (`setup.sh` decides in this order):
 
 1. `sandbox-runtime:latest` already present locally → use it, no network;
@@ -681,7 +684,7 @@ Follow these in order to turn everything on:
 3. The agent provisions a sandbox container and runs reconnaissance inside it (nmap / httpx / katana, ...); traffic is captured into Caido.
 4. Inspect terminal output in the container panel and review captured messages with the **request store** (`list_requests` / `view_request` / `repeat_request`).
 5. When a high-risk action is hit, **Policy Approvals** parks it until you click approve in the session.
-6. Findings land in the project (with evidence and impact); at the end export the report and cross-check the **replayable timeline** and the **audit log**.
+6. Findings land in the project; a report starts as a **suspected** draft. To become **validated**, the agent must use `record_evidence` (baseline / probe pair) or attach `request_url` plus baseline / probe fields to `create_vulnerability_report` — the platform replays it after the run and only `reproduced` upgrades the finding. At the end export the report and cross-check the **replayable timeline** and the **audit log**.
 
 ---
 
@@ -748,7 +751,7 @@ A: `.ravenholt/policy.yaml` is missing or invalid. The platform treats the red-l
 A: Yes — the platform and control plane start fine (login, projects, policy, audit, reports all work), but the **pentest/code-audit sandbox execution plane is unavailable**; you only notice when you start a session.
 
 **Q: Can I pentest without building `sandbox-runtime:latest`?**
-A: Yes. Session sandboxes use the upstream image `ghcr.io/usestrix/strix-sandbox:1.3.0` by default (Caido + Kali toolchain), pulled automatically on the first session. Building the all-in-one image adds Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser, in-container skill resources, and the terminal / file / noVNC features of the Sandbox Containers page.
+A: Yes. Session sandboxes use the upstream image `ghcr.io/usestrix/strix-sandbox:1.3.0` by default (Caido + Kali toolchain), pulled automatically on the first session. Building the all-in-one image adds Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl, in-container skill resources, and the terminal / file / noVNC features of the Sandbox Containers page.
 
 **Q: I built the image — how do I make agent sessions use it?**
 A: `bash setup.sh --with-sandbox` writes the image name into `.ravenholt/config.json`'s `sandbox.image` automatically. For a manual deployment, set `"image": "sandbox-runtime:latest"` yourself and run `bash serve.sh restart`. **Building without configuring leaves sessions on the upstream image.** You also need a record on the Sandbox Images page (`Control Port` = `8000`) to use the Sandbox Containers page.
@@ -852,4 +855,4 @@ A: Three things — ① narrow `searxng_bind_addr` (that service is unauthentica
 
 This project is released under the **MIT License**, copyright 2026 `yv1ing` and `xiaoliuhua2`. See [LICENSE](./LICENSE).
 
-The vendored strix runtime retains its original license and copyright notices (Apache-2.0). The all-in-one sandbox image **redistributes** third-party binaries at runtime (Ghidra / Jadx / observer_ward / agent-browser-cli / the Kali toolchain, ...); comply with each of their licenses when deploying or redistributing it. Before testing anything with this platform, make sure you hold explicit authorization for the target.
+The vendored strix runtime retains its original license and copyright notices (Apache-2.0). The all-in-one sandbox image **redistributes** third-party binaries at runtime (Ghidra / Jadx / observer_ward / agent-browser-cli / hurl / the Kali toolchain, ...); comply with each of their licenses when deploying or redistributing it. Before testing anything with this platform, make sure you hold explicit authorization for the target.

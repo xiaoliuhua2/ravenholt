@@ -5,6 +5,9 @@ baseline / probe 请求响应，由平台侧**确定性**验证器重放复现�
 （``verdict == "reproduced"``）的 finding 才可能离开草稿态（``suspected``）——
 该降级由 ``service.evidence.gate`` 强制把关，本工具不自行判定。
 
+报告正文与「报告路径」共用同一套 src-hunt 规范 7 段骨架（``build_spec_report_markdown``）：
+证据路径同样要写技术分析、修复建议、接口来源等字段，避免出现「能重放但六、七段空白」的残缺报告。
+
 容器/项目上下文从运行上下文的 dict 取：``work_project_id`` / ``session_id`` / ``agent_id``。
 """
 
@@ -20,7 +23,11 @@ from schema.work_project.findings import (
     WorkProjectFindingSeverity,
     WorkProjectFindingStatus,
 )
-from core.strix_runtime.findings import SEVERITY_MAP
+from core.strix_runtime.findings import (
+    SEVERITY_MAP,
+    _resolve_asset_id,
+    build_spec_report_markdown,
+)
 from service.evidence.store import save_evidence
 from service.evidence.verifier import verify_evidence
 from service.work_project.findings import create_work_project_finding
@@ -49,9 +56,9 @@ def _parse_headers(headers_json: str) -> dict[str, str]:
     return {str(k): str(v) for k, v in parsed.items()}
 
 
-@function_tool
-async def record_evidence(
-    ctx: RunContextWrapper,
+async def _record_evidence(
+    *,
+    project_id: int,
     title: str,
     url: str,
     method: str = "GET",
@@ -65,42 +72,20 @@ async def record_evidence(
     target: str = "",
     headers_json: str = "",
     body: str = "",
-) -> str:
-    """Record a replayable differential evidence pack; the platform verifier adjudicates it.
-
-    Submit the baseline response (no bug) and the probe response (with the bug) for one
-    request definition. The platform replays `url` itself and re-checks the four-dimension
-    diff; only a reproduced differential lets the attached finding leave 'suspected'.
-
-    Args:
-        title: finding title.
-        url: the request URL the platform will replay.
-        method: HTTP method (default GET).
-        baseline_status: status code of the baseline (control) response.
-        baseline_body: body of the baseline response.
-        probe_status: status code of the probe response that shows the bug.
-        probe_body: body of the probe response.
-        severity: info|low|medium|high|critical.
-        description: what the bug is.
-        impact: why it matters.
-        target: logical target (host/URL prefix); defaults to `url`.
-        headers_json: JSON object string of headers to send on the replay (cookies/auth included).
-        body: request body to send on the replay (empty string = no body).
-
-    Returns:
-        JSON with evidence_id, verdict, finding_id, finding_status, note, or an error.
-    """
-    inner = _inner(ctx)
-    project_id = inner.get("work_project_id")
-    session_id = str(inner.get("session_id") or "")
-    agent_code = str(inner.get("agent_id") or "")
-
-    if not isinstance(project_id, int):
-        return _json(ok=False, error="no work project bound: evidence cannot attach to a finding")
+    technical_analysis: str = "",
+    remediation_steps: str = "",
+    poc_description: str = "",
+    cwe: str = "",
+    cve: str = "",
+    endpoint_source: str = "",
+    agent_code: str = "",
+    session_id: str = "",
+) -> dict[str, Any]:
+    """保存证据 → 平台重放 → 组装规范 7 段报告并落 finding；tool 只负责取运行上下文。"""
     if not title.strip():
-        return _json(ok=False, error="title is required")
+        return {"ok": False, "error": "title is required"}
     if not url.strip():
-        return _json(ok=False, error="url is required")
+        return {"ok": False, "error": "url is required"}
 
     request_package: dict[str, Any] = {
         "method": (method or "GET").upper().strip(),
@@ -122,17 +107,37 @@ async def record_evidence(
             probe_body=(probe_body or "")[:_MAX_BODY_CHARS],
         )
     except Exception as exc:  # noqa: BLE001 - tool errors must be model-visible results
-        return _json(ok=False, error=f"saving evidence failed: {exc}")
+        return {"ok": False, "error": f"saving evidence failed: {exc}"}
 
     try:
         run = await verify_evidence(evidence.id)
     except Exception as exc:  # noqa: BLE001
-        return _json(ok=False, evidence_id=evidence.id, error=f"verification failed: {exc}")
+        return {"ok": False, "evidence_id": evidence.id, "error": f"verification failed: {exc}"}
 
     severity_value = SEVERITY_MAP.get(
         str(severity).strip().lower(), WorkProjectFindingSeverity.INFO
     )
+    description_markdown = build_spec_report_markdown({
+        "title": title.strip(),
+        "target": target.strip() or url.strip(),
+        "endpoint": request_package["url"],
+        "method": request_package["method"],
+        "cve": cve.strip(),
+        "cwe": cwe.strip(),
+        "severity": str(severity).strip().lower(),
+        "description": description.strip(),
+        "impact": impact.strip(),
+        "technical_analysis": technical_analysis.strip(),
+        "poc_description": poc_description.strip(),
+        "remediation_steps": remediation_steps.strip(),
+        "endpoint_source": endpoint_source.strip(),
+        "agent_name": agent_code,
+    })
     try:
+        asset_id = await _resolve_asset_id(
+            project_id,
+            {"target": target.strip() or url.strip(), "endpoint": request_package["url"]},
+        )
         finding, error = await create_work_project_finding(
             project_id,
             WorkProjectFindingRequest(
@@ -140,33 +145,123 @@ async def record_evidence(
                 severity=severity_value,
                 # 请求 validated；无复现证据时由 evidence gate 降级为 suspected。
                 status=WorkProjectFindingStatus.VALIDATED,
-                description=description.strip(),
+                description=description_markdown,
                 impact=impact.strip(),
                 evidence_id=evidence.id,
+                asset_id=asset_id,
             ),
             created_by_agent_code=agent_code,
             created_from_session_id=session_id,
         )
     except Exception as exc:  # noqa: BLE001
-        return _json(
-            ok=False, evidence_id=evidence.id, verdict=run.verdict,
-            error=f"creating finding failed: {exc}",
-        )
+        return {
+            "ok": False, "evidence_id": evidence.id, "verdict": run.verdict,
+            "error": f"creating finding failed: {exc}",
+        }
 
     if error or finding is None:
-        return _json(
-            ok=False, evidence_id=evidence.id, verdict=run.verdict,
-            error=f"creating finding failed: {error or 'unknown'}",
-        )
+        return {
+            "ok": False, "evidence_id": evidence.id, "verdict": run.verdict,
+            "error": f"creating finding failed: {error or 'unknown'}",
+        }
 
-    return _json(
-        ok=True,
-        evidence_id=evidence.id,
-        verdict=run.verdict,
-        finding_id=finding.id,
-        finding_status=finding.status.value,
-        note=run.note,
-    )
+    return {
+        "ok": True,
+        "evidence_id": evidence.id,
+        "verdict": run.verdict,
+        "finding_id": finding.id,
+        "finding_status": finding.status.value,
+        "note": run.note,
+    }
+
+
+@function_tool
+async def record_evidence(
+    ctx: RunContextWrapper,
+    title: str,
+    url: str,
+    method: str = "GET",
+    baseline_status: int = 0,
+    baseline_body: str = "",
+    probe_status: int = 0,
+    probe_body: str = "",
+    severity: str = "info",
+    description: str = "",
+    impact: str = "",
+    target: str = "",
+    headers_json: str = "",
+    body: str = "",
+    technical_analysis: str = "",
+    remediation_steps: str = "",
+    poc_description: str = "",
+    cwe: str = "",
+    cve: str = "",
+    endpoint_source: str = "",
+) -> str:
+    """Record a replayable differential evidence pack and write the full src-hunt report.
+
+    Submit the baseline response (no bug) and the probe response (with the bug) for one
+    request definition. The platform replays `url` itself and re-checks the four-dimension
+    diff; only a reproduced differential lets the attached finding leave 'suspected'.
+
+    The finding body is composed from the fields below into the canonical seven-section
+    report (基本信息 / 概述 / 危害 / 接口清单 / 复现过程 / 成因分析 / 修复建议), so fill
+    them the same way a written report would: first person, concrete leaked values in
+    `impact`, full source URL in `endpoint_source`.
+
+    Args:
+        title: finding title.
+        url: the request URL the platform will replay.
+        method: HTTP method (default GET).
+        baseline_status: status code of the baseline (control) response.
+        baseline_body: body of the baseline response.
+        probe_status: status code of the probe response that shows the bug.
+        probe_body: body of the probe response.
+        severity: info|low|medium|high|critical.
+        description: 第二段「漏洞概述」——第一人称讲我没登录 / 拿自己的会话做成了什么。
+        impact: 第三段「影响与危害」——逐条写伤害并举例（邮箱、手机号、卡尾号、订单号等实值）。
+        target: logical target (host/URL prefix); defaults to `url`.
+        headers_json: JSON object string of headers to send on the replay (cookies/auth included).
+        body: request body to send on the replay (empty string = no body).
+        technical_analysis: 第六段「漏洞成因分析」——鉴权挂在哪、漏在哪、字段为何未裁剪。
+        remediation_steps: 第七段「修复建议」——可落地的整改项。
+        poc_description: 第五段「复现过程」的步骤叙述（只写步骤与请求，不贴回包）。
+        cwe: CWE 编号，如 CWE-862。
+        cve: CVE 编号（没有就留空）。
+        endpoint_source: 第四段接口来源，如 JS bundle 的完整 URL。
+
+    Returns:
+        JSON with evidence_id, verdict, finding_id, finding_status, note, or an error.
+    """
+    inner = _inner(ctx)
+    project_id = inner.get("work_project_id")
+    if not isinstance(project_id, int):
+        return _json(ok=False, error="no work project bound: evidence cannot attach to a finding")
+
+    return _json(**await _record_evidence(
+        project_id=project_id,
+        title=title,
+        url=url,
+        method=method,
+        baseline_status=baseline_status,
+        baseline_body=baseline_body,
+        probe_status=probe_status,
+        probe_body=probe_body,
+        severity=severity,
+        description=description,
+        impact=impact,
+        target=target,
+        headers_json=headers_json,
+        body=body,
+        technical_analysis=technical_analysis,
+        remediation_steps=remediation_steps,
+        poc_description=poc_description,
+        cwe=cwe,
+        cve=cve,
+        endpoint_source=endpoint_source,
+        agent_code=str(inner.get("agent_id") or ""),
+        session_id=str(inner.get("session_id") or ""),
+    ))
 
 
 # 挂给 ravenholt root/child 的证据工具（仅在绑定了 WorkProject 时挂载）。

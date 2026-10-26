@@ -56,7 +56,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | **strix 运行时**（vendor） | 渗透/审计执行引擎：agent 编排、技能库（skills）、沙箱工具链、Caido 抓包、报告 |
 | **平台控制面**（本仓库） | 会话 / 项目 / 用户 / 主机 / 系统配置的统一入口，REST + WebSocket，权限与资源边界 |
 | **策略治理与证据面** | 红线策略（fail-closed）、动作审批、审计日志、WorkProject 证据、可回放时间线 |
-| **一体化沙箱镜像** | 本仓库 `sandbox/` 构建的 `sandbox-runtime:latest`：上游能力（Caido + Kali 工具链）+ 定制工具集（Ghidra / Jadx / observer_ward / agent-browser）+ 容器内控制面与技能资源 |
+| **一体化沙箱镜像** | 本仓库 `sandbox/` 构建的 `sandbox-runtime:latest`：上游能力（Caido + Kali 工具链）+ 定制工具集（Ghidra / Jadx / observer_ward / agent-browser / hurl）+ 容器内控制面与技能资源 |
 
 ### 1.1 与上游 strix 的关系与区别
 
@@ -72,7 +72,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | 会话 | 一次 run（单次扫描） | 多会话：中断 / 取消 / 恢复、会话池、后台子智能体任务与唤醒 |
 | 编排 | 进程内 root agent 派生 | 平台侧 `AgentCoordinator` + 邮箱回收 + 可视图（子代理完成报告回投父代理） |
 | 过程沉淀 | 报告文件（markdown / SARIF） | **WorkProject**：范围资产、发现、关系图、攻击路径、可回放时间线 |
-| 证据 | agent 自述即结论 | **差分级证据 + 独立验证器**：平台重放 baseline / probe，`reproduced` 才允许离开草稿态 |
+| 证据 | agent 自述即结论 | **差分级证据 + 独立验证器**：平台重放 baseline / probe，`reproduced` 才允许离开草稿态；`create_vulnerability_report` 也可随报告携带请求包，走同一套复验闸门 |
 | 治理 | 无 | **红线策略（fail-closed）+ 审批队列 + 审计日志 + 出口代理** |
 | 沙箱 | 上游镜像（Caido + Kali 工具链） | 同一基础镜像叠加逆向工具、容器内 Go 控制面、桌面栈、容器内技能资源 |
 | 联网检索 | Exa / Perplexity | 扩展**本机 SearXNG（零配置）与 DeepSeek**；`auto` 按可用性排序并在失败时降级 |
@@ -180,6 +180,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | Kali 工具链（nmap / sqlmap / nuclei / ffuf / katana / httpx / semgrep / trivy / chromium / node / python / uv） | ✅ | ✅ |
 | Ghidra / Jadx / apktool / binwalk | ❌ | ✅ |
 | observer_ward / agent-browser-cli | ❌ | ✅ |
+| hurl（可评审的多步 HTTP 断言/回归） | ❌ | ✅ |
 | 容器内 Go 控制面（终端 / 文件 / noVNC / egress 动态刷新） | ❌ | ✅ |
 | 容器内技能资源 `.agents/skills` | ❌ | ✅ |
 | 桌面栈 Xvfb + x11vnc + noVNC、tor | ❌ | ✅ |
@@ -212,7 +213,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | 组件 | 版本/规格 | 提供的能力 | 不装的后果 |
 | --- | --- | --- | --- |
 | **Docker** | 24+，daemon 已运行 | 沙箱执行面（会话中的命令执行、Caido 抓包） | 只能使用控制面，无法做渗透 |
-| **一体化沙箱镜像** | `sandbox-runtime:latest`（构建约 5 GB+） | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser、容器控制台、egress 运行时刷新、技能资源 | 会话仍可用上游镜像跑渗透，但缺上述定制工具与控制台 |
+| **一体化沙箱镜像** | `sandbox-runtime:latest`（构建约 5 GB+） | Ghidra/Jadx/apktool/binwalk/observer_ward/agent-browser/hurl、容器控制台、egress 运行时刷新、技能资源 | 会话仍可用上游镜像跑渗透，但缺上述定制工具与控制台 |
 | **上游沙箱镜像** | `ghcr.io/usestrix/strix-sandbox:1.3.0`（约 4 GB） | Caido + Kali 工具链 | 首次会话会自动拉取；离线环境需预拉 |
 | **Node.js** | ≥ 20.19（推荐 22） | **构建前端（源码部署必需）**：仓库不含 `web/dist-app`，须 `npm install && npm run build` 生成 | 不装则控制台页面无法加载；但不必手工处理——`setup.sh` 会**自动安装**（官方二进制 22.x 解压到 `/usr/local`）；Docker/Compose 部署由镜像内构建阶段完成，不需要宿主 Node |
 | **Docker Compose** | v2 | Compose 部署方式 | 只用 `serve.sh` 则无影响 |
@@ -584,6 +585,8 @@ cd sandbox && bash build.sh        # 产出 sandbox-runtime:latest
 # GITHUB_MIRROR= bash build.sh                      # 强制直连
 ```
 
+> 构建阶段要出网下载基础镜像、Ghidra / Jadx、hurl 与 Kali 包。宿主已设置 `HTTP_PROXY` / `HTTPS_PROXY` 时，`build.sh` 会自动把它们（连同 `NO_PROXY`）透传给 `docker build`；未设置则按直连处理。
+
 **一体化镜像的来源优先级**（`setup.sh` 会自动按这个顺序判断）：
 
 1. 本地已有 `sandbox-runtime:latest` → 直接用，不动网络；
@@ -664,7 +667,7 @@ bash update.sh --with-sandbox       # 额外重建一体化沙箱镜像（下载
 | 步骤 | 操作 | 得到什么 |
 | --- | --- | --- |
 | 1 | `bash setup.sh --with-sandbox`（或在手动部署里走完 5.3 的第 1–6 步） | 平台、数据库、前端、一体化沙箱镜像全部就位 |
-| 2 | 确认 `.ravenholt/config.json` 的 `sandbox.image` = `sandbox-runtime:latest` | 会话使用定制镜像（Ghidra/Jadx/observer_ward/agent-browser） |
+| 2 | 确认 `.ravenholt/config.json` 的 `sandbox.image` = `sandbox-runtime:latest` | 会话使用定制镜像（Ghidra/Jadx/observer_ward/agent-browser/hurl） |
 | 3 | 控制台「沙箱镜像」页新增记录（`Control Port` = `8000`） | 「沙箱容器」页可创建带终端/文件/noVNC 的容器 |
 | 4 | 填 LLM API Key（系统配置页） | 会话对话与 agent 执行可用 |
 | 5 | 新建**工作项目**，填写范围与目标 | 资产、发现、证据、攻击路径有归属 |
@@ -680,7 +683,7 @@ bash update.sh --with-sandbox       # 额外重建一体化沙箱镜像（下载
 3. agent 自动创建沙箱容器并在其中执行侦察（nmap / httpx / katana 等），流量经 Caido 落库。
 4. 在容器面板查看终端输出、用**请求库**复核 Caido 抓到的报文（`list_requests` / `view_request` / `repeat_request`）。
 5. 命中高风险动作时，**策略审批**会挂起等你在会话内点「同意」。
-6. 发现写入项目（含证据与影响），结束后导出报告并核对**可回放时间线**与**审计日志**。
+6. 发现写入项目；报告默认是「疑似」草稿。要变成「已验证」，agent 需走 `record_evidence`（提交 baseline / probe 两枪），或在 `create_vulnerability_report` 里同时提交 `request_url` + baseline / probe 请求包——平台会在 run 结束后自行重放，只有 `reproduced` 才升级。结束后导出报告并核对**可回放时间线**与**审计日志**。
 
 ---
 
@@ -747,7 +750,7 @@ A：`.ravenholt/policy.yaml` 缺失或非法。平台对红线策略是 **fail-c
 A：可以启动平台并使用控制面（登录、项目、策略、审计、报告都正常），但**渗透/代码审计的沙箱执行面不可用** —— 发起会话时才会报错。
 
 **Q：不构建 `sandbox-runtime:latest` 能不能做渗透？**
-A：能。会话沙箱默认使用上游镜像 `ghcr.io/usestrix/strix-sandbox:1.3.0`（含 Caido 与 Kali 工具链），首次会话自动拉取。构建一体化镜像的收益是：额外获得 Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser、容器内技能资源，以及「沙箱容器」页的终端 / 文件 / noVNC。
+A：能。会话沙箱默认使用上游镜像 `ghcr.io/usestrix/strix-sandbox:1.3.0`（含 Caido 与 Kali 工具链），首次会话自动拉取。构建一体化镜像的收益是：额外获得 Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl、容器内技能资源，以及「沙箱容器」页的终端 / 文件 / noVNC。
 
 **Q：构建了镜像，怎么让 agent 会话用它？**
 A：`bash setup.sh --with-sandbox` 会自动把镜像名写进 `.ravenholt/config.json` 的 `sandbox.image`。手动部署请自行填 `"image": "sandbox-runtime:latest"` 并 `bash serve.sh restart`。**只构建不配置，会话仍用上游镜像。** 另需在「沙箱镜像」页登记一条记录（`Control Port` = `8000`）才能使用「沙箱容器」页。
@@ -851,4 +854,4 @@ A：三件事 —— ① 收窄 `searxng_bind_addr`（该服务无鉴权）；�
 
 本项目基于 **MIT License** 发布，版权归 2026 `yv1ing` 与 `xiaoliuhua2`。详见 [LICENSE](./LICENSE)。
 
-内部 vendor 的 strix 运行时按其原始许可（Apache-2.0）保留版权声明；一体化沙箱镜像在运行时**二次分发**了第三方二进制（Ghidra / Jadx / observer_ward / agent-browser-cli / Kali 工具链等），部署与再分发时请遵守各自的许可条款。使用本平台进行任何测试前，请确保已获得目标系统的明确授权。
+内部 vendor 的 strix 运行时按其原始许可（Apache-2.0）保留版权声明；一体化沙箱镜像在运行时**二次分发**了第三方二进制（Ghidra / Jadx / observer_ward / agent-browser-cli / hurl / Kali 工具链等），部署与再分发时请遵守各自的许可条款。使用本平台进行任何测试前，请确保已获得目标系统的明确授权。

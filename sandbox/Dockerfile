@@ -34,6 +34,7 @@ ARG GHIDRA_VERSION=12.1
 ARG GHIDRA_BUILD=20260513
 ARG JADX_VERSION=1.5.5
 ARG OBSERVER_WARD_VERSION=2026.4.8
+ARG HURL_VERSION=8.0.1
 
 # ---------- 容器内 Go 控制面 ----------
 FROM golang:1.26-trixie AS proxy-builder
@@ -55,6 +56,7 @@ ARG AGENT_BROWSER_VERSION
 ARG GITHUB_MIRROR
 
 RUN set -eux; \
+    find /etc/apt -maxdepth 2 \( -name '*.sources' -o -name 'sources.list' \) -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl tar unzip; \
     mkdir -p \
@@ -90,6 +92,7 @@ ARG GITHUB_MIRROR
 ARG GHIDRA_URL=https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_BUILD}.zip
 
 RUN set -eux; \
+    find /etc/apt -maxdepth 2 \( -name '*.sources' -o -name 'sources.list' \) -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
     apt-get update; \
     apt-get install -y --no-install-recommends binutils ca-certificates curl unzip; \
     for i in 1 2 3 4 5; do \
@@ -134,6 +137,7 @@ ARG GITHUB_MIRROR
 ARG JADX_URL=https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip
 
 RUN set -eux; \
+    find /etc/apt -maxdepth 2 \( -name '*.sources' -o -name 'sources.list' \) -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates curl unzip; \
     mkdir -p /opt/jadx; \
@@ -172,6 +176,7 @@ FROM debian:trixie-slim AS skills-validator
 WORKDIR /tmp
 
 RUN set -eux; \
+    find /etc/apt -maxdepth 2 \( -name '*.sources' -o -name 'sources.list' \) -exec sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g; s|http://security.debian.org|http://mirrors.aliyun.com|g' {} +; \
     apt-get update; \
     apt-get install -y --no-install-recommends bash; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/* /var/tmp/*
@@ -190,10 +195,15 @@ FROM ${STRIX_SANDBOX_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG OBSERVER_WARD_VERSION
+ARG HURL_VERSION
 ARG GITHUB_MIRROR
 # Kali apt 镜像源：上游镜像自带 mirrors.neusoft.edu.cn，但它在本环境的 DNS 下只解析出
 # IPv6，容器没有 IPv6 通路时 apt 会以 "Something wicked happened resolving" 失败。
 ARG KALI_MIRROR=https://mirrors.aliyun.com/kali
+# Debian 源（用于取 hurl 运行所需的兼容库，见下方安装块）。
+ARG DEBIAN_MIRROR=https://mirrors.aliyun.com
+# 重建 /app/.venv 时使用的 pip 源；留空 = PyPI 官方源。
+ARG PIP_INDEX_URL=
 
 USER root
 
@@ -226,6 +236,22 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends "$observer_ward_deb"; \
     rm -f "$observer_ward_deb"; \
     observer_ward -u; \
+    hurl_archive="/tmp/hurl.tar.gz"; \
+    hurl_dir="/tmp/hurl-${HURL_VERSION}-x86_64-unknown-linux-gnu"; \
+    libxml2_deb="/tmp/libxml2-compat.deb"; \
+    libicu_deb="/tmp/libicu72-compat.deb"; \
+    mkdir -p /opt/hurl/lib; \
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 20 "${GITHUB_MIRROR}https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl-${HURL_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o "$hurl_archive"; \
+    tar -xzf "$hurl_archive" -C /tmp; \
+    install -m 755 "$hurl_dir/bin/hurl" /opt/hurl/hurl; \
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 20 "${DEBIAN_MIRROR}/debian/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3~deb12u6_amd64.deb" -o "$libxml2_deb"; \
+    curl -fsSL --retry 6 --retry-all-errors --retry-delay 3 --connect-timeout 20 "${DEBIAN_MIRROR}/debian/pool/main/i/icu/libicu72_72.1-3+deb12u1_amd64.deb" -o "$libicu_deb"; \
+    dpkg-deb -x "$libxml2_deb" /opt/hurl/lib; \
+    dpkg-deb -x "$libicu_deb" /opt/hurl/lib; \
+    rm -rf "$hurl_archive" "$hurl_dir" "$libxml2_deb" "$libicu_deb"; \
+    printf '%s\n' '#!/bin/sh' 'LD_LIBRARY_PATH=/opt/hurl/lib/usr/lib/x86_64-linux-gnu exec /opt/hurl/hurl "$@"' > /usr/local/bin/hurl; \
+    chmod 755 /usr/local/bin/hurl; \
+    hurl --version; \
     ln -sf vnc.html /usr/share/novnc/index.html; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/* /var/tmp/*
 
@@ -270,6 +296,22 @@ RUN set -eux; \
 
 # 保持上游镜像的运行身份与工作目录：strix SDK 以 pentester 身份在 /workspace 执行命令
 USER pentester
+
+# 上游镜像的 /app/.venv 创建于旧 Python（3.13）；Kali rolling 已将系统 Python 升到 3.14，
+# 旧 venv 的 site-packages 不再可见（jwt_tool / requests 等全部 import 失败）。
+# 这里按当前 Python 重建 venv，并装回上游声明的依赖。
+RUN set -eux; \
+    rm -rf /app/.venv; \
+    python3 -m venv /app/.venv; \
+    /app/.venv/bin/pip install --no-cache-dir --upgrade pip; \
+    index_opt=""; if [ -n "${PIP_INDEX_URL:-}" ]; then index_opt="--index-url ${PIP_INDEX_URL}"; fi; \
+    /app/.venv/bin/pip install --no-cache-dir $index_opt \
+        caido-sdk-client \
+        requests httpx beautifulsoup4 lxml pyjwt cryptography \
+        termcolor cprint pycryptodomex ratelimit; \
+    /app/.venv/bin/python -c "import requests, httpx, bs4, lxml, jwt, cryptography, caido_sdk_client, ratelimit"; \
+    /app/.venv/bin/python --version
+
 WORKDIR /workspace
 
 EXPOSE 8000

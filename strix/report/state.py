@@ -348,6 +348,8 @@ class ReportState:
         cvss: float | None = None,
         cvss_breakdown: dict[str, str] | None = None,
         endpoint: str | None = None,
+        endpoint_source: str | None = None,
+        replay: dict[str, Any] | None = None,
         method: str | None = None,
         cve: str | None = None,
         cwe: str | None = None,
@@ -403,6 +405,10 @@ class ReportState:
             report["cvss_breakdown"] = cvss_breakdown
         if endpoint:
             report["endpoint"] = endpoint.strip()
+        if endpoint_source:
+            report["endpoint_source"] = endpoint_source.strip()
+        if replay:
+            report["replay"] = replay
         if method:
             report["method"] = method.strip()
         if cve:

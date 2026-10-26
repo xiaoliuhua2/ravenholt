@@ -49,8 +49,8 @@ class WorkProjectFindingRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     severity: WorkProjectFindingSeverity = WorkProjectFindingSeverity.INFO
     status: WorkProjectFindingStatus = WorkProjectFindingStatus.SUSPECTED
-    description: str = Field(default="", max_length=8000)
-    impact: str = Field(default="", max_length=8000)
+    description: str = Field(default="", max_length=30000)
+    impact: str = Field(default="", max_length=30000)
 
     @field_validator("title", "description", "impact", mode="before")
     @classmethod
