@@ -33,6 +33,7 @@ from schema.agent.events import (
     RunStateEvent,
     SandboxEvent,
     SandboxPhaseSchema,
+    TextCompleteEvent,
     UserMessageEvent,
 )
 from schema.work_project.assets import WorkProjectAssetType
@@ -284,6 +285,10 @@ class AgentSession:
             )
             if mirror is not None:
                 await mirror.flush()
+                # 只在「本轮确实收尾」时出总结：finish_scan 已调用，或本轮产出了新 finding。
+                # 纯对话 / 中途追问不打扰，避免每说一句话就重复一遍汇总。
+                if report_state.scan_results is not None or mirror.finding_ids:
+                    await self._publish_findings_summary(context.work_project_id, agent_code)
         except SandboxProvisionError as exc:
             logger.warning("strix sandbox unavailable session=%s: %s", self.session_id, exc)
             self.publish_external(ErrorEvent(
@@ -302,6 +307,51 @@ class AgentSession:
             self._publish_run_state(False)
             self._current_task = None
             await _mark_session_stopped(self.session_id)
+
+    async def _publish_findings_summary(self, project_id: int | None, agent_name: str) -> None:
+        """run 结束后按落库结果输出「测试总结」。
+
+        平台确定性生成（读 finding 状态 + 覆盖台账），把已验证 / 疑似 / 无法验证分开列，
+        不依赖模型自由发挥；任何异常都只记日志，不影响会话收尾。
+        """
+        if project_id is None:
+            return
+        try:
+            from uuid import uuid4
+
+            from core.strix_runtime.findings import (
+                build_session_findings_summary,
+                render_findings_summary,
+            )
+
+            summary = await build_session_findings_summary(project_id, self.session_id)
+            unresolved: list[dict[str, str]] = []
+            try:
+                from strix.tools.coverage.tools import get_coverage_entries
+
+                unresolved = [
+                    {
+                        "surface": str(entry.get("surface") or ""),
+                        "risk_area": str(entry.get("risk_area") or ""),
+                        "evidence": str(entry.get("evidence") or ""),
+                    }
+                    for entry in get_coverage_entries()
+                    if entry.get("outcome") == "needs_follow_up"
+                ]
+            except Exception:  # noqa: BLE001 - 覆盖台账读不到不影响总结
+                logger.exception(
+                    "coverage snapshot for summary failed session=%s", self.session_id
+                )
+            self.publish_external(
+                TextCompleteEvent(
+                    created_at=datetime.now(),
+                    agent_name=agent_name,
+                    segment_id=f"scan-summary:{self.session_id}:{uuid4().hex[:8]}",
+                    text=render_findings_summary(summary, unresolved),
+                )
+            )
+        except Exception:  # noqa: BLE001 - 总结失败不能影响会话收尾
+            logger.exception("findings summary failed session=%s", self.session_id)
 
     def _publish_sandbox_event(
         self,

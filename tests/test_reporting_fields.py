@@ -48,6 +48,18 @@ _CVSS = {
 }
 
 
+_MEDIUM_CVSS = {
+    "attack_vector": "N",
+    "attack_complexity": "L",
+    "privileges_required": "L",
+    "user_interaction": "N",
+    "scope": "U",
+    "confidentiality": "L",
+    "integrity": "L",
+    "availability": "N",
+}
+
+
 _DEP_CONTEXT = {
     "attack_vector": "N",
     "attack_complexity": "L",
@@ -124,6 +136,13 @@ async def test_create_report_persists_new_fields(report_state: ReportState) -> N
         cve=None,
         cwe="CWE-79",
         code_locations=None,
+        request_url="https://app.example.com/search?q=1",
+        request_headers='{"Cookie": "s=1"}',
+        request_body="q=1",
+        baseline_status=400,
+        baseline_body="bad request",
+        probe_status=200,
+        probe_body="<script>alert(1)</script>",
         http_exchange_ids=["1042", "1042", "1088"],
         fix_pr_body="## Fix\nEncode output.",
     )
@@ -251,7 +270,7 @@ async def _create_with(report_state: ReportState, **overrides: object) -> dict[s
         "impact": "i",
         "target": "t",
         "technical_analysis": "ta",
-        "poc_description": "p",
+        "poc_description": "1. 向 /api/x 发送 POST 请求；2. 观察 200 响应与泄露数据。",
         "poc_script_code": "c",
         "remediation_steps": "r",
         "evidence": "e",
@@ -266,6 +285,13 @@ async def _create_with(report_state: ReportState, **overrides: object) -> dict[s
         "cve": None,
         "cwe": None,
         "code_locations": None,
+        "request_url": "https://app.example.com/api/x",
+        "request_headers": '{"Cookie": "s=1"}',
+        "request_body": "id=1",
+        "baseline_status": 403,
+        "baseline_body": "forbidden",
+        "probe_status": 200,
+        "probe_body": "leaked",
     }
     kwargs.update(overrides)
     assert report_state is not None
@@ -316,6 +342,76 @@ async def test_create_report_accepts_medium_confidence_with_rationale(
     report = report_state.vulnerability_reports[0]
     assert report["confidence"] == "medium"
     assert report["confidence_rationale"] == "Static-only trace; could not stand up the service."
+
+
+@pytest.mark.parametrize("breakdown", [_MEDIUM_CVSS, _CVSS])
+async def test_create_rejects_finding_without_replay_or_exempt_reason(
+    report_state: ReportState,
+    breakdown: dict[str, str],
+) -> None:
+    """每份报告都必须能自证：无请求包且无豁免理由时直接拒绝落库（不分等级）。"""
+    result = await _create_with(
+        report_state,
+        cvss_breakdown=breakdown,
+        request_url=None,
+        request_headers=None,
+        request_body=None,
+        baseline_status=None,
+        baseline_body=None,
+        probe_status=None,
+        probe_body=None,
+    )
+
+    assert result["success"] is False
+    assert any("replayable request package" in e for e in result["errors"])
+    assert report_state.vulnerability_reports == []
+
+
+async def test_create_accepts_medium_finding_with_replay_exempt_reason(
+    report_state: ReportState,
+) -> None:
+    """纯配置 / 纯源码类结论无法重放，写明理由后仍可落库（中危同样适用）。"""
+    result = await _create_with(
+        report_state,
+        cvss_breakdown=_MEDIUM_CVSS,
+        request_url=None,
+        request_headers=None,
+        request_body=None,
+        baseline_status=None,
+        baseline_body=None,
+        probe_status=None,
+        probe_body=None,
+        replay_exempt_reason="纯配置类结论，平台无法重放请求包做差分",
+    )
+
+    assert result["success"] is True
+    report = report_state.vulnerability_reports[0]
+    assert report["severity"] == "medium"
+    assert report["replay_exempt_reason"].startswith("纯配置类结论")
+    assert "replay" not in report
+
+
+async def test_create_rejects_a_one_line_poc(report_state: ReportState) -> None:
+    """复现步骤不能一句话敷衍。"""
+    result = await _create_with(report_state, poc_description="run it")
+
+    assert result["success"] is False
+    assert any("reproduction steps" in e for e in result["errors"])
+    assert report_state.vulnerability_reports == []
+
+
+def test_update_rejects_a_one_line_poc(report_state: ReportState) -> None:
+    _seed_weak_report(report_state)
+
+    result = _do_update(
+        report_id="vuln-0009",
+        update_reason="Adding the reproduction steps.",
+        fields={"poc_description": "run it"},
+    )
+
+    assert result["success"] is False
+    assert any("reproduction steps" in e for e in result["errors"])
+    assert "poc_description" not in report_state.vulnerability_reports[0]
 
 
 async def test_dependency_report_sets_class_and_metadata(report_state: ReportState) -> None:
@@ -1330,6 +1426,17 @@ async def test_dependency_report_rejects_contextual_breakdown_without_reasoning(
     assert report_state.vulnerability_reports == []
 
 
+_REPLAY_PACKAGE: dict[str, Any] = {
+    "request_url": "https://cms.example.com/files/2f1c",
+    "request_headers": '{"Cookie": "session=abc"}',
+    "request_body": "--x\r\nowned\r\n--x--",
+    "baseline_status": 403,
+    "baseline_body": "forbidden",
+    "probe_status": 200,
+    "probe_body": "owned",
+}
+
+
 _CONFIRMED_KWARGS: dict[str, Any] = {
     "title": "Unauthenticated file write on /files/{id}",
     "description": "A multipart PATCH writes attacker content before the permission check.",
@@ -1352,6 +1459,13 @@ _CONFIRMED_KWARGS: dict[str, Any] = {
     "cve": "CVE-2025-55746",
     "cwe": "CWE-863",
     "code_locations": None,
+    "request_url": "https://cms.example.com/files/2f1c",
+    "request_headers": '{"Cookie": "session=abc"}',
+    "request_body": "--x\r\nowned\r\n--x--",
+    "baseline_status": 403,
+    "baseline_body": "forbidden",
+    "probe_status": 200,
+    "probe_body": "owned",
 }
 
 
@@ -1441,6 +1555,57 @@ def test_update_replaces_http_exchange_ids(report_state: ReportState) -> None:
 
     assert result["success"] is True
     assert report_state.vulnerability_reports[0]["http_exchange_ids"] == ["204", "205"]
+
+
+def test_update_refuses_to_raise_a_finding_without_replay_evidence(
+    report_state: ReportState,
+) -> None:
+    """改级不能成为绕过「高危必须有包」的通道。"""
+    _seed_weak_report(report_state)
+
+    result = _do_update(
+        report_id="vuln-0009",
+        update_reason="The write was confirmed against the live host.",
+        fields={"cvss_breakdown": _CVSS},
+    )
+
+    assert result["success"] is False
+    assert "cannot be raised" in result["error"]
+    assert report_state.vulnerability_reports[0]["severity"] == "medium"
+    assert "update_history" not in report_state.vulnerability_reports[0]
+
+
+def test_update_attaches_a_replay_package_and_escalates(
+    report_state: ReportState,
+) -> None:
+    """先报后补：修订可以补上请求包，同一次修订再调级不被闸门拦截。"""
+    _seed_weak_report(report_state)
+
+    result = _do_update(
+        report_id="vuln-0009",
+        update_reason="The write was replayed against the live host.",
+        fields={**_REPLAY_PACKAGE, "cvss_breakdown": _CVSS},
+    )
+
+    assert result["success"] is True
+    report = report_state.vulnerability_reports[0]
+    assert report["severity"] == "critical"
+    assert report["replay"]["url"] == "https://cms.example.com/files/2f1c"
+    assert report["replay"]["probe_status"] == 200
+
+
+def test_update_rejects_a_short_replay_exempt_reason(report_state: ReportState) -> None:
+    _seed_weak_report(report_state)
+
+    result = _do_update(
+        report_id="vuln-0009",
+        update_reason="Explaining why it cannot be replayed.",
+        fields={"replay_exempt_reason": "纯配置"},
+    )
+
+    assert result["success"] is False
+    assert any("replay_exempt_reason" in error for error in result["errors"])
+    assert "replay_exempt_reason" not in report_state.vulnerability_reports[0]
 
 
 async def test_create_rejects_invalid_http_exchange_ids(report_state: ReportState) -> None:
@@ -1631,6 +1796,16 @@ def test_agent_revises_its_own_report_without_a_duplicate_verdict(
 ) -> None:
     """Editing a finding is its own operation: no dedupe verdict is involved."""
     _seed_weak_report(report_state)
+    # 升到 critical 需要可重放证据，这里补上报告后续可直接重放的请求包。
+    report_state.vulnerability_reports[0]["replay"] = {
+        "url": "https://cms.example.com/files/2f1c",
+        "headers": {"Cookie": "session=abc"},
+        "body": "--x\r\nowned\r\n--x--",
+        "baseline_status": 403,
+        "baseline_body": "forbidden",
+        "probe_status": 200,
+        "probe_body": "owned",
+    }
 
     result = _do_update(
         report_id="vuln-0009",

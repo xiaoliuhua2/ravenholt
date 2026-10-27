@@ -33,6 +33,7 @@ from service.evidence.verifier import verify_evidence
 from service.work_project.findings import create_work_project_finding
 
 _MAX_BODY_CHARS = 200_000
+_MIN_POC_CHARS = 20
 
 
 def _inner(ctx: RunContextWrapper) -> dict[str, Any]:
@@ -86,6 +87,23 @@ async def _record_evidence(
         return {"ok": False, "error": "title is required"}
     if not url.strip():
         return {"ok": False, "error": "url is required"}
+    if len((poc_description or "").strip()) < _MIN_POC_CHARS:
+        return {
+            "ok": False,
+            "error": (
+                "poc_description must spell out the reproduction steps "
+                f"({_MIN_POC_CHARS}+ characters): the request, the payload, and the "
+                "observed response — not a one-line summary"
+            ),
+        }
+    if int(baseline_status or 0) <= 0 or int(probe_status or 0) <= 0:
+        return {
+            "ok": False,
+            "error": (
+                "baseline_status and probe_status must be positive HTTP status codes: "
+                "a replayable package needs the control response and the attack response"
+            ),
+        }
 
     request_package: dict[str, Any] = {
         "method": (method or "GET").upper().strip(),
@@ -213,9 +231,11 @@ async def record_evidence(
         title: finding title.
         url: the request URL the platform will replay.
         method: HTTP method (default GET).
-        baseline_status: status code of the baseline (control) response.
+        baseline_status: status code of the baseline (control) response. Required and
+            must be positive: without it there is no differential to reproduce.
         baseline_body: body of the baseline response.
-        probe_status: status code of the probe response that shows the bug.
+        probe_status: status code of the probe response that shows the bug. Required
+            and must be positive.
         probe_body: body of the probe response.
         severity: info|low|medium|high|critical.
         description: 第二段「漏洞概述」——第一人称讲我没登录 / 拿自己的会话做成了什么。
@@ -226,6 +246,7 @@ async def record_evidence(
         technical_analysis: 第六段「漏洞成因分析」——鉴权挂在哪、漏在哪、字段为何未裁剪。
         remediation_steps: 第七段「修复建议」——可落地的整改项。
         poc_description: 第五段「复现过程」的步骤叙述（只写步骤与请求，不贴回包）。
+            必填且至少 20 字：写清请求、载荷与观察到的响应；一句话会被拒绝。
         cwe: CWE 编号，如 CWE-862。
         cve: CVE 编号（没有就留空）。
         endpoint_source: 第四段接口来源，如 JS bundle 的完整 URL。

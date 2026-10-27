@@ -232,6 +232,10 @@ def _compose_description(report: dict[str, Any]) -> str:
         *_spec_section("七、修复建议", remediation),
         *_code_location_section(report),
     ]
+    # 高危/严重结论允许用豁免理由说明「为何无包」，正文里注明，避免读者误以为漏包。
+    exempt_reason = str(report.get("replay_exempt_reason") or "").strip()
+    if exempt_reason and not isinstance(report.get("replay"), dict):
+        lines.extend(["", f"> ⚠ 本报告未附带可重放请求包：{exempt_reason}"])
     return "\n".join(lines).rstrip()[:_MAX_TEXT_CHARS]
 
 
@@ -423,6 +427,136 @@ class WorkProjectFindingMirror:
     @property
     def pending_count(self) -> int:
         return len(self._pending)
+
+
+_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+_SUMMARY_SEVERITY_LABEL = {
+    "critical": "严重",
+    "high": "高危",
+    "medium": "中危",
+    "low": "低危",
+    "info": "信息",
+    "informational": "信息",
+}
+
+
+async def build_session_findings_summary(project_id: int, session_id: str) -> dict[str, Any]:
+    """汇总某会话的 finding，按「证据是否可复现」分成三类。
+
+    分类只看平台落库后的状态与 evidence 关联，不看 agent 自述：
+    ``validated`` → 已验证；``suspected`` 但有 evidence → 复验未通过；无 evidence → 无法验证。
+    """
+    from sqlmodel import select
+
+    from database import get_async_session
+    from model.work_project.findings import WorkProjectFinding
+
+    async with get_async_session() as session:
+        rows = (
+            await session.exec(
+                select(WorkProjectFinding)
+                .where(
+                    WorkProjectFinding.project_id == project_id,
+                    WorkProjectFinding.created_from_session_id == session_id,
+                )
+                .order_by(WorkProjectFinding.id)
+            )
+        ).all()
+
+    def _item(row: WorkProjectFinding) -> dict[str, Any]:
+        return {
+            "title": str(row.title or "").strip() or "Untitled finding",
+            "severity": str(row.severity or "").strip().lower(),
+        }
+
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            _SEVERITY_RANK.get(str(row.severity or "").strip().lower(), 9),
+            row.id or 0,
+        ),
+    )
+    verified: list[dict[str, Any]] = []
+    suspected: list[dict[str, Any]] = []
+    unverifiable: list[dict[str, Any]] = []
+    for row in ordered:
+        entry = _item(row)
+        if str(row.status or "").strip().lower() == WorkProjectFindingStatus.VALIDATED.value:
+            verified.append(entry)
+        elif row.evidence_id is not None:
+            suspected.append(entry)
+        else:
+            unverifiable.append(entry)
+    return {
+        "total": len(ordered),
+        "verified": verified,
+        "suspected": suspected,
+        "unverifiable": unverifiable,
+    }
+
+
+def _summary_section(title: str, entries: list[dict[str, Any]], empty: str) -> list[str]:
+    lines = [f"### {title} · {len(entries)} 条", ""]
+    if not entries:
+        return [*lines, empty, ""]
+    for index, entry in enumerate(entries, start=1):
+        severity = str(entry.get("severity") or "")
+        label = _SUMMARY_SEVERITY_LABEL.get(severity, severity or "信息")
+        lines.append(f"{index}. **{label}** — {entry.get('title') or 'Untitled finding'}")
+    lines.append("")
+    return lines
+
+
+def render_findings_summary(
+    summary: dict[str, Any],
+    unresolved_surfaces: list[dict[str, str]] | None = None,
+) -> str:
+    """把汇总结果渲染成用户可读的「测试总结」消息（Markdown）。"""
+    total = int(summary.get("total") or 0)
+    verified = list(summary.get("verified") or [])
+    suspected = list(summary.get("suspected") or [])
+    unverifiable = list(summary.get("unverifiable") or [])
+    surfaces = unresolved_surfaces or []
+
+    lines: list[str] = [
+        "## 测试总结",
+        "",
+        "平台在本次测试结束后按「证据是否可复现」自动汇总全部 finding，"
+        f"共 **{total}** 条。",
+        "",
+    ]
+    lines += _summary_section("已验证漏洞（平台重放复现）", verified, "无。")
+    lines += _summary_section("疑似漏洞（附了请求包，但平台复验未通过）", suspected, "无。")
+    lines += _summary_section(
+        "无法验证（无请求包 / 纯配置 / 纯源码 / OOB 不可用）",
+        unverifiable,
+        "无。",
+    )
+    if surfaces:
+        lines += [f"### 未完成验证的测试面（needs_follow_up）· {len(surfaces)} 项", ""]
+        for surface in surfaces:
+            name = str(surface.get("surface") or "").strip() or "（未命名测试面）"
+            area = str(surface.get("risk_area") or "").strip()
+            reason = str(surface.get("evidence") or "").strip().replace("\n", " ")
+            if len(reason) > 200:
+                reason = reason[:197].rstrip() + "…"
+            head = f"- `{name}`" + (f"（{area}）" if area else "")
+            lines.append(head + (f"：{reason}" if reason else ""))
+        lines.append("")
+
+    lines += ["### 结论", ""]
+    if total == 0:
+        lines.append("本次测试未形成漏洞 finding，未完成测试面需人工跟进。")
+    else:
+        lines.append(f"- 已验证 **{len(verified)}** 条，可直接复现并交付。")
+        pending = len(suspected) + len(unverifiable)
+        if pending:
+            lines.append(f"- 疑似与无法验证共 **{pending}** 条，需人工复核或补证后重测。")
+        if surfaces:
+            lines.append(
+                f"- 另有 **{len(surfaces)}** 个测试面停在 needs_follow_up，需补测或人工确认。"
+            )
+    return "\n".join(lines).rstrip()
 
 
 __all__ = ["WorkProjectFindingMirror", "report_to_finding_request"]

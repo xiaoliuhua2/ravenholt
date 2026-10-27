@@ -175,6 +175,8 @@ function ThinkingGroup({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // 流式输出时默认贴底；用户手动向上翻看后暂停跟随，滚回底部再恢复。
+  const followTailRef = useRef(true);
   const text = useMemo(
     () => items.map((item) => item.text.trim()).filter(Boolean).join("\n\n"),
     [items],
@@ -183,10 +185,16 @@ function ThinkingGroup({
   const summary = useMemo(() => thinkingSegmentSummary(items), [items]);
 
   useEffect(() => {
-    if (open && bodyRef.current) {
-      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-    }
+    const body = bodyRef.current;
+    if (!open || !body || !followTailRef.current) return;
+    body.scrollTop = body.scrollHeight;
   }, [text, open]);
+
+  const trackBodyScroll = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    followTailRef.current = body.scrollHeight - body.scrollTop - body.clientHeight < 8;
+  }, []);
 
   const copyText = useCallback(async () => {
     if (!text) return;
@@ -206,7 +214,13 @@ function ThinkingGroup({
         title={active ? "思考中" : "思考"}
         count={items.length > 1 ? items.length : undefined}
         open={open}
-        onToggle={() => setOpen((next) => !next)}
+        onToggle={() =>
+          setOpen((next) => {
+            // 每次展开先回到最新；收起时重置，下次展开仍然贴底。
+            if (!next) followTailRef.current = true;
+            return !next;
+          })
+        }
         meta={
           <>
             {duration ? <span className="transcript-panel-meta">{duration}</span> : null}
@@ -231,7 +245,11 @@ function ThinkingGroup({
       {open ? (
         <div className="thinking-body">
           <div className="thinking-fade thinking-fade-top" />
-          <div ref={bodyRef} className="thinking-text rv-scope rv-thinking">
+          <div
+            ref={bodyRef}
+            className="thinking-text rv-scope rv-thinking"
+            onScroll={trackBodyScroll}
+          >
             {text ? (
               <TruncatedText text={text} maxLines={0} />
             ) : activeItemId ? (

@@ -91,6 +91,8 @@ UPDATABLE_REPORT_FIELDS = frozenset(
         "cwe",
         "code_locations",
         "http_exchange_ids",
+        "replay",
+        "replay_exempt_reason",
         "fix_verification",
         "fix_pr_body",
     }
@@ -350,6 +352,7 @@ class ReportState:
         endpoint: str | None = None,
         endpoint_source: str | None = None,
         replay: dict[str, Any] | None = None,
+        replay_exempt_reason: str | None = None,
         method: str | None = None,
         cve: str | None = None,
         cwe: str | None = None,
@@ -409,6 +412,8 @@ class ReportState:
             report["endpoint_source"] = endpoint_source.strip()
         if replay:
             report["replay"] = replay
+        if replay_exempt_reason:
+            report["replay_exempt_reason"] = replay_exempt_reason.strip()
         if method:
             report["method"] = method.strip()
         if cve:

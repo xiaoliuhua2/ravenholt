@@ -135,13 +135,23 @@ ROOT_PROTOCOL = """\
 - **可重放证据优先**：报洞优先用 `record_evidence`，并把 `description`（概述，第一人称）、
   `impact`（危害，带实值）、`poc_description`（步骤）、`technical_analysis`（成因）、
   `remediation_steps`（修复）、`cwe` / `cve`、`endpoint_source`（接口来源）一并填全；
-  平台会拼成规范 7 段落库。只交 baseline / probe 不写分析和修复的报告视为残缺。
+  平台会拼成规范 7 段落库。`baseline_status` / `probe_status` 必须为正（否则没有可复现的差分），
+  `poc_description` ≥20 字；只交 baseline / probe 不写分析和修复的报告视为残缺。
 - **报告要「已验证」必须带可重放请求包**：用 `create_vulnerability_report` 时同时填
   `request_url`（完整 http(s) 地址）、`request_headers`（JSON）、`request_body`、
   `baseline_status` / `baseline_body`（无漏洞对照，如未授权接口本应返回的 401/403）、
   `probe_status` / `probe_body`（攻击响应，如 200 + 泄露数据）。平台会在运行结束自己
   重放 probe，并与 baseline 做四维差分；只有 reproduced 才把 finding 标为「已验证」。
-  缺请求包、半包或两边无差异 ⇒ 只能留在「疑似」。纯配置 / 纯源码结论不要伪造请求包。
+  缺请求包、半包或两边无差异 ⇒ 只能留在「疑似」。
+- **每份报告都必须有完整可重放请求包（不分等级）**：`create_vulnerability_report`
+  缺包直接拒绝，要求同时填 `request_url`（完整 http(s) 地址）、`request_headers`（JSON）、
+  `request_body`、`baseline_status` / `baseline_body`、`probe_status` / `probe_body`；
+  确实无法重放的（纯配置 / 纯源码 / OOB 回调不可用）必须填 `replay_exempt_reason`
+  （≥10 字说明理由）。被拒时先改用 `record_evidence`，或补齐包后重报；不要伪造请求包。
+  已落库但缺包的报告用 `update_vulnerability_report` 补 `request_url` 等字段（或
+  `replay_exempt_reason`），不要删掉重报。
+- **复现步骤必须写清**：`poc_description` 至少 20 字，按「请求 → 载荷 → 观察到的响应」写
+  成可照做的步骤，禁止一句话敷衍；代码放 `poc_script_code`，不要混进步骤。
 - **agent 自述不算证据**：经平台独立验证器复现（verdict=reproduced）后 finding 才会离开「疑似」。
 - 收尾调用 `finish_scan`。
 """
@@ -162,7 +172,11 @@ CHILD_PROTOCOL = """\
   http(s) 地址）、`request_headers`（JSON）、`request_body`、`baseline_status` /
   `baseline_body`（无漏洞对照，如 401/403）与 `probe_status` / `probe_body`（攻击响应，
   如 200 + 泄露数据）；平台在运行结束重放 probe 并与 baseline 差分，reproduced 才标
-  「已验证」，缺包或两边无差异只能留在「疑似」。纯配置 / 纯源码结论不要伪造请求包。
+  「已验证」，缺包或两边无差异只能留在「疑似」。
+- **每份报告都必须有完整可重放请求包（不分等级）**：缺包直接拒绝；无法重放的纯配置 /
+  纯源码 / OOB 回调不可用结论必须填 `replay_exempt_reason`（≥10 字）。被拒时先改用
+  `record_evidence`，不要伪造请求包。
+- `poc_description` 至少 20 字，写清请求、载荷与观察到的响应，禁止一句话敷衍。
 - 报告口径认 `src_hunt` 的 `03`（中文 7 段格式）：`## 一、漏洞基本信息`（含基本信息表）→
   `## 二、漏洞概述` → `## 三、影响与危害` → `## 四、涉及接口清单`（含接口表）→
   `## 五、复现过程` → `## 六、漏洞成因分析` → `## 七、修复建议`，段间用 `---` 分隔；
@@ -170,6 +184,7 @@ CHILD_PROTOCOL = """\
 - `record_evidence` 要把 7 段写全：`description` 第一人称、`impact` 举实值、
   `poc_description` 步骤、`technical_analysis` 根因、`remediation_steps` 修复、
   `cwe` / `cve`、`endpoint_source` 接口来源；只交 baseline / probe 会被判为残缺报告。
+  `baseline_status` / `probe_status` 必须为正，`poc_description` ≥20 字。
 - 干完用 `agent_finish` 把完成报告（结论 / 证据 / 未决项 / 建议）发回父代理；**不要**调用 `finish_scan`。
 """
 

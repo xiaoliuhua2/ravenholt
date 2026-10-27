@@ -10,6 +10,7 @@
 
 ### 新增
 
+- **测试结束自动总结**：每轮扫描收尾（调用 `finish_scan` 或本轮产出新 finding）后，平台按落库状态自动追加一条「测试总结」：已验证漏洞（平台重放复现）/ 疑似漏洞（有请求包但复验未通过）/ 无法验证（无请求包、纯配置、纯源码、OOB 不可用），并列出 `needs_follow_up` 的未完成测试面。总结由平台确定性生成，不依赖模型措辞。
 - **报告路径支持可重放请求包**：`create_vulnerability_report` 新增 `request_url` / `request_headers` / `request_body` / `baseline_status` / `baseline_body` / `probe_status` / `probe_body`。报告镜像落库前由平台保存证据并重放，`reproduced` 才置为「已验证」；缺包、复验失败或 `refuted` 保持「疑似」。
 - **沙箱镜像内置 hurl 8.0.1**：支持可评审的多步 HTTP 请求链与断言；其兼容库（libxml2 / libicu72）隔离在 `/opt/hurl/lib`，仅对 hurl 进程生效，不影响系统库。
 - **构建代理透传**：`sandbox/build.sh` 在宿主设置 `HTTP_PROXY` / `HTTPS_PROXY` 时自动透传给 `docker build`（`NO_PROXY` 一并传递）。
@@ -18,12 +19,14 @@
 
 ### 变更
 
+- **每份报告都必须有可重放证据（不分等级）**：`create_vulnerability_report` 在缺少完整 replay 包时直接拒绝（不再只限高危/严重），要求改用 `record_evidence`，或填 `replay_exempt_reason`（≥10 字，说明纯配置 / 纯源码 / OOB 回调不可用）；正文会注明「未附带可重放请求包」及理由。`poc_description` 增加 ≥20 字下限，必须写清请求、载荷与观察到的响应；证据路径 `record_evidence` 同样要求 ≥20 字的 `poc_description` 与正的 `baseline_status` / `probe_status`。`update_vulnerability_report` 允许给已落库报告补 replay 包或 `replay_exempt_reason`（同一次修订可调级），但不允许无包上调等级（依赖类报告不受此限），堵住绕过通道。
 - **报告正文**：长度上限由 8000 提升到 30000；危害面取 `impact` 的第一条列表项并跳过导语；第五段只放复现步骤，`evidence` 独立为「证据摘录（agent 自述，非平台重放）」。
 - **授权范围注入**：无论用户导入还是 agent 发现，都按主域 / 主机折叠注入，不逐条进入提示词。
 - **沙箱镜像构建**：Debian builder stage 在构建时切换 apt 源到国内镜像，避免代理证书校验失败与直连超时。
 
 ### 修复
 
+- **思考过程中无法滚动思维链**：思考块在每次流式增量后强制把内层 `scrollTop` 设为 `scrollHeight`，覆盖了用户的手动滚动，表现为「必须等思考结束才能翻」。现在用户向上翻看即暂停自动跟随，滚回底部后自动恢复；展开 / 收起面板时重置为贴底。
 - **沙箱 `/app/.venv` 在系统 Python 升级后失效**：Kali rolling 已升级到 Python 3.14，上游镜像里建于 3.13 的 venv 看不到原 site-packages，`jwt_tool` / `requests` / `caido-sdk-client` 等全部 import 失败；现在构建时按当前 Python 重建 venv 并装回上游依赖。
 - **证据路径 finding 过不了报告结构门**：`record_evidence` 原先不关联资产，线上 `report_gate.require_asset=true` 时即使复验 `reproduced` 也只能停在「疑似」；现在按目标 host / port 自动匹配项目资产。
 - **渗透回合 `KeyError '"from"'`**：`ROOT_PROTOCOL` 经 `str.format()` 时把 JSON 示例里的 `{"from": ...}` 当作占位符；已改为双花括号并补充渲染验证。

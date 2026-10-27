@@ -237,6 +237,81 @@ _REPLAY_FIELDS = (
     "probe_body",
 )
 
+# 所有报告都要求可重放证据：要么附完整 replay 包，要么写明无法重放的原因。
+_REPLAY_EXEMPT_MIN_CHARS = 10
+_SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
+_MIN_POC_CHARS = 20
+
+
+def _replay_requirement_error(
+    replay: dict[str, Any] | None, exempt_reason: str
+) -> dict[str, Any] | None:
+    """缺可重放证据时返回拒绝结果，否则返回 None。
+
+    平台红线是「每份报告都必须能被复现」，与严重度无关：要么附完整 replay 包，
+    要么用 ``replay_exempt_reason``（≥10 字）说明为何无法重放。依赖类报告走
+    ``create_dependency_report``，不经过这里。
+    """
+    if replay is not None:
+        return None
+    if len(exempt_reason) >= _REPLAY_EXEMPT_MIN_CHARS:
+        return None
+    return {
+        "success": False,
+        "error": "Validation failed",
+        "errors": [
+            "Every vulnerability report must ship a replayable request package "
+            "(request_url + request_headers/request_body + baseline_status/body + "
+            "probe_status/body), or a replay_exempt_reason of at least "
+            f"{_REPLAY_EXEMPT_MIN_CHARS} characters explaining why this finding "
+            "cannot be replayed (config-only / source-audit / OOB-dependent)."
+        ],
+        "next_action": (
+            "Call record_evidence instead so the platform can replay and verify it, "
+            "or attach the replay package / replay_exempt_reason and retry."
+        ),
+    }
+
+
+def _exempt_reason_of(report: dict[str, Any]) -> str:
+    return str(report.get("replay_exempt_reason") or "").strip()
+
+
+def _replay_gate_on_escalation(
+    report_state: ReportState, report_id: str, changes: dict[str, Any]
+) -> dict[str, Any] | None:
+    """阻止把没有可重放证据的报告改级上调（不分目标等级）。"""
+    severity = str(changes.get("severity") or "").strip().lower()
+    if not severity:
+        return None
+    # 本次修订直接补上了包或豁免理由，就不算「无包升危」。
+    if isinstance(changes.get("replay"), dict) or _exempt_reason_of(changes):
+        return None
+    matched = next(
+        (r for r in report_state.get_existing_vulnerabilities() if r.get("id") == report_id),
+        None,
+    )
+    if matched is None:
+        return None
+    # 依赖类报告没有请求包这回事（评级来自公告 + 上下文），不适用重放要求。
+    if _finding_class_of(matched) != "dynamic":
+        return None
+    previous = str(matched.get("severity") or "").strip().lower()
+    if _SEVERITY_RANK.get(previous, -1) >= _SEVERITY_RANK[severity]:
+        return None
+    if isinstance(matched.get("replay"), dict) or _exempt_reason_of(matched):
+        return None
+    return {
+        "success": False,
+        "error": (
+            f"Report '{report_id}' cannot be raised from {previous or 'unknown'} to "
+            f"{severity}: it carries no replay package and no replay_exempt_reason. "
+            "Reproduce it with record_evidence so the platform can replay it, or keep "
+            "the current severity."
+        ),
+        "report_id": report_id,
+    }
+
 
 def _normalize_replay_package(
     *,
@@ -491,6 +566,14 @@ def _collect_update_changes(  # noqa: PLR0912, PLR0915
         if value is not None:
             changes[name] = value
 
+    poc_text = str(changes.get("poc_description") or "").strip()
+    if poc_text and len(poc_text) < _MIN_POC_CHARS:
+        errors.append(
+            "poc_description must spell out the reproduction steps "
+            f"({_MIN_POC_CHARS}+ characters): the request, the payload, and the "
+            "observed response — not a one-line summary"
+        )
+
     confidence = clean_optional(fields.get("confidence"))
     if confidence is not None:
         confidence = confidence.lower()
@@ -554,6 +637,24 @@ def _collect_update_changes(  # noqa: PLR0912, PLR0915
     if raw_http_exchange_ids is not None and not http_exchange_errors:
         changes["http_exchange_ids"] = http_exchange_ids or []
 
+    replay_fields = {name: fields.get(name) for name in _REPLAY_FIELDS}
+    if any(value is not None for value in replay_fields.values()):
+        replay, replay_errors = _normalize_replay_package(**replay_fields)
+        errors.extend(replay_errors)
+        if replay is not None:
+            changes["replay"] = replay
+
+    exempt_reason = clean_optional(fields.get("replay_exempt_reason"))
+    if exempt_reason is not None:
+        if len(exempt_reason) < _REPLAY_EXEMPT_MIN_CHARS:
+            errors.append(
+                "replay_exempt_reason must be at least "
+                f"{_REPLAY_EXEMPT_MIN_CHARS} characters explaining why this finding "
+                "cannot be replayed"
+            )
+        else:
+            changes["replay_exempt_reason"] = exempt_reason
+
     return changes, errors
 
 
@@ -565,6 +666,7 @@ _DYNAMIC_ONLY_UPDATE_FIELDS = (
     "poc_description",
     "poc_script_code",
     "http_exchange_ids",
+    "replay",
 )
 
 # A dependency finding is rated in the context of the codebase that pins it, and
@@ -738,6 +840,10 @@ def _do_update(
     if class_error is not None:
         return class_error
 
+    escalation_error = _replay_gate_on_escalation(report_state, report_id, changes)
+    if escalation_error is not None:
+        return escalation_error
+
     try:
         updated = report_state.update_vulnerability_report(
             report_id,
@@ -893,6 +999,7 @@ async def _do_create(
     baseline_body: str | None = None,
     probe_status: int | None = None,
     probe_body: str | None = None,
+    replay_exempt_reason: str | None = None,
     http_exchange_ids: list[str] | None = None,
     confidence_rationale: str | None = None,
     fix_verification: str | None = None,
@@ -924,6 +1031,14 @@ async def _do_create(
             severity_change_conditions=severity_change_conditions,
         )
     )
+
+    poc_text = (poc_description or "").strip()
+    if poc_text and len(poc_text) < _MIN_POC_CHARS:
+        errors.append(
+            "poc_description must spell out the reproduction steps "
+            f"({_MIN_POC_CHARS}+ characters): the request, the payload, and the "
+            "observed response — not a one-line summary"
+        )
 
     fix_effort = (fix_effort or "").strip().lower()
     if fix_effort not in _VALID_FIX_EFFORT:
@@ -962,6 +1077,11 @@ async def _do_create(
         cvss_score, severity, _vector = _calculate_cvss(cvss_breakdown)
     except ValueError as exc:
         return {"success": False, "error": "Validation failed", "errors": [str(exc)]}
+
+    exempt_reason = (replay_exempt_reason or "").strip()
+    replay_error = _replay_requirement_error(replay, exempt_reason)
+    if replay_error is not None:
+        return replay_error
 
     try:
         from strix.report.state import get_global_report_state
@@ -1011,6 +1131,7 @@ async def _do_create(
             "endpoint": endpoint,
             "endpoint_source": endpoint_source,
             "replay": replay,
+            "replay_exempt_reason": exempt_reason or None,
             "method": method,
             "cve": cve,
             "cwe": cwe,
@@ -1113,6 +1234,7 @@ async def create_vulnerability_report(
     baseline_body: str | None = None,
     probe_status: int | None = None,
     probe_body: str | None = None,
+    replay_exempt_reason: str | None = None,
     cve: str | None = None,
     cwe: str | None = None,
     code_locations: list[dict[str, Any]] | None = None,
@@ -1371,7 +1493,10 @@ async def create_vulnerability_report(
             set CVSS metrics.
         target: Affected URL / domain / repository.
         technical_analysis: The mechanism and root cause.
-        poc_description: Step-by-step reproduction (steps only, no code).
+        poc_description: REQUIRED, step-by-step reproduction (steps only, no code).
+            Spell out at least 20 characters covering the request, the payload, and the
+            observed response — a one-line summary is rejected. The platform renders it
+            as the report's reproduction section.
         poc_script_code: Working PoC (Python preferred).
         remediation_steps: Specific, actionable fix (prose, no code).
         evidence: Concrete proof the issue is real and exploitable —
@@ -1411,12 +1536,14 @@ async def create_vulnerability_report(
         method: HTTP method when relevant.
         endpoint_source: 接口来源：取自 JS 的完整 JS 地址、页面文档 URL 或前端 bundle 路径；
             留空时平台用「报告 ID / 报告代理」填充。
-        request_url: Optional. The absolute http(s) URL the platform will replay.
-            Attach the replay package (request_url + request_headers/request_body +
-            baseline_* + probe_*) when the finding is dynamically reproducible: the
-            platform then re-issues the request itself and only a reproduced
-            differential lets the finding leave 'suspected'. Leave every replay field
-            empty for findings that cannot be replayed (static config, source-only).
+        request_url: Required unless ``replay_exempt_reason`` is set. The absolute
+            http(s) URL the platform will replay. Attach the full replay package
+            (request_url + request_headers/request_body + baseline_* + probe_*) for
+            every dynamically reproducible finding: the platform then re-issues the
+            request itself and only a reproduced differential lets the finding leave
+            'suspected'. Only findings that genuinely cannot be replayed (static
+            config, source-only, OOB without callback infrastructure) may leave every
+            replay field empty — and then ``replay_exempt_reason`` is mandatory.
         request_headers: Optional. JSON object string of headers sent on replay
             (cookies / auth included).
         request_body: Optional. Request body sent on replay.
@@ -1427,6 +1554,11 @@ async def create_vulnerability_report(
         probe_status: Required with a replay package. Status of the attack response
             that demonstrates the flaw (e.g. 200 with leaked data).
         probe_body: Attack response body.
+        replay_exempt_reason: Required when no replay package is attached, for every
+            severity. Explains (>=10 characters) why the finding cannot be replayed —
+            e.g. config-only, source-audit, or an out-of-band issue whose callback
+            infrastructure is unavailable. Attach the replay package instead whenever
+            the finding is dynamically reproducible.
         cve: ``CVE-YYYY-NNNNN`` if certain, else omit.
         cwe: ``CWE-NNN`` (most specific child) if certain, else omit.
         code_locations: White-box findings — list of location objects.
@@ -1588,6 +1720,7 @@ async def create_vulnerability_report(
         baseline_body=baseline_body,
         probe_status=probe_status,
         probe_body=probe_body,
+        replay_exempt_reason=replay_exempt_reason,
         method=method,
         cve=cve,
         cwe=cwe,
@@ -1631,6 +1764,14 @@ async def update_vulnerability_report(
     fix_verification: str | None = None,
     fix_pr_body: str | None = None,
     contextual_cvss_reasoning: str | None = None,
+    request_url: str | None = None,
+    request_headers: str | None = None,
+    request_body: str | None = None,
+    baseline_status: int | None = None,
+    baseline_body: str | None = None,
+    probe_status: int | None = None,
+    probe_body: str | None = None,
+    replay_exempt_reason: str | None = None,
 ) -> str:
     """Revise a vulnerability report that is already filed, keeping its id.
 
@@ -1669,6 +1810,12 @@ async def update_vulnerability_report(
       ``severity_change_conditions`` with a new ``cvss_breakdown``.
     - ``code_locations`` replaces the whole list. A location carrying
       ``fix_after`` needs ``fix_verification``.
+    - The replay package (``request_url`` + ``request_headers`` /
+      ``request_body`` + ``baseline_*`` + ``probe_*``) replaces the one on
+      file, so a finding filed from static evidence can be made replayable
+      later. Findings that genuinely cannot be replayed must carry
+      ``replay_exempt_reason`` instead. A finding with neither cannot have
+      its severity raised.
 
     The report keeps its id, its original author, and its filing time. The
     revision is recorded in the report as update history, so state the
@@ -1707,6 +1854,20 @@ async def update_vulnerability_report(
         contextual_cvss_reasoning: Dependency findings only. What you
             observed in this codebase that justifies the contextual
             ``cvss_breakdown``.
+        request_url: Absolute http(s) URL the platform will replay. Attach it
+            with the other replay fields to make this finding verifiable;
+            replaces the package on file.
+        request_headers: JSON object string of headers sent on replay.
+        request_body: Request body sent on replay.
+        baseline_status: Status of the control response. Required with a
+            replay package; must be a positive HTTP status.
+        baseline_body: Control response body.
+        probe_status: Status of the attack response. Required with a replay
+            package; must be a positive HTTP status.
+        probe_body: Attack response body.
+        replay_exempt_reason: Required when the finding cannot be replayed at
+            all (config-only / source-only / OOB without callbacks). At least
+            10 characters.
     """
     (
         http_exchange_ids,
@@ -1750,6 +1911,14 @@ async def update_vulnerability_report(
         "fix_verification": fix_verification,
         "fix_pr_body": fix_pr_body,
         "contextual_cvss_reasoning": contextual_cvss_reasoning,
+        "request_url": request_url,
+        "request_headers": request_headers,
+        "request_body": request_body,
+        "baseline_status": baseline_status,
+        "baseline_body": baseline_body,
+        "probe_status": probe_status,
+        "probe_body": probe_body,
+        "replay_exempt_reason": replay_exempt_reason,
     }
     if http_exchange_warning and all(value is None for value in fields.values()):
         return json.dumps(
