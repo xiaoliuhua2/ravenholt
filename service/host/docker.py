@@ -17,6 +17,15 @@ from schema.host.hosts import ManagedHostImageSchema, PullManagedHostImageResult
 
 
 def docker_client_for_host(host: ManagedHost, *, timeout: int = 60) -> docker.DockerClient:
+    # 本机宿主没有固定 TCP 端口：docker 守护进程默认只监听 unix socket（部署里也只挂
+    # docker.sock）。记录里的 127.0.0.1:2375 只是占位默认值，直连会 ConnectionRefused。
+    # 与 strix 运行时一致走 connect_docker()（DOCKER_HOST → docker context → 默认 socket），
+    # 保证平台侧文件/终端操作和沙箱自身看到的是同一个守护进程。
+    if _is_local_docker_host(host):
+        from strix.runtime.docker_connection import connect_docker
+
+        return connect_docker()
+
     tls_config = None
     tls_temp_dir = None
     if host.docker_tls_enabled:
@@ -33,6 +42,13 @@ def docker_client_for_host(host: ManagedHost, *, timeout: int = 60) -> docker.Do
         if tls_temp_dir:
             shutil.rmtree(tls_temp_dir, ignore_errors=True)
         raise
+
+
+def _is_local_docker_host(host: ManagedHost) -> bool:
+    try:
+        return ip_address(host.ip_address).is_loopback and not host.docker_tls_enabled
+    except ValueError:
+        return False
 
 
 class DirectDockerClient(docker.DockerClient):

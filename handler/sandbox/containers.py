@@ -476,7 +476,13 @@ async def handle_mkdir(id: int, body: ContainerFileMkdirRequest, user=None) -> C
 # ── noVNC proxy handlers ───────────────────────────────────────────────────────
 
 
-async def handle_novnc_http_proxy(id: int, path: str, token: str, cookie_token: str = "") -> FastAPIResponse:
+async def handle_novnc_http_proxy(
+    id: int,
+    path: str,
+    token: str,
+    cookie_token: str = "",
+    query: str = "",
+) -> FastAPIResponse:
     effective_token = token or cookie_token
     user = authenticate_ws_token(effective_token)
     if user is None or not await _can_access_container_by_id(user, id):
@@ -486,7 +492,7 @@ async def handle_novnc_http_proxy(id: int, path: str, token: str, cookie_token: 
     if target is None:
         return FastAPIResponse(status_code=HTTPStatus.NOT_FOUND.value, content="Not Found")
 
-    response = await proxy_novnc_http(target, path)
+    response = await proxy_novnc_http(target, path, query=query)
     if response is None:
         return FastAPIResponse(status_code=HTTPStatus.BAD_GATEWAY.value, content="Bad Gateway")
 

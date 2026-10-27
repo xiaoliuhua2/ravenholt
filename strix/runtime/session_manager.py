@@ -6,6 +6,7 @@ import asyncio
 import io
 import logging
 import os
+import secrets
 import sys
 import tarfile
 import time
@@ -32,6 +33,11 @@ logger = logging.getLogger(__name__)
 
 # In-container Caido sidecar port (matches the image's caido-cli bind).
 _CONTAINER_CAIDO_PORT = 48080
+
+# Ravenholt 镜像的容器内 Go 控制面端口（终端 / 文件 / noVNC / 出网代理）。控制面只有拿到
+# SANDBOX_CONTROL_PROXY_TOKEN 才会启动；同进程还监听 127.0.0.1:8118 供 Chromium 出网，
+# 缺 token 时两者都不监听（浏览器会卡在 ERR_PROXY_CONNECTION_FAILED）。
+_CONTAINER_CONTROL_PORT = 8000
 
 
 _SESSION_CACHE: dict[str, dict[str, Any]] = {}
@@ -302,6 +308,9 @@ async def create_or_reuse(
     # agent-browser CDP daemon's localhost traffic from looping back
     # through Caido.
     container_caido_url = f"http://127.0.0.1:{_CONTAINER_CAIDO_PORT}"
+    # 每个容器一份控制面 token：容器 entrypoint 用 `sudo -E supervisord` 保留环境，
+    # sandbox-proxy 拿到 token 才启动 8000 控制面与 127.0.0.1:8118 出网代理。
+    control_proxy_token = secrets.token_urlsafe(32)
     manifest = Manifest(
         entries=entries,
         environment=Environment(
@@ -309,6 +318,7 @@ async def create_or_reuse(
                 "PYTHONUNBUFFERED": "1",
                 "HOST_GATEWAY": "host.docker.internal",
                 **_host_identity_env(),
+                "SANDBOX_CONTROL_PROXY_TOKEN": control_proxy_token,
                 "http_proxy": container_caido_url,
                 "https_proxy": container_caido_url,
                 "ALL_PROXY": container_caido_url,
@@ -327,7 +337,7 @@ async def create_or_reuse(
     client, session = await backend(
         image=image,
         manifest=manifest,
-        exposed_ports=(_CONTAINER_CAIDO_PORT,),
+        exposed_ports=(_CONTAINER_CAIDO_PORT, _CONTAINER_CONTROL_PORT),
         bind_mounts=bind_mounts,
     )
 
@@ -364,6 +374,7 @@ async def create_or_reuse(
         "client": client,
         "session": session,
         "caido_client": caido_client,
+        "control_proxy_token": control_proxy_token,
     }
     _SESSION_CACHE[scan_id] = bundle
     logger.info("Sandbox session for scan %s ready and cached", scan_id)

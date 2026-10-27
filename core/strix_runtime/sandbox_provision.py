@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 # 与 strix ``session_manager`` 对齐：容器内 Caido 监听端口。
 CONTAINER_CAIDO_PORT = 48080
+# 容器内 Go 控制面端口（终端 / files / noVNC / 出网代理），端口映射同样写进记录。
+CONTAINER_CONTROL_PORT = 8000
 
 
 class SandboxProvisionError(RuntimeError):
@@ -140,7 +142,8 @@ async def provision_sandbox(
     if session is None:
         raise SandboxProvisionError("strix session bundle has no session")
 
-    caido_host, caido_port = await _resolve_caido_endpoint(session)
+    caido_host, caido_port = await _resolve_exposed_endpoint(session, CONTAINER_CAIDO_PORT)
+    control_host, control_port = await _resolve_exposed_endpoint(session, CONTAINER_CONTROL_PORT)
     gated = bind_policy_gate(session, session_id=session_id, publisher=_session_publisher(session_id))
     container_hash, container_name = _session_container(gated)
 
@@ -167,7 +170,11 @@ async def provision_sandbox(
         image_name=image,
         container_hash=container_hash,
         container_name=container_name,
-        port_mappings=_caido_port_mapping(caido_host, caido_port),
+        port_mappings=[
+            *_port_mapping(CONTAINER_CAIDO_PORT, caido_host, caido_port),
+            *_port_mapping(CONTAINER_CONTROL_PORT, control_host, control_port),
+        ],
+        control_proxy_token=str(bundle.get("control_proxy_token") or ""),
     )
     return SandboxProvisionResult(
         client=result.client,
@@ -182,33 +189,33 @@ async def provision_sandbox(
     )
 
 
-async def _resolve_caido_endpoint(session: Any) -> tuple[str, int]:
-    """解析容器内 Caido 的宿主可达端点（strix 已把 sidecar 端口暴露出来）。
+async def _resolve_exposed_endpoint(session: Any, port: int) -> tuple[str, int]:
+    """解析容器内某端口对平台可达的端点（strix 已把该端口暴露出来）。
 
-    解析失败不阻断 provision —— Caido 入口只用于展示与跳转，拿不到就不给入口。
+    解析失败不阻断 provision —— 这些入口只用于展示、跳转与反代，拿不到就不给入口。
     """
     try:
-        endpoint = await session.resolve_exposed_port(CONTAINER_CAIDO_PORT)
+        endpoint = await session.resolve_exposed_port(port)
     except Exception:  # noqa: BLE001 - 端口解析失败不影响沙箱可用性
-        logger.warning("resolve caido host endpoint failed", exc_info=True)
+        logger.warning("resolve exposed host endpoint failed port=%s", port, exc_info=True)
         return "", 0
     host = str(getattr(endpoint, "host", "") or "")
     try:
-        port = int(getattr(endpoint, "port", 0) or 0)
+        exposed_port = int(getattr(endpoint, "port", 0) or 0)
     except (TypeError, ValueError):
-        port = 0
-    return host, port
+        exposed_port = 0
+    return host, exposed_port
 
 
-def _caido_port_mapping(caido_host: str, caido_port: int) -> list[dict[str, Any]]:
-    if caido_port <= 0:
+def _port_mapping(container_port: int, host: str, host_port: int) -> list[dict[str, Any]]:
+    if host_port <= 0:
         return []
     return [{
-        "container_port": CONTAINER_CAIDO_PORT,
-        "host_port": caido_port,
+        "container_port": container_port,
+        "host_port": host_port,
         # 上游主机地址：bridge 模式下为宿主回环 127.0.0.1，macvlan 模式下为容器 IP。
-        # 反代（service.sandbox.caido）按它连接，避免误把容器 IP 当作宿主回环。
-        "host": caido_host,
+        # 反代（service.sandbox.caido / control_proxy）按它连接，避免误把容器 IP 当作宿主回环。
+        "host": host,
         "protocol": "tcp",
     }]
 
@@ -234,6 +241,7 @@ async def _record_container_best_effort(
     container_hash: str,
     container_name: str,
     port_mappings: list[dict[str, Any]] | None = None,
+    control_proxy_token: str = "",
 ) -> int | None:
     if not container_hash:
         logger.warning("skip sandbox record write-back: container id unavailable")
@@ -247,6 +255,7 @@ async def _record_container_best_effort(
             container_hash=container_hash,
             container_name=container_name,
             port_mappings=port_mappings,
+            control_proxy_token=control_proxy_token,
         )
     except Exception:  # noqa: BLE001 - 回写失败只影响展示，不阻断 run
         logger.warning("sandbox container record write-back failed", exc_info=True)

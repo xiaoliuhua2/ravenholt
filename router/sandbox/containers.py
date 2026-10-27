@@ -348,16 +348,24 @@ async def container_novnc_ws(
 
 @router.api_route("/{id}/novnc/{path:path}", methods=["GET"], include_in_schema=False)
 async def container_novnc_http(
+    request: Request,
     id: int,
     path: str,
     token: str = Query(default=""),
     sandbox_novnc_access: str = Cookie(default=""),
 ):
+    # 只转发页面自身的查询参数；平台访问 token 不进上游 URL（避免泄漏到控制面日志）。
+    forward_query = "&".join(
+        part
+        for part in request.url.query.split("&")
+        if part and not part.startswith("token=")
+    )
     return await handle_novnc_http_proxy(
         id=id,
         path=path,
         token=token,
         cookie_token=sandbox_novnc_access,
+        query=forward_query,
     )
 
 

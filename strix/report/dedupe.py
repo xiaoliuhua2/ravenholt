@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urljoin, urlsplit
 
 from agents.models.interface import ModelTracing
 from openai.types.responses import ResponseOutputMessage
@@ -285,6 +287,91 @@ def _check_dependency_duplicate(
     }
 
 
+_TITLE_SIMILARITY_THRESHOLD = 0.55
+
+
+def _location_key(report: dict[str, Any]) -> str:
+    """可比较的「同一请求位置」：host:port + path + query（始终带查询串）。
+
+    只做确定性判定用：两条报告完全命中同一 URL 才可能是同一条漏洞，不同参数/路径的
+    同名漏洞仍会被保留（与去重提示词里「不同 endpoint / 不同参数不是重复」一致）。
+    """
+    raw = str(report.get("endpoint") or "").strip()
+    if not raw:
+        raw = str(report.get("target") or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        target = str(report.get("target") or "").strip()
+        raw = urljoin(target, raw) if "://" in target else f"//{raw}"
+    try:
+        split = urlsplit(raw)
+        host = (split.hostname or "").lower()
+        port = split.port or (443 if split.scheme == "https" else 80)
+    except ValueError:
+        return ""
+    if not host:
+        return ""
+    path = split.path or "/"
+    return f"{host}:{port}{path}?{split.query}"
+
+
+def _normalized_title(report: dict[str, Any]) -> str:
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", str(report.get("title") or "").lower())
+
+
+def _titles_look_same(candidate: dict[str, Any], report: dict[str, Any]) -> bool:
+    left = _normalized_title(candidate)
+    right = _normalized_title(report)
+    if not left or not right:
+        return False
+    if left in right or right in left:
+        return True
+    return difflib.SequenceMatcher(None, left, right).ratio() >= _TITLE_SIMILARITY_THRESHOLD
+
+
+def _check_location_duplicate(
+    candidate: dict[str, Any],
+    existing_reports: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """同一 URL + 同一 CWE 的确定性去重（LLM 判定兜不住时的兜底）。
+
+    LLM 去重对「同一接口换个标题再报一次」并不稳定（实测同一 /admin/config 被报了两次）。
+    这里只在证据高度重合时拦截：URL（含查询串）完全一致，且两边的 CWE 相同；一边没写
+    CWE 时要求标题高度相似。不同接口、不同参数、不同 CWE 一律放行交给 LLM。
+    """
+    if _dependency_identity(candidate) is not None:
+        return None
+    candidate_key = _location_key(candidate)
+    if not candidate_key:
+        return None
+    candidate_cwe = str(candidate.get("cwe") or "").strip().upper()
+    candidate_method = str(candidate.get("method") or "").strip().upper()
+
+    for report in existing_reports:
+        if _dependency_identity(report) is not None:
+            continue
+        if _location_key(report) != candidate_key:
+            continue
+        report_method = str(report.get("method") or "").strip().upper()
+        if candidate_method and report_method and candidate_method != report_method:
+            continue
+        report_cwe = str(report.get("cwe") or "").strip().upper()
+        same_cwe = bool(candidate_cwe and report_cwe and candidate_cwe == report_cwe)
+        if not same_cwe and not _titles_look_same(candidate, report):
+            continue
+        return {
+            "is_duplicate": True,
+            "duplicate_id": str(report.get("id") or "")[:64],
+            "confidence": 0.9,
+            "reason": (
+                f"Same request location {candidate_key}"
+                + (f" and same CWE {candidate_cwe}" if same_cwe else " with near-identical title")
+            ),
+        }
+    return None
+
+
 def _parse_dedupe_response(content: str) -> dict[str, Any]:
     text = content.strip()
     if text.startswith("```"):
@@ -339,6 +426,10 @@ async def check_duplicate(
     dependency_duplicate = _check_dependency_duplicate(candidate, existing_reports)
     if dependency_duplicate is not None:
         return dependency_duplicate
+
+    location_duplicate = _check_location_duplicate(candidate, existing_reports)
+    if location_duplicate is not None:
+        return location_duplicate
 
     try:
         settings = load_settings()

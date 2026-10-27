@@ -6,8 +6,11 @@ strix 原生链路（``strix.runtime.session_manager``）自己建容器，不�
 
 - 宿主固定为**本机**（strix 的 docker backend 走 ``connect_docker()``，与平台同宿主）；
 - 镜像按 ``image_name`` 建/取一条 ``SandboxImage``（``control_proxy_port`` 记为容器内 Caido 端口）；
-- ``control_proxy_host_port`` / ``control_proxy_token`` 留空 —— strix 镜像没有 ravenholt 的
-  Go 控制面，容器控制台入口会因端口为 0 自动隐藏，列表与展示照常。
+- 运行时同样给容器注入 ``SANDBOX_CONTROL_PROXY_TOKEN``，因此容器内 Go 控制面会启动：
+  ``control_proxy_token`` 记录该 token，``port_mappings`` 里的 8000 条目记录容器可达位置，
+  供平台反代 / 终端使用（容器在 macvlan 网络上，按容器 IP 访问，不发布宿主端口）；
+- ``control_proxy_host_port`` 保持 0：它只表示「宿主端口发布」这种手动容器形态，运行时容器
+  没有该形态，记录靠 0 与手工容器区分（会话删除时据此销账）。
 
 回写失败由调用方吞掉（只影响展示，不阻断渗透任务）。
 """
@@ -37,6 +40,7 @@ async def record_provisioned_container(
     container_hash: str,
     container_name: str,
     port_mappings: list[dict[str, Any]] | None = None,
+    control_proxy_token: str = "",
 ) -> int | None:
     """写入/更新一条由 strix 运行时自建容器的平台记录，返回记录 id。"""
     host = await ensure_local_managed_host()
@@ -64,14 +68,19 @@ async def record_provisioned_container(
 
         now = datetime.now()
         if existing is not None:
+            # commit 会让实例过期；主键必须在 commit 前取出，否则异步会话里的隐式
+            # 刷新会在同步属性访问时抛 MissingGreenlet（复用容器的回写因此一直失败）。
+            existing_id = existing.id
             existing.status = SandboxContainerStatus.RUNNING
             existing.container_name = container_name or existing.container_name
             if port_mappings:
                 existing.port_mappings = port_mappings
+            if control_proxy_token:
+                existing.control_proxy_token = control_proxy_token
             existing.updated_at = now
             session.add(existing)
             await session.commit()
-            return existing.id
+            return existing_id
 
         record = SandboxContainer(
             host_id=host.id or 1,
@@ -81,7 +90,7 @@ async def record_provisioned_container(
             image_id=image.id or 0,
             egress_mode=SandboxContainerEgressMode.DIRECT,
             control_proxy_host_port=0,
-            control_proxy_token="",
+            control_proxy_token=control_proxy_token,
             port_mappings=port_mappings or [],
             status=SandboxContainerStatus.RUNNING,
             created_at=now,

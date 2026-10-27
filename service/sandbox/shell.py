@@ -3,22 +3,23 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import websockets
 
 from database import get_async_session
 from model.sandbox.containers import SandboxContainer
 from schema.sandbox.containers import SandboxContainerStatus
+from service.sandbox.control_proxy import resolve_sandbox_control_proxy_target
 
 
 _DEFAULT_SHELL_ROWS = 24
 _DEFAULT_SHELL_COLS = 80
+_SHELL_OPEN_TIMEOUT_SECONDS = 15
 
-# 交互式 shell 原先由容器内 Go 控制面的 WebSocket /shell 提供；ravenholt 官方沙箱镜像没有该
-# 控制面，无法建立 PTY 会话。这里显式失败，避免伪装成可用。
 _SHELL_UNAVAILABLE_MESSAGE = (
-    "sandbox container shell is unavailable: the ravenholt sandbox image does not provide the "
-    "in-container control plane (/shell) that the interactive shell relied on"
+    "sandbox container shell is unavailable: the in-container control plane is not running "
+    "(missing SANDBOX_CONTROL_PROXY_TOKEN or the container is not reachable from the platform)"
 )
 
 
@@ -50,7 +51,28 @@ async def open_container_shell(
     rows: int = _DEFAULT_SHELL_ROWS,
     cols: int = _DEFAULT_SHELL_COLS,
 ) -> ContainerShellSession:
-    raise RuntimeError(_SHELL_UNAVAILABLE_MESSAGE)
+    """经容器内 Go 控制面的 ``/shell`` 建立 PTY WebSocket 会话。
+
+    控制面由容器 entrypoint 启动（supervisord），平台只做转发：容器在 macvlan 网络上时
+    按容器 IP 直连，bridge 模式下按记录里的宿主端口直连（见
+    ``resolve_sandbox_control_proxy_target``）。
+    """
+    target = await resolve_sandbox_control_proxy_target(id, require_running=True)
+    if target is None:
+        raise RuntimeError(_SHELL_UNAVAILABLE_MESSAGE)
+    url = f"{target.ws_base_url}/shell?token={quote(target.token)}"
+    try:
+        websocket = await websockets.connect(
+            url,
+            max_size=None,
+            ping_interval=20,
+            open_timeout=_SHELL_OPEN_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 - 连接失败统一收敛成不可用
+        raise RuntimeError(f"{_SHELL_UNAVAILABLE_MESSAGE} ({exc})") from exc
+    session = ContainerShellSession(websocket=websocket)
+    await resize_container_shell(session, rows=rows, cols=cols)
+    return session
 
 
 async def resize_container_shell(session: ContainerShellSession, rows: int, cols: int) -> None:

@@ -2078,6 +2078,7 @@ def _validate_advisory_cvss(advisory_cvss: float | None) -> str | None:
 def _resolve_dependency_rating(
     advisory_cvss: float | None,
     contextual_cvss_breakdown: dict[str, str] | None,
+    reachability: str = "unknown",
 ) -> tuple[float | None, str, float | None, str | None]:
     """Rate the finding.
 
@@ -2085,10 +2086,21 @@ def _resolve_dependency_rating(
     ``cvss_breakdown``: the agent supplies the 8 metrics as observed in this
     codebase and the score/vector are computed from them. When provided it
     rates the finding; the advisory score stays as the published reference.
+
+    ``unknown`` reachability means the usage analysis was not performed or was
+    inconclusive, so a contextual breakdown then has nothing to stand on: the
+    published advisory rating governs instead of letting an unsupported
+    all-``N`` breakdown silently zero out a critical CVE.
     """
-    if contextual_cvss_breakdown:
+    if contextual_cvss_breakdown and reachability != "unknown":
         score, severity, vector = _calculate_cvss(contextual_cvss_breakdown)
         return score, severity, score, vector
+    if contextual_cvss_breakdown:
+        logger.warning(
+            "Ignoring contextual CVSS for a dependency finding with unknown reachability; "
+            "rating from advisory CVSS %s",
+            advisory_cvss,
+        )
     score, severity = _dependency_severity(advisory_cvss)
     return score, severity, None, None
 
@@ -2281,7 +2293,7 @@ async def _do_create_dependency(  # noqa: PLR0912
 
     try:
         cvss_score, severity, contextual_score, contextual_vector = _resolve_dependency_rating(
-            advisory_cvss, contextual_cvss_breakdown
+            advisory_cvss, contextual_cvss_breakdown, reachability
         )
     except ValueError as exc:
         return {"success": False, "error": "Validation failed", "errors": [str(exc)]}
@@ -2464,7 +2476,9 @@ async def create_dependency_report(
     Severity comes from ``contextual_cvss_breakdown`` when you provide one
     (computed exactly like a normal finding's ``cvss_breakdown``), otherwise
     from ``advisory_cvss``. The reachability level alone never changes the
-    rating, only prioritization.
+    rating, only prioritization — but ``unknown`` reachability means the usage
+    analysis proved nothing, so the published advisory rating governs and the
+    contextual breakdown is not used to downgrade the finding.
 
     **Formatting**: use markdown in text fields (``**bold**``, ``inline
     code`` for package/version identifiers, fenced code blocks for

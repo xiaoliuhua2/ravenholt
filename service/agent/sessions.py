@@ -252,8 +252,12 @@ async def mark_session_running(
             return
         meta.is_running = True
         meta.runtime_agent_code = agent_code
-        meta.runtime_sandbox_container_id = sandbox_container_id
-        meta.runtime_sandbox_container_generation = sandbox_container_generation
+        # 回合开始时前端还不知道本轮会复用哪个容器（context 里通常为 None）；此时必须保留
+        # 上一轮的绑定，否则每轮都会把会话的 runtime 容器清空。真正的归属由 provision
+        # 结束后的 update_session_runtime_sandbox 回写。
+        if sandbox_container_id is not None:
+            meta.runtime_sandbox_container_id = sandbox_container_id
+            meta.runtime_sandbox_container_generation = sandbox_container_generation
         meta.run_started_at = datetime.now()
         meta.run_finished_at = None
         meta.run_error = ""

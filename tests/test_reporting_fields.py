@@ -11,6 +11,7 @@ from agents.tool_context import ToolContext
 
 from strix.report.dedupe import (
     _check_dependency_duplicate,
+    _check_location_duplicate,
     _prepare_report_for_comparison,
     check_duplicate,
 )
@@ -1070,6 +1071,103 @@ async def test_dependency_dedupe_detects_legacy_same_cve_package() -> None:
     assert result["is_duplicate"] is True
     assert result["duplicate_id"] == "vuln-0001"
     assert result["confidence"] == 1.0
+
+
+def test_location_dedupe_rejects_same_url_and_cwe() -> None:
+    existing = [{
+        "id": "vuln-0001",
+        "title": "未认证访问 /admin/config 泄露数据库凭据、JWT 密钥与管理员口令",
+        "endpoint": "http://192.168.5.139:8080/admin/config",
+        "method": "GET",
+        "cwe": "CWE-522",
+    }]
+    candidate = {
+        "title": "未认证访问 /admin/config 泄露数据库凭据、JWT 密钥与管理员口令（管理面无鉴权）",
+        "endpoint": "http://192.168.5.139:8080/admin/config",
+        "method": "GET",
+        "cwe": "CWE-522",
+    }
+
+    result = _check_location_duplicate(candidate, existing)
+
+    assert result is not None
+    assert result["is_duplicate"] is True
+    assert result["duplicate_id"] == "vuln-0001"
+
+
+def test_location_dedupe_keeps_same_url_with_different_cwe() -> None:
+    existing = [{
+        "id": "vuln-0001",
+        "title": "反射型跨站脚本（/search）",
+        "endpoint": "http://192.168.5.139:8080/search?q=x",
+        "method": "GET",
+        "cwe": "CWE-79",
+    }]
+    candidate = {
+        "title": "SQL 注入（/search）",
+        "endpoint": "http://192.168.5.139:8080/search?q=x",
+        "method": "GET",
+        "cwe": "CWE-89",
+    }
+
+    assert _check_location_duplicate(candidate, existing) is None
+
+
+def test_location_dedupe_keeps_different_query_strings() -> None:
+    existing = [{
+        "id": "vuln-0001",
+        "title": "对象级鉴权缺失（/api/users?uid=2）",
+        "endpoint": "http://192.168.5.139:8080/api/users?uid=2",
+        "method": "GET",
+        "cwe": "CWE-639",
+    }]
+    candidate = {
+        "title": "对象级鉴权缺失（/api/users?uid=3）",
+        "endpoint": "http://192.168.5.139:8080/api/users?uid=3",
+        "method": "GET",
+        "cwe": "CWE-639",
+    }
+
+    assert _check_location_duplicate(candidate, existing) is None
+
+
+async def test_dependency_unknown_reachability_keeps_advisory_severity(
+    report_state: ReportState,
+) -> None:
+    result = await _do_create_dependency(
+        title="CVE-2021-44228 in log4j-core 2.14.1",
+        description="JNDI lookup enables remote code execution.",
+        target="repo/pom.xml",
+        cve="CVE-2021-44228",
+        package_name="log4j-core",
+        installed_version="2.14.1",
+        impact="Remote code execution via crafted log messages.",
+        remediation_steps="Upgrade to 2.17.1.",
+        assumptions="Assumes the vulnerable lookup is reachable from log input.",
+        package_ecosystem="maven",
+        manifest_path="pom.xml",
+        fixed_version="2.17.1",
+        cwe="CWE-502",
+        advisory_cvss=10.0,
+        technical_analysis=None,
+        fix_effort="low",
+        reachability="unknown",
+        reachability_evidence="Grepped imports; dynamic loading could not be ruled out.",
+        contextual_cvss_breakdown={
+            **_DEP_CONTEXT,
+            "confidentiality": "N",
+            "integrity": "N",
+            "availability": "N",
+        },
+        contextual_cvss_reasoning="No import found, so impact was assumed to be none.",
+    )
+
+    assert result["success"] is True
+    assert result["severity"] == "critical"
+    report = report_state.vulnerability_reports[0]
+    assert report["severity"] == "critical"
+    assert report["cvss"] == 10.0
+    assert "contextual_cvss_score" not in report["dependency_metadata"]
 
 
 def test_dependency_dedupe_defers_unclear_legacy_same_cve() -> None:

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from sqlmodel import select
 
@@ -11,6 +12,10 @@ from service.sandbox.egress import (
     SandboxEgressSelection,
     sandbox_egress_container_environment,
 )
+
+
+# 容器内 Go 控制面端口（与 core.strix_runtime.sandbox_provision.CONTAINER_CONTROL_PORT 对齐）
+SANDBOX_CONTROL_CONTAINER_PORT = 8000
 
 
 @dataclass(frozen=True)
@@ -37,19 +42,47 @@ async def resolve_sandbox_control_proxy_target(
             return None
         container, host = row
 
-    if container.control_proxy_host_port <= 0 or not container.control_proxy_token:
+    if not container.control_proxy_token:
+        return None
+    # 运行时容器跑在 macvlan 网络上，控制面端口只能按容器 IP 访问（不发布宿主端口）；
+    # 端口映射里的 ``host`` 就是那条可达地址，缺省才退回宿主 IP（手动容器的 bridge 发布）。
+    upstream_host, upstream_port = _control_proxy_endpoint(container, host.ip_address)
+    if upstream_port <= 0:
         return None
     if require_running and container.status != SandboxContainerStatus.RUNNING:
         return None
 
-    base = f"http://{host.ip_address}:{container.control_proxy_host_port}"
+    base = f"http://{upstream_host}:{upstream_port}"
     return SandboxControlProxyTarget(
         container_id=container.id or container_id,
         base_url=base,
-        ws_base_url=f"ws://{host.ip_address}:{container.control_proxy_host_port}",
+        ws_base_url=f"ws://{upstream_host}:{upstream_port}",
         token=container.control_proxy_token,
         status=container.status,
     )
+
+
+def _control_proxy_endpoint(container: SandboxContainer, fallback_host: str) -> tuple[str, int]:
+    mappings = container.port_mappings or []
+    for mapping in mappings:
+        if _field(mapping, "container_port") != SANDBOX_CONTROL_CONTAINER_PORT:
+            continue
+        if (_field(mapping, "protocol") or "tcp") != "tcp":
+            continue
+        try:
+            port = int(_field(mapping, "host_port") or 0)
+        except (TypeError, ValueError):
+            port = 0
+        host = _field(mapping, "host")
+        if port > 0 and isinstance(host, str) and host.strip():
+            return host.strip(), port
+    return fallback_host, container.control_proxy_host_port
+
+
+def _field(mapping: Any, name: str) -> Any:
+    if isinstance(mapping, dict):
+        return mapping.get(name)
+    return getattr(mapping, name, None)
 
 
 async def resolve_container_egress_environment(container_id: int) -> dict[str, str]:
