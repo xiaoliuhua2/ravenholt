@@ -74,10 +74,12 @@ def test_explicit_exa_without_a_key_names_only_exa() -> None:
     assert "PERPLEXITY_API_KEY" not in resolved["error"]
 
 
-def test_no_keys_names_both_providers() -> None:
+def test_no_keys_names_all_providers() -> None:
     resolved = tool._resolve_provider(IntegrationSettings())
     assert isinstance(resolved, dict)
-    assert "EXA_API_KEY or PERPLEXITY_API_KEY" in resolved["error"]
+    assert "EXA_API_KEY" in resolved["error"]
+    assert "PERPLEXITY_API_KEY" in resolved["error"]
+    assert "STRIX_SEARXNG_BASE_URL" in resolved["error"]
 
 
 def test_exa_content_requests_summaries_and_renders_results(
@@ -160,13 +162,19 @@ def test_do_search_reports_empty_exa_results_as_unexpected(
 @pytest.mark.parametrize(
     ("env", "expected"),
     [
-        ({}, ["EXA_API_KEY", "PERPLEXITY_API_KEY"]),
+        ({}, ["EXA_API_KEY", "PERPLEXITY_API_KEY", "STRIX_SEARXNG_BASE_URL"]),
         ({"EXA_API_KEY": "ek"}, []),
         ({"PERPLEXITY_API_KEY": "pk"}, []),
+        ({"STRIX_SEARXNG_BASE_URL": "http://127.0.0.1:8888"}, []),
         ({"STRIX_WEB_SEARCH_PROVIDER": "exa", "PERPLEXITY_API_KEY": "pk"}, ["EXA_API_KEY"]),
         ({"STRIX_WEB_SEARCH_PROVIDER": "exa", "EXA_API_KEY": "ek"}, []),
         ({"STRIX_WEB_SEARCH_PROVIDER": "perplexity", "EXA_API_KEY": "ek"}, ["PERPLEXITY_API_KEY"]),
         ({"STRIX_WEB_SEARCH_PROVIDER": "perplexity", "PERPLEXITY_API_KEY": "pk"}, []),
+        ({"STRIX_WEB_SEARCH_PROVIDER": "searxng"}, ["STRIX_SEARXNG_BASE_URL"]),
+        (
+            {"STRIX_WEB_SEARCH_PROVIDER": "searxng", "STRIX_SEARXNG_BASE_URL": "http://127.0.0.1:8888"},
+            [],
+        ),
     ],
 )
 def test_environment_validation_follows_provider_rules(

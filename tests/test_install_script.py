@@ -11,10 +11,15 @@ import pytest
 
 RELEASE_VERSION = "9.9.9"
 RELEASE_TARGET = "linux-arm64"
+INSTALLER = Path(__file__).resolve().parent.parent / "scripts" / "install.sh"
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="scripts/install.sh is a POSIX shell installer",
+    sys.platform == "win32" or not INSTALLER.exists(),
+    reason=(
+        "installer tests need scripts/install.sh; this fork ships no POSIX installer"
+        if not INSTALLER.exists()
+        else "scripts/install.sh is a POSIX shell installer"
+    ),
 )
 
 
