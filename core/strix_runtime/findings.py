@@ -439,6 +439,53 @@ _SUMMARY_SEVERITY_LABEL = {
     "informational": "信息",
 }
 
+# 收尾总结是给用户看的，不暴露平台内部实现：函数调用、代码切片、安装路径、
+# 内部产品/服务名与平台工具名一律隐去或换成中性说法。
+_SUMMARY_CODE_SPAN = re.compile(r"`[^`]*`")
+_SUMMARY_CALL = re.compile(
+    r"(?<![\w./])(?:[A-Za-z_]\w*_\w*|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*\([^)]*\)"
+    r"(?:\s*\[[^\]]*\])?"
+)
+_SUMMARY_SLICE = re.compile(r"\[:\s*\d+\s*\]")
+_SUMMARY_INTERNAL_PATH = re.compile(
+    r"(?:/opt/ravenholt|/workspace|/home/[A-Za-z0-9_.-]+|/root|/tmp)"
+    r"(?:/[^\s，。；、）)]*)?(?:\s*\(\d+\s*[Bb]\))?"
+)
+_SUMMARY_PRODUCT = re.compile(r"\b(Ravenholt|uvicorn|SearX(?:NG)?|SPA)\b", re.IGNORECASE)
+_SUMMARY_PRODUCT_LABEL = {
+    "ravenholt": "平台",
+    "uvicorn": "Web 服务",
+    "searxng": "检索服务",
+    "searx": "检索服务",
+    "spa": "前端",
+}
+_SUMMARY_INTERNAL_TOOL = re.compile(
+    r"\b(?:exec_command|write_stdin|apply_patch|view_image|record_evidence|record_coverage|"
+    r"update_coverage|list_coverage|create_vulnerability_report|create_dependency_report|"
+    r"update_vulnerability_report|finish_scan|agent_finish|create_agent|send_message_to_agent|"
+    r"wait_for_agents|view_agent_graph|stop_agent)\b"
+)
+
+
+def _sanitize_public_text(text: str) -> str:
+    """删掉收尾总结里不该给用户看的内部实现细节。"""
+    cleaned = _SUMMARY_CODE_SPAN.sub("", text)
+    cleaned = _SUMMARY_CALL.sub("", cleaned)
+    cleaned = _SUMMARY_SLICE.sub("", cleaned)
+    cleaned = _SUMMARY_INTERNAL_PATH.sub("（内部路径已隐去）", cleaned)
+    cleaned = _SUMMARY_INTERNAL_TOOL.sub("", cleaned)
+    cleaned = _SUMMARY_PRODUCT.sub(
+        lambda match: _SUMMARY_PRODUCT_LABEL.get(match.group(1).lower(), "平台"),
+        cleaned,
+    )
+    cleaned = re.sub(r"[（(]\s*[，、；;:：]?\s*[）)]", "", cleaned)
+    cleaned = cleaned.replace("（内部路径已隐去）)", "（内部路径已隐去）")
+    cleaned = cleaned.replace("（内部路径已隐去））", "（内部路径已隐去）")
+    cleaned = re.sub(r"（内部路径已隐去）\s+", "（内部路径已隐去）", cleaned)
+    cleaned = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", cleaned)
+    cleaned = re.sub(r"\s+([，。；、：])", r"\1", cleaned)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
 
 async def build_session_findings_summary(project_id: int, session_id: str) -> dict[str, Any]:
     """汇总某会话的 finding，按「证据是否可复现」分成三类。
@@ -535,9 +582,9 @@ def render_findings_summary(
     if surfaces:
         lines += [f"### 未完成验证的测试面（needs_follow_up）· {len(surfaces)} 项", ""]
         for surface in surfaces:
-            name = str(surface.get("surface") or "").strip() or "（未命名测试面）"
-            area = str(surface.get("risk_area") or "").strip()
-            reason = str(surface.get("evidence") or "").strip().replace("\n", " ")
+            name = _sanitize_public_text(str(surface.get("surface") or "")).strip() or "（未命名测试面）"
+            area = _sanitize_public_text(str(surface.get("risk_area") or "")).strip()
+            reason = _sanitize_public_text(str(surface.get("evidence") or "")).replace("\n", " ")
             if len(reason) > 200:
                 reason = reason[:197].rstrip() + "…"
             head = f"- `{name}`" + (f"（{area}）" if area else "")

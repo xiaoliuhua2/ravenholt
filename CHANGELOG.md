@@ -26,6 +26,7 @@
 
 ### 修复
 
+- **收尾总结暴露内部实现**：`needs_follow_up` 的原因会带出函数调用、代码切片、内部路径与内部服务名（如 `read_text()[:4000]`、`/home/kali/...`、`uvicorn`）。现在渲染前统一清洗：内部路径替换为「（内部路径已隐去）」、内部产品 / 服务名改为中性说法、平台工具名移除；同时要求 agent 的 `record_coverage.evidence` 只写结论与缺口。
 - **思考过程中无法滚动思维链**：思考块在每次流式增量后强制把内层 `scrollTop` 设为 `scrollHeight`，覆盖了用户的手动滚动，表现为「必须等思考结束才能翻」。现在用户向上翻看即暂停自动跟随，滚回底部后自动恢复；展开 / 收起面板时重置为贴底。
 - **沙箱 `/app/.venv` 在系统 Python 升级后失效**：Kali rolling 已升级到 Python 3.14，上游镜像里建于 3.13 的 venv 看不到原 site-packages，`jwt_tool` / `requests` / `caido-sdk-client` 等全部 import 失败；现在构建时按当前 Python 重建 venv 并装回上游依赖。
 - **证据路径 finding 过不了报告结构门**：`record_evidence` 原先不关联资产，线上 `report_gate.require_asset=true` 时即使复验 `reproduced` 也只能停在「疑似」；现在按目标 host / port 自动匹配项目资产。
