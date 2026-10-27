@@ -94,7 +94,7 @@ The table below states, for every feature, what it requires and where to enable 
 | Login, users & roles, system config | PostgreSQL + config files | `bash setup.sh` handles it |
 | Playground sessions (streaming chat with agents) | **LLM API key** (OpenAI-compatible endpoint) | Fill it on the System Config page, or `bash config-tool.sh set ...` |
 | **Pentest / audit execution** inside sessions (sandbox) | Docker + a sandbox image | The upstream image (~4 GB) is pulled automatically on the first session; after building the all-in-one image, sessions use the customized toolchain instead |
-| Platform **sandbox container** console<br/>(terminal / file manager / noVNC) | `sandbox-runtime:latest` + an image record | `cd sandbox && bash build.sh`, then add a record on the Sandbox Images page (Control Port `8000`) |
+| Platform **sandbox container** console<br/>(terminal / file manager / noVNC) | `sandbox-runtime:latest` | `cd sandbox && bash build.sh`; **session containers are enabled automatically** (the platform injects the control-proxy token), while hand-created containers also need an image record on the Sandbox Images page (Control Port `8000`) |
 | Caido capture / replay / request store | Sandbox execution plane (both images ship it) | Started with the session; no configuration needed |
 | Binary reversing (Ghidra / Jadx / apktool / binwalk) | All-in-one image | Takes effect for sessions automatically once `sandbox-runtime:latest` is built |
 | Browser automation (agent-browser-cli) | All-in-one image | Same as above |
@@ -114,7 +114,7 @@ The table below states, for every feature, what it requires and where to enable 
 ### 2.2 Feature Details
 
 - **Playground**: multi-agent sessions, streaming chat, sub-agent panel, inline thinking display, replayable timeline; the session column is drag-resizable and collapsible.
-- **Sandbox execution plane**: Docker sandbox containers providing the Kali toolchain, terminal, file manager, noVNC remote view, and Caido capture/replay; provisioned automatically per session.
+- **Sandbox execution plane**: Docker sandbox containers providing the Kali toolchain, terminal, file manager, noVNC remote view, and Caido capture/replay; provisioned automatically per session. Session containers receive the control-proxy token automatically, so browser egress, terminal, files, and noVNC work without a manual image record; the trivy vulnerability DB and observer_ward fingerprints are warmed in the background once the container is ready and shared through a host cache.
 - **WorkProject**: project metadata, owner, scoped assets, sessions, records, relationship graphs, and attack paths; findings carry evidence and impact.
 - **Source-code audit track (white box)**: upload a source archive to switch to the white-box track, with skill routing and prompts adapting accordingly.
 - **Egress proxy**: configuration and management of controlled network egress (proxy chains).
@@ -170,7 +170,7 @@ Two things decide all sandbox behavior:
 | Aspect | Handled by | What it uses |
 | --- | --- | --- |
 | **What is inside the container** | The image | By default `ghcr.io/usestrix/strix-sandbox:1.3.0` (upstream: Caido + Kali toolchain); after building, `sandbox-runtime:latest` (all-in-one) |
-| **Who creates the container, how commands run** | The platform | Session containers are provisioned on demand by the strix SDK; commands are executed through [service/sandbox/commands.py](service/sandbox/commands.py) via Docker `exec` — **no in-container control plane required** |
+| **Who creates the container, how commands and the console connect** | The platform | Session containers are provisioned on demand by the strix SDK; commands run via Docker `exec` through [service/sandbox/commands.py](service/sandbox/commands.py); session containers also receive the control-proxy token, so the terminal / files / noVNC / egress refresh go through the in-container Go control plane |
 
 Capability comparison:
 
@@ -407,7 +407,7 @@ Then make **both sessions and platform containers** use it — set in `.ravenhol
 }
 ```
 
-and add a record on the console's **Sandbox Images** page (`image_name` = `sandbox-runtime:latest`, `Control Port` = `8000`) before you can create containers with terminal/file/noVNC on the Sandbox Containers page.
+and add a record on the console's **Sandbox Images** page (`image_name` = `sandbox-runtime:latest`, `Control Port` = `8000`) before you can create **hand-made** containers with terminal/file/noVNC on the Sandbox Containers page. Once `sandbox.image` is configured, session containers get the same console and egress proxy automatically — this step is not needed for them.
 
 > With `sandbox.image` empty, sessions use the upstream `ghcr.io/usestrix/strix-sandbox:1.3.0` (pulled on first use).
 
@@ -551,6 +551,9 @@ Switches you may export yourself:
 | `RAVENHOLT_SEARXNG_AUTOPROVISION=0` | on | Disables the SearXNG auto-provision guarantee (takes precedence over the config field) |
 | `SANDBOX_CONTAINER_NAME_PREFIX` | `ravenholt-sandbox` | Container-name prefix for platform sandboxes; an empty string falls back to the image short name |
 | `SANDBOX_COMMAND_WORKDIR` | `/workspace` | Working directory for in-sandbox commands (use it when the two images' WORKDIRs differ) |
+| `SANDBOX_TRIVY_DB_REPOSITORY` | `ghcr.nju.edu.cn/aquasecurity/trivy-db` | Injected as the container's `TRIVY_DB_REPOSITORY`; the official `mirror.gcr.io` is unreachable on some networks and `ghcr.io` is slow directly, so a China mirror is the default |
+
+> **Tool data cache**: the trivy DB (~1.6 GB extracted) and observer_ward fingerprints are not stored in the container layer — they live in the host's `.ravenholt/cache/{trivy,observer_ward}` and are shared by every container. Once a container is ready the platform runs `observer_ward -u` and `trivy fs --download-db-only` in the background; later containers reuse the cache. The first trivy warm-up downloads ~130 MiB.
 
 > A manual `export STRIX_IMAGE=...` is overridden by `sandbox.image` (config wins), so prefer editing the config file.
 
@@ -669,7 +672,7 @@ Follow these in order to turn everything on:
 | --- | --- | --- |
 | 1 | `bash setup.sh --with-sandbox` (or walk through steps 1–6 of 5.3 manually) | Platform, database, frontend, and the all-in-one sandbox image are in place |
 | 2 | Confirm `.ravenholt/config.json`'s `sandbox.image` = `sandbox-runtime:latest` | Sessions use the customized image (Ghidra/Jadx/observer_ward/agent-browser) |
-| 3 | Add a record on the Sandbox Images page (`Control Port` = `8000`) | Sandbox Containers page can create containers with terminal/file/noVNC |
+| 3 | (Hand-created containers only) Add a record on the Sandbox Images page (`Control Port` = `8000`) | Hand-created containers get terminal/file/noVNC; **session containers are enabled automatically** |
 | 4 | Fill in the LLM API key (System Config page) | Session chat and agent execution work |
 | 5 | Create a **Work Project** and fill in scope and objectives | Assets, findings, evidence, and attack paths have a home |
 | 6 | Start your first session | A sandbox container (with Caido) is created automatically; images are pulled on demand |
@@ -730,6 +733,7 @@ ravenholt/
 ├── scripts/         # tooling and self-check scripts (sync_strix.py for upstream sync, export_schema, verify_*_selftest, verify_strix_version_alignment, ...)
 ├── tests/           # unit tests
 ├── .ravenholt/      # runtime config: config.json / policy.yaml / skill_routes.yaml (never committed)
+│   └── cache/       # shared tool data cache: trivy DB / observer_ward fingerprints (never committed)
 ├── .github/         # CI: build-frontend (builds dist-app, attaches it to the Release), build-sandbox-image (builds and pushes to GHCR)
 ├── setup.sh         # one-click deployment script
 ├── update.sh        # one-command upgrade (git pull -> refresh deps -> restart)
@@ -760,7 +764,7 @@ A: `bash setup.sh --with-sandbox` writes the image name into `.ravenholt/config.
 A: They serve different purposes — `sandbox.image` in `config.json` selects the image for **agent sessions**; the Sandbox Images page record selects the image for **containers you create by hand** (and needs `Control Port` to reach the in-container control plane).
 
 **Q: On the Sandbox Containers page, the terminal / file / noVNC buttons are missing?**
-A: That container's image lacks the in-container Go control plane (e.g. the upstream image). Containers created from `sandbox-runtime:latest` are the ones that have those buttons.
+A: That container's image lacks the in-container Go control plane (e.g. the upstream image). Session containers using `sandbox-runtime:latest` enable these automatically; hand-created containers also need a Sandbox Images record with `Control Port` = `8000` so the platform can reach the control plane.
 
 **Q: Will sandboxes still work after changing subnets / moving to another LAN?**
 A: Yes. `sandbox/setup_macvlan.sh` hard-codes no network range — subnet, gateway, parent interface, container address range, and host shim address are all derived from the host's default route, so after a network change a restart (`bash serve.sh restart`) rebuilds everything.

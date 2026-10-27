@@ -47,7 +47,7 @@ The script generates `.ravenholt/config.json` (a random `encrypt_key`, database 
 
 ### Build the Sandbox (Full Feature Set)
 
-Ravenholt's sandbox image `sandbox-runtime:latest` **takes the upstream strix image as its base** and layers the customized toolchain (Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl), the in-container Go control plane, and the `.agents/skills` resources on top. It therefore serves two purposes at once: the **agent session sandbox** (with Caido capture) and the **platform "sandbox container" console** (terminal / files / noVNC / live egress refresh).
+Ravenholt's sandbox image `sandbox-runtime:latest` **takes the upstream strix image as its base** and layers the customized toolchain (Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl), the in-container Go control plane, and the `.agents/skills` resources on top. It therefore serves two purposes at once: the **agent session sandbox** (with Caido capture) and the **platform "sandbox container" console** (terminal / files / noVNC / live egress refresh). Session containers receive the control-proxy token and warm the trivy DB and observer_ward fingerprints automatically, so the console works without a manual image record.
 
 > :warning: Architecture Limitation
 >

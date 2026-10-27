@@ -94,7 +94,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | 登录、用户与角色、系统配置 | PostgreSQL + 配置文件 | `bash setup.sh` 自动完成 |
 | 操作台会话（与 agent 流式对话） | **LLM API Key**（OpenAI 兼容端点） | 系统配置页填写，或 `bash config-tool.sh set ...` |
 | 会话中的**渗透/审计执行**（沙箱） | Docker + 沙箱镜像 | 首次会话自动拉取上游镜像（约 4 GB）；构建一体化镜像后会话改用定制工具集 |
-| 平台「沙箱容器」控制台<br/>（终端 / 文件管理 / noVNC 远程画面） | `sandbox-runtime:latest` + 镜像记录 | `cd sandbox && bash build.sh`，再到「沙箱镜像」页登记（Control Port 填 `8000`） |
+| 平台「沙箱容器」控制台<br/>（终端 / 文件管理 / noVNC 远程画面） | `sandbox-runtime:latest` | `cd sandbox && bash build.sh`；**会话容器自动开启**（平台注入控制面 token），手工创建的容器另需在「沙箱镜像」页登记（Control Port 填 `8000`） |
 | Caido 抓包 / 重放 / 请求库 | 沙箱执行面（两种镜像都自带） | 随会话自动启动，无需配置 |
 | 二进制逆向（Ghidra / Jadx / apktool / binwalk） | 一体化镜像 | 构建 `sandbox-runtime:latest` 后自动对会话生效 |
 | 浏览器自动化（agent-browser-cli） | 一体化镜像 | 同上 |
@@ -114,7 +114,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 ### 2.2 功能明细
 
 - **操作台（Playground）**：多智能体会话、流式对话、子智能体面板、思考过程内联展示、可回放时间线；会话列可拖拽调宽、可一键收起。
-- **沙箱执行面**：Docker 沙箱容器提供 Kali 工具链、终端、文件管理、noVNC 远程画面与 Caido 抓包/重放；按会话自动 provision。
+- **沙箱执行面**：Docker 沙箱容器提供 Kali 工具链、终端、文件管理、noVNC 远程画面与 Caido 抓包/重放；按会话自动 provision。会话容器会自动注入控制面 token，因此浏览器出网、终端 / 文件 / noVNC 无需手工登记即可用；trivy 漏洞库与 observer_ward 指纹由平台在容器就绪后自动预热，并共享宿主缓存。
 - **工作项目（WorkProject）**：项目元数据、负责人、范围资产、会话、记录、关系图与攻击路径；发现携带证据与影响。
 - **源码审计通道（白盒）**：上传源码包后可走白盒分轨，技能路由与提示词随之切换。
 - **出口代理**：受控网络出口的配置与管理（代理出口链路）。
@@ -170,7 +170,7 @@ Ravenholt 是**以控制平面为中心**的红队多智能体平台：把 agent
 | 环节 | 谁负责 | 用什么 |
 | --- | --- | --- |
 | **容器内有什么** | 镜像 | 默认 `ghcr.io/usestrix/strix-sandbox:1.3.0`（上游，含 Caido + Kali 工具链）；构建后改为 `sandbox-runtime:latest`（一体化） |
-| **容器由谁创建、怎么执行命令** | 平台 | 会话容器由 strix SDK 按需拉起；命令经 [service/sandbox/commands.py](service/sandbox/commands.py) 以 Docker `exec` 执行，**不依赖容器内的控制面** |
+| **容器由谁创建、怎么执行命令、控制台怎么连** | 平台 | 会话容器由 strix SDK 按需拉起；命令经 [service/sandbox/commands.py](service/sandbox/commands.py) 以 Docker `exec` 执行；会话容器会注入控制面 token，终端 / 文件 / noVNC / 出网代理走容器内 Go 控制面 |
 
 两种镜像的能力对比：
 
@@ -406,7 +406,7 @@ cd ..
 }
 ```
 
-再到控制台**「沙箱镜像」**页新增一条记录（`image_name` 填 `sandbox-runtime:latest`，`Control Port` 填 `8000`），之后才能在「沙箱容器」页创建带终端/文件/noVNC 的容器。
+再到控制台**「沙箱镜像」**页新增一条记录（`image_name` 填 `sandbox-runtime:latest`，`Control Port` 填 `8000`），之后才能在「沙箱容器」页创建带终端/文件/noVNC 的**手工容器**。配置好 `sandbox.image` 后，会话容器会自动获得同样的控制台与出网代理，无需这一步。
 
 > `sandbox.image` 留空时，会话使用上游 `ghcr.io/usestrix/strix-sandbox:1.3.0`（首次会话自动拉取）。
 
@@ -550,6 +550,9 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8888/
 | `RAVENHOLT_SEARXNG_AUTOPROVISION=0` | 开 | 关闭 SearXNG 容器自动保障（优先级高于配置项） |
 | `SANDBOX_CONTAINER_NAME_PREFIX` | `ravenholt-sandbox` | 平台沙箱容器名前缀；设为空串则回退为按镜像短名生成 |
 | `SANDBOX_COMMAND_WORKDIR` | `/workspace` | 沙箱内执行命令的工作目录（两种镜像的 WORKDIR 不同时用它切换） |
+| `SANDBOX_TRIVY_DB_REPOSITORY` | `ghcr.nju.edu.cn/aquasecurity/trivy-db` | 注入容器 `TRIVY_DB_REPOSITORY`；官方 `mirror.gcr.io` 在部分网络不可达、`ghcr.io` 直连较慢，默认改用国内镜像 |
+
+> **工具数据缓存**：trivy 漏洞库（解压约 1.6 GB）与 observer_ward 指纹不落在容器层，而是挂载宿主 `.ravenholt/cache/{trivy,observer_ward}` 全平台共享；容器就绪后平台后台执行 `observer_ward -u` 与 `trivy fs --download-db-only` 预热，后续容器直接复用。首次预热 trivy 需下载约 130 MiB。
 
 > 手工 `export STRIX_IMAGE=...` 会被 `sandbox.image` 覆盖（配置优先），因此推荐直接改配置文件。
 
@@ -668,7 +671,7 @@ bash update.sh --with-sandbox       # 额外重建一体化沙箱镜像（下载
 | --- | --- | --- |
 | 1 | `bash setup.sh --with-sandbox`（或在手动部署里走完 5.3 的第 1–6 步） | 平台、数据库、前端、一体化沙箱镜像全部就位 |
 | 2 | 确认 `.ravenholt/config.json` 的 `sandbox.image` = `sandbox-runtime:latest` | 会话使用定制镜像（Ghidra/Jadx/observer_ward/agent-browser/hurl） |
-| 3 | 控制台「沙箱镜像」页新增记录（`Control Port` = `8000`） | 「沙箱容器」页可创建带终端/文件/noVNC 的容器 |
+| 3 | （手工容器才需要）控制台「沙箱镜像」页新增记录（`Control Port` = `8000`） | 手工创建的容器可连终端/文件/noVNC；**会话容器自动开启** |
 | 4 | 填 LLM API Key（系统配置页） | 会话对话与 agent 执行可用 |
 | 5 | 新建**工作项目**，填写范围与目标 | 资产、发现、证据、攻击路径有归属 |
 | 6 | 首次发起会话 | 自动创建沙箱容器（含 Caido），可按需拉取镜像 |
@@ -729,6 +732,7 @@ ravenholt/
 ├── scripts/         # 工具与自检脚本（sync_strix.py 同步上游、export_schema、verify_*_selftest、verify_strix_version_alignment 等）
 ├── tests/           # 单元测试
 ├── .ravenholt/      # 运行时配置：config.json / policy.yaml / skill_routes.yaml（均不入库）
+│   └── cache/       # 工具数据共享缓存：trivy 漏洞库 / observer_ward 指纹（不入库）
 ├── .github/         # CI：build-frontend（构建 dist-app 并作为 Release 附件）、build-sandbox-image（构建并推 GHCR）
 ├── setup.sh         # 一键部署脚本
 ├── update.sh        # 一键升级（git pull → 更新依赖 → 重启服务）
@@ -759,7 +763,7 @@ A：`bash setup.sh --with-sandbox` 会自动把镜像名写进 `.ravenholt/confi
 A：用途不同 —— `config.json` 的 `sandbox.image` 决定 **agent 会话**用哪个镜像；「沙箱镜像」页的记录决定**平台手工创建的容器**用哪个镜像（需要 `Control Port` 才能连上容器内控制面）。
 
 **Q：「沙箱容器」页创建容器后，看不到终端 / 文件 / noVNC 按钮？**
-A：该容器用的镜像不含容器内 Go 控制面（例如上游镜像）。用 `sandbox-runtime:latest` 创建的容器才会有这些按钮。
+A：该容器用的镜像不含容器内 Go 控制面（例如上游镜像）。用 `sandbox-runtime:latest` 的会话容器会自动开启这些入口；手工创建的容器还需在「沙箱镜像」页登记 `Control Port` = `8000`，平台才能连上控制面。
 
 **Q：改网段 / 换到别的局域网后沙箱还能用吗？**
 A：能。`sandbox/setup_macvlan.sh` 不写死任何网段 —— 子网、网关、父接口、容器地址段与宿主 shim 地址全部从宿主默认路由动态派生，换网段后重启（`bash serve.sh restart`）会自动重建。

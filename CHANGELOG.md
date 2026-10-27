@@ -10,6 +10,8 @@
 
 ### 新增
 
+- **沙箱工具数据共享缓存与自动预热**：trivy 漏洞库（解压约 1.6 GB）与 observer_ward 指纹改为挂载宿主 `.ravenholt/cache/{trivy,observer_ward}`，全平台共用一份；容器就绪后平台后台执行 `observer_ward -u` 与 `trivy fs --download-db-only`。trivy 默认走国内镜像 `ghcr.nju.edu.cn/aquasecurity/trivy-db`，可用 `SANDBOX_TRIVY_DB_REPOSITORY` 覆盖。
+- **会话沙箱自动开启容器控制面**：运行时容器按会话注入 `SANDBOX_CONTROL_PROXY_TOKEN`，终端、文件、noVNC 与浏览器出网代理（8118）随容器自动可用，不再依赖手工创建容器并登记 Control Port。
 - **测试结束自动总结**：每轮扫描收尾（调用 `finish_scan` 或本轮产出新 finding）后，平台按落库状态自动追加一条「测试总结」：已验证漏洞（平台重放复现）/ 疑似漏洞（有请求包但复验未通过）/ 无法验证（无请求包、纯配置、纯源码、OOB 不可用），并列出 `needs_follow_up` 的未完成测试面。总结由平台确定性生成，不依赖模型措辞。
 - **报告路径支持可重放请求包**：`create_vulnerability_report` 新增 `request_url` / `request_headers` / `request_body` / `baseline_status` / `baseline_body` / `probe_status` / `probe_body`。报告镜像落库前由平台保存证据并重放，`reproduced` 才置为「已验证」；缺包、复验失败或 `refuted` 保持「疑似」。
 - **沙箱镜像内置 hurl 8.0.1**：支持可评审的多步 HTTP 请求链与断言；其兼容库（libxml2 / libicu72）隔离在 `/opt/hurl/lib`，仅对 hurl 进程生效，不影响系统库。
@@ -26,6 +28,12 @@
 
 ### 修复
 
+- **会话容器浏览器打不开**：运行时容器缺控制面 token，容器内 `sandbox-proxy` 退出，Chromium 硬编码的 `127.0.0.1:8118` 无监听（`ERR_PROXY_CONNECTION_FAILED`）；现在注入 token 后 8000 控制面与 8118 出网代理随容器启动。
+- **运行时容器文件管理 500**：本机宿主记录为 `127.0.0.1:2375`，而 Docker 只监听 unix socket，平台连接被拒；本机宿主改为与 strix 一致走 `DOCKER_HOST` / docker context / 默认 socket。
+- **会话丢失运行时容器绑定**：回合开始时用 `None` 覆盖上一轮绑定，且复用容器回写时在 commit 后读主键触发 `MissingGreenlet`；现在只在非空时更新，并在 commit 前取主键。
+- **同一接口重复报告**：LLM 去重不稳定（同一 `/admin/config`、同一 `/api/users?uid=2` 被各报两次）；新增确定性兜底——URL（含查询串）+ 同 CWE（或高度相似标题）判重，不同参数 / 不同 CWE 仍放行。
+- **依赖定级被压到 info**：`reachability=unknown` 时上下文 CVSS 没有依据，却能把 CVSS 10 的 CVE 压成 info；现在 unknown 直接按 advisory CVSS 定级。
+- **trivy 无漏洞库 / observer_ward 无指纹**：构建期 `observer_ward -u` 落在 root 家目录，运行时的 pentester 读不到；trivy 镜像源 `mirror.gcr.io` 不可达且 `ghcr.io` 直连缓慢。现在指纹与漏洞库由平台预热并共享宿主缓存，trivy 走国内镜像源。
 - **收尾总结暴露内部实现**：`needs_follow_up` 的原因会带出函数调用、代码切片、内部路径与内部服务名（如 `read_text()[:4000]`、`/home/kali/...`、`uvicorn`）。现在渲染前统一清洗：内部路径替换为「（内部路径已隐去）」、内部产品 / 服务名改为中性说法、平台工具名移除；同时要求 agent 的 `record_coverage.evidence` 只写结论与缺口。
 - **思考过程中无法滚动思维链**：思考块在每次流式增量后强制把内层 `scrollTop` 设为 `scrollHeight`，覆盖了用户的手动滚动，表现为「必须等思考结束才能翻」。现在用户向上翻看即暂停自动跟随，滚回底部后自动恢复；展开 / 收起面板时重置为贴底。
 - **沙箱 `/app/.venv` 在系统 Python 升级后失效**：Kali rolling 已升级到 Python 3.14，上游镜像里建于 3.13 的 venv 看不到原 site-packages，`jwt_tool` / `requests` / `caido-sdk-client` 等全部 import 失败；现在构建时按当前 Python 重建 venv 并装回上游依赖。

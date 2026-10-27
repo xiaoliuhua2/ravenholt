@@ -47,7 +47,7 @@ bash setup.sh --with-sandbox
 
 ### 构建沙盒（完整功能）
 
-Ravenholt 的沙盒镜像 `sandbox-runtime:latest` **以 strix 上游镜像为基础**，在其上叠加定制工具链（Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl）、容器内 Go 控制面与技能资源 `.agents/skills`。因此它同时服务两种用途：**agent 会话沙箱**（含 Caido 抓包）与**平台「沙箱容器」的人工控制台**（终端 / 文件 / noVNC / egress 动态刷新）。
+Ravenholt 的沙盒镜像 `sandbox-runtime:latest` **以 strix 上游镜像为基础**，在其上叠加定制工具链（Ghidra / Jadx / apktool / binwalk / observer_ward / agent-browser / hurl）、容器内 Go 控制面与技能资源 `.agents/skills`。因此它同时服务两种用途：**agent 会话沙箱**（含 Caido 抓包）与**平台「沙箱容器」控制台**（终端 / 文件 / noVNC / egress 动态刷新）。会话容器会自动注入控制面 token 并预热 trivy 漏洞库与 observer_ward 指纹，无需额外登记即可使用控制台。
 
 > :warning: 架构限制
 >
