@@ -3,7 +3,11 @@ name: "injection-test"
 description: "注入类漏洞测试手册（SQL注入 / 命令注入 / SSTI）"
 ---
 
-> 进站勾完标准见 `dig-scope` §4.2.1：能看出条数/内容变化的口，每个过滤参都测；只回「请登录」整段 N/A。按栈选探针（JSON/Mongo 操作符、搜索框 ES、Java HQL/SpEL、有模板 SSTI；SQL 面仍走引号/布尔/延时）。405 后换位置不只有换编码。
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
+> 进站勾完标准见 `load_skill("src_hunt/01-dig-scope-workflow")` §4.2.1：能看出条数/内容变化的口，每个过滤参都测；只回「请登录」整段 N/A。按栈选探针（JSON/Mongo 操作符、搜索框 ES、Java HQL/SpEL、有模板 SSTI；SQL 面仍走引号/布尔/延时）。405 后换位置不只有换编码。
 > 短表「列表筛选项 OR + total」「邮件订阅 iframe 同目录 list」用标题搜。WooYun 统计 / sqlmap --os-shell / 反弹 shell / 英文附件已砍；现场按栈自己变，不靠教材。
 
 # 注入类漏洞测试手册（SQL注入 / 命令注入 / SSTI）
@@ -37,7 +41,7 @@ description: "注入类漏洞测试手册（SQL注入 / 命令注入 / SSTI）"
 
 算成：回包是该租户订户姓名/邮箱/电话。Wrong Key / 空数组是对照。
 
-假点：没有 list.php；key 走常量比较或预编译。单站没中不删短表这行。不要对全站同皮客户开 FOFA。
+假点：没有 list.php；key 走常量比较或预编译。单站没中不删短表这行。不要对全站同皮客户开资产搜索。
 
 ### 快速检测
 

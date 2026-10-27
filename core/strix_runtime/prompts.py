@@ -10,10 +10,23 @@ RAG）。本模块只产出提示词文本，不触碰运行时逻辑。
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from enum import StrEnum
+from functools import lru_cache
 
 from schema.work_project.projects import WorkProjectType
+
+
+logger = logging.getLogger(__name__)
+
+# strix 上游默认会随系统提示自动内联的两篇分析技能。ravenholt 用
+# instructions_override 绕过了 render_system_prompt，这里显式补回，
+# 避免丢失「反证三态 / 严重度校准」的收口纪律。
+ANALYSIS_SKILLS: tuple[str, ...] = (
+    "analysis/counterevidence",
+    "analysis/severity_calibration",
+)
 
 
 # 沙箱内任务根（ravenholt Kali 镜像默认工作目录为 /workspace）。
@@ -377,6 +390,26 @@ LANGUAGE_DISCIPLINE = """\
 """
 
 
+@lru_cache(maxsize=1)
+def _analysis_discipline_block() -> str:
+    """把 strix 的两篇分析技能正文拼成提示词段；加载失败时返回空串。
+
+    这两篇技能在 ``skills/__init__.py`` 里属于 internal 类别，``load_skill`` 会拒绝；
+    但它们本来就是「随系统提示自动内联」的设计，这里按上游语义补回。
+    """
+    try:
+        from strix.skills import load_skills
+
+        loaded = load_skills(list(ANALYSIS_SKILLS))
+    except Exception:  # noqa: BLE001 - 提示词构建不因技能加载失败而中断
+        logger.exception("加载 strix 分析技能失败；本次不注入反证/定级纪律")
+        return ""
+    if not loaded:
+        return ""
+    parts = [f"## {name}\n\n{body.strip()}" for name, body in loaded.items()]
+    return "# 分析纪律（strix 内置技能，强制遵守）\n\n" + "\n\n---\n\n".join(parts)
+
+
 def _approval_discipline_block() -> str:
     """把控制台当前的风险审批状态渲染成提示词段；策略未加载时返回空串。"""
     try:
@@ -408,6 +441,9 @@ def build_root_instructions(
     else:
         protocol = ROOT_PROTOCOL.format(task_dir=task_dir)
     body = f"{LANGUAGE_DISCIPLINE}\n\n{protocol}"
+    analysis = _analysis_discipline_block()
+    if analysis:
+        body = f"{body}\n\n{analysis}"
     approval = _approval_discipline_block()
     return f"{body}\n\n{approval}" if approval else body
 
@@ -420,6 +456,9 @@ def build_child_instructions(
     body = f"{LANGUAGE_DISCIPLINE}\n\n{CHILD_PROTOCOL}"
     if mode == RuntimeMode.SOURCE_AUDIT:
         body = f"{body}\n\n{SOURCE_AUDIT_CHILD_NOTE}"
+    analysis = _analysis_discipline_block()
+    if analysis:
+        body = f"{body}\n\n{analysis}"
     approval = _approval_discipline_block()
     if approval:
         body = f"{body}\n\n{approval}"

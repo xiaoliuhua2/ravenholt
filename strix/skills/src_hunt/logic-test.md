@@ -3,7 +3,11 @@ name: "logic-test"
 description: "逻辑漏洞测试手册"
 ---
 
-> 写不写只认 `../03-vuln-report-format.md`。进站有会话时最低探针见 `dig-scope` §4.2.3（加字段、跳步、领取/库存/券并发一枪）。本篇是测法：支付/流程/验证码都测；发码/滑块没进号就转认证链，别停半截。
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
+> 写不写只认 `load_skill("src_hunt/03-vuln-report-format")`。进站有会话时最低探针见 `load_skill("src_hunt/01-dig-scope-workflow")` §4.2.3（加字段、跳步、领取/库存/券并发一枪）。本篇是测法：支付/流程/验证码都测；发码/滑块没进号就转认证链，别停半截。
 > 短表「商家促销绑定」在 §1.4。英文 business-logic / CHECKLIST / METHODOLOGY / SCENARIOS 附件已砍；支付/流程/验证码测法仍在上半。
 
 ---

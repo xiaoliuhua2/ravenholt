@@ -3,6 +3,10 @@ name: "yakit-mcp-forensics"
 description: "Yakit MCP / sqlite 只读取证法"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # Yakit MCP / sqlite 只读取证法
 
 > 场景：用户在 Yakit 里抓了包（可能含**他自己账号的登录态**），让你"连 MCP 看看"再接着测。
@@ -12,7 +16,7 @@ description: "Yakit MCP / sqlite 只读取证法"
 
 ## 1. 先确认 MCP 配置与端点存活
 
-MCP 配置在 `~/.workbuddy/mcp.json`（**注意不是** `~/.workbuddy/.mcp.json`）：
+MCP 配置在 `（当前环境无测绘 MCP 配置）`（**注意不是** `~/.ravenholt/.mcp.json`）：
 
 ```json
 { "mcpServers": { "yakit": {
@@ -99,7 +103,7 @@ Yaklang MCP 里有现成的反连工具，**不用自建 OOB**。亲例（149 �
    **打一发查一次**，不要"批量打 + 最后等一次"。本目标实测：这样每发的结论都独立可读。
 3. **两条通道寿命不对称**：**DNS 通道常驻可用**（Bridge 的权威 NS `ns1.cybertunnel.run:64333` 一直在，
    实测命中正常落库）；**TCP 反连口现开现用、会过期**。
-   ⇒ 能选 DNS 外带就选 DNS 外带（`tools/jndi/DnsExfil.java` 那套），别把证据管道押在临时口上。
+   ⇒ 能选 DNS 外带就选 DNS 外带（`沙箱内自建 DNS 外带服务（Java 自行编译）` 那套），别把证据管道押在临时口上。
 
 ★ **别用 `nc <桥IP> <口>` 自测当作"链路可用"的证据**：
 - 那个连接**源 IP 是你自己**，不是目标 —— 连上了也只证明"我的监听器活着"；

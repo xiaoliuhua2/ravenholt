@@ -3,12 +3,16 @@ name: "rendering-service-rce-triage"
 description: "渲染服务 RCE 判定：HTML→PDF / 无头浏览器 / SSR 服务"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 渲染服务 RCE 判定：HTML→PDF / 无头浏览器 / SSR 服务
 
 > 适用：`pdf.*`、`html2pdf`、导出服务、报表渲染、截图服务、SSR 渲染等「服务端跑浏览器」的目标。
 > 来源：2026-09-18 SHEIN `pdf.dotfashion.cn` 实证（未授权 Chromium 渲染服务）。
 > 本模块只解决一件事：**把「能不能 RCE」从定性讨论变成逐条实测 + 公开利用链比对。**
-> 定级仍只认 `../03-vuln-report-format.md`，本模块不定级。
+> 定级仍只认 `load_skill("src_hunt/03-vuln-report-format")`，本模块不定级。
 
 ---
 

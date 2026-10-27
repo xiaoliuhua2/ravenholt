@@ -3,6 +3,10 @@ name: "xss-test"
 description: "XSS 测试手册"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 > 短表「XSS → RCE」「自定义协议 → RCE」用标题搜。英文附件 / polyglot 百科已砍；冷门事件和特权上下文仍留。
 > **下面这些 payload 只是加速，不是清单。** 现场按上下文自己选、自己变；表上没有的编码/事件/标签照样打。禁止只轮询本节收过的那几条。
 
@@ -18,7 +22,7 @@ description: "XSS 测试手册"
 | 反射型 | payload 在 URL 参数中，需诱导点击 |
 | DOM 型 | 纯前端处理，不经过服务端 |
 
-打穿了按 `vuln-report-format` 定级，不按存储/反射/DOM 抬级。
+打穿了按 `load_skill("src_hunt/03-vuln-report-format")` 定级，不按存储/反射/DOM 抬级。
 
 ---
 
@@ -33,8 +37,8 @@ description: "XSS 测试手册"
 消息通知内容
 客服聊天
 富文本编辑器
-Git / 文档站的 README、Wiki、议题、MR 描述（网页和桌面客户端都测，见 §8 XSS→RCE）
-桌面客户端自定义协议（scheme 参数带 url / open / openUrl / webview，见 §8 自定义协议→RCE）
+Git / 文档站的 README、Wiki、议题、MR 描述（网页和工作区客户端都测，见 §8 XSS→RCE）
+工作区客户端自定义协议（scheme 参数带 url / open / openUrl / webview，见 §8 自定义协议→RCE）
 回跳参数 backUrl / returnUrl / redirect / next（javascript: 或 javascript%3A + document.write(document.cookie)）
 富文本 / BBCode / wiki（`[p]` `[[p]]` `[div]` 转 HTML 时属性跟上；页面有 Layui/animate.css 就挂现成动画 class + onanimationstart）
 ```
@@ -225,7 +229,7 @@ b.send($);
 b.onreadystatechange = function(){ if(this.readyState==4) fetch('/wp-content/plugins/hello.php'); }
 ```
 
-**桌面客户端（CEF / Electron / 企业 Git GUI）**：有 node 桥 / `nodeIntegration` / `enableRemoteModule` / 暴露的 `Buffer`·`require`·`child_process`，页面里的 JS 就在本机进程里跑。payload 按现场选（自动跳转、外链、事件、远程页），**不要死抄某一种 gadget**。沙箱死了 → 当普通存储 XSS 继续打网页，不宣布这条死。
+**工作区客户端（CEF / Electron / 企业 Git GUI）**：有 node 桥 / `nodeIntegration` / `enableRemoteModule` / 暴露的 `Buffer`·`require`·`child_process`，页面里的 JS 就在本机进程里跑。payload 按现场选（自动跳转、外链、事件、远程页），**不要死抄某一种 gadget**。沙箱死了 → 当普通存储 XSS 继续打网页，不宣布这条死。
 
 投递 1（存储 XSS）：README、议题、评论里存的 HTML，客户端当网页渲。组员/邀请接口若只认数字 `user_id`，递增拉人即可（就是 `idor-test.md` 里已有的顺序 ID + 批量写）。对方克隆列表若不隔离，你的仓会出现在他客户端里，打开 README 即触发。拉人本身不是洞的主体，主体仍是客户端把 HTML 渲成了特权 XSS。
 

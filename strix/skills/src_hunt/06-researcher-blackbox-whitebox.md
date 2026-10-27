@@ -1,3 +1,12 @@
+---
+name: "06-researcher-blackbox-whitebox"
+description: "黑盒 SRC + 白盒 0day 审计主流程（Phase 0～6）"
+---
+
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 黑盒 SRC + 白盒 0day 审计主流程（Phase 0～6）
 
 > **损坏说明（已核实，非本 skill 造成）**：原始 `rules/researcher-blackbox-whitebox.md` 在流传的版本中头部就已被破坏——前 43 行被 `playwright-browser-mcp.md` 的正文整段覆盖。
@@ -127,7 +136,7 @@ PoC：
 | 类别 | 类型 |
 |------|------|
 | 认证与会话 | 登录绕过、会话固定、Token 泄露、OAuth、JWT |
-| 越权 | 水平 IDOR、垂直越权、多租户隔离失效（有会话最低探针见 `dig-scope` §4.2.3） |
+| 越权 | 水平 IDOR、垂直越权、多租户隔离失效（有会话最低探针见 `load_skill("src_hunt/01-dig-scope-workflow")` §4.2.3） |
 | 注入 | SQLi、NoSQLi、LDAP、XPath、SSTI、表达式注入 |
 | SSRF | 内网、云元数据、协议、DNS Rebinding |
 | RCE | 反序列化、命令/代码注入、文件包含 |
@@ -187,7 +196,7 @@ PoC：
 3. 能串链则串链抬危害  
 4. 给出下一阶段计划并 **立刻执行**（自由跳语境不要只甩计划等确认）  
 
-黑盒任务：类型矩阵未勾完的继续勾；不要偏科只测一类；本轮完成判据见 dig-scope §4.3。进站打法（说清这摊、JS 抽钥匙、有差分面的四件套、有会话对象图、中危升链）只认 `dig-scope` §4，不在本文件展开。
+黑盒任务：类型矩阵未勾完的继续勾；不要偏科只测一类；本轮完成判据见 dig-scope §4.3。进站打法（说清这摊、JS 抽钥匙、有差分面的四件套、有会话对象图、中危升链）只认 `load_skill("src_hunt/01-dig-scope-workflow")` §4，不在本文件展开。
 
 ---
 

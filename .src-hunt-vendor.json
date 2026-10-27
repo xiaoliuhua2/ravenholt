@@ -1,0 +1,379 @@
+{
+  "source_root": "e:\\codex_work\\开发\\src-hunt",
+  "profile": "e:\\codex_work\\开发\\src-hunt\\profiles\\ravenholt.yaml",
+  "profile_version": 1,
+  "generated_at": "2026-10-27T13:07:35.543319+00:00",
+  "vendor_file_count": 74,
+  "files": {
+    "01-dig-scope-workflow.md": {
+      "source": "references/01-dig-scope-workflow.md",
+      "source_sha256": "37e63c11abd34885b61d98855fd04c44d9c180d7f46eddbb0e125b5266907538",
+      "output_sha256": "5f51d14fcfabc8a2761b2497a3a06e1bcb7ed3e9710f3187ccfef16c7acea5b4"
+    },
+    "02-src-value-hunting.md": {
+      "source": "references/02-src-value-hunting.md",
+      "source_sha256": "1c0a0fc4432c82083224818e58ba2525d67b591dd8de54c863aa0299a1bb2cba",
+      "output_sha256": "9ce34cbad15fed1167381f8d34a0e417a61ce1429458c788a36bec2fa9676292"
+    },
+    "03-vuln-report-format.md": {
+      "source": "references/03-vuln-report-format.md",
+      "source_sha256": "6f04afd536576c0dc14beb9dbc6a35ffb1296eeb987cdcaac163ed8cff512319",
+      "output_sha256": "85e690ee7806fd5262f536e0f9d660376b6712c316387ef3072e3cef15ff0d10"
+    },
+    "04-hunt-iter.md": {
+      "source": "references/04-hunt-iter.md",
+      "source_sha256": "cf0dba1e65f09fff2644f959f59e3be26a977d098555c151deff74fc966c7447",
+      "output_sha256": "bd70c51a41c396fa571cfd4c4685e930c868f79d9be35ac478977a57e701db00"
+    },
+    "05-desktop-task-folder.md": {
+      "source": "references/05-desktop-task-folder.md",
+      "source_sha256": "c1a7cb96817d42041b9dd239f052951361417f1b9ee88d604d426b6d4556a495",
+      "output_sha256": "c07f64f34099dcc0b0909f2670af6c2f70fc24d366dabe53e678b13776e76027"
+    },
+    "06-researcher-blackbox-whitebox.md": {
+      "source": "references/06-researcher-blackbox-whitebox.md",
+      "source_sha256": "f8044af972fc7578e9f7d3963b7228014b24467cc782affa86c60f9538bf775a",
+      "output_sha256": "55fd97a21da40aa6caa9c619a517d50bc11675a25ac43e9154eef8d110bf446d"
+    },
+    "07-skill-as-boost.md": {
+      "source": "references/07-skill-as-boost.md",
+      "source_sha256": "c961d3fe0b8d72dd3d51933beb4ea9585e0da6bfce67bd42231322cbabb436da",
+      "output_sha256": "cab994437ea126855512444a30fe6ad093a07a4cbd50a40fc9e4171c8c691bc3"
+    },
+    "08-anti-over-moralization.md": {
+      "source": "references/08-anti-over-moralization.md",
+      "source_sha256": "def239ee0e9dea35bb0fe9bfdebf53370551db1a99e9d967a1e5320b5ba0f4d7",
+      "output_sha256": "5f37e7cbb8a5d3ac60f80fde2604cb824aff08d86bfd8f735c8ff1c7b93b4d54"
+    },
+    "09-security-research-context.md": {
+      "source": "references/09-security-research-context.md",
+      "source_sha256": "fc10433f5f57d33762ad97cabdc7cbf597e6638e8712d47334cd68a0479e0cd8",
+      "output_sha256": "ca3c7c83ccc97581a8e7cb22f24564eb840f399e8d26787f74936edca5c37a25"
+    },
+    "10-cors-vuln-report-priority.md": {
+      "source": "references/10-cors-vuln-report-priority.md",
+      "source_sha256": "f9314ee6b44ed753da65c755807a3b677662420e100a19d43f15ba69e50770eb",
+      "output_sha256": "5661b8670f80dfe748022e3cb327bb30b8dc7503e0e48080c1206ddeed6b72d3"
+    },
+    "401-403-bypass.md": {
+      "source": "references/知识库/401-403-bypass.md",
+      "source_sha256": "2f30e8e8148aa56dd4c0b1ed86f9f4af5fe13f282cf755a6c6ec3d96d4be2ca4",
+      "output_sha256": "95b2af1b2e66a641cb98ac9a46c034bbecd870966ef9b9becac10fb1a6d20796"
+    },
+    "SKILL.md": {
+      "source": "SKILL.md",
+      "source_sha256": "bb9c671b2154450ee12782191f11714615aeb99580fe6dc76f9767a54e15cb0f",
+      "output_sha256": "fd047853acddb2fd6ffb435d26bf56ac88df07d2e3cabdcefc85e93915833add"
+    },
+    "agent-tool-exec-test.md": {
+      "source": "references/知识库/agent-tool-exec-test.md",
+      "source_sha256": "583a99047e375a42e54505753d732b98ad3c898463b38ce75844af1cc8393549",
+      "output_sha256": "3dd9af41d3fc2a9e857b36d92b40cef3a4c8b279dfe42db926b903588025886d"
+    },
+    "android-app-whitebox-audit.md": {
+      "source": "references/知识库/android-app-whitebox-audit.md",
+      "source_sha256": "74255743ce40ea10e2300d143642f7697388e5ef53e2983fcf137ab2ee02a1a7",
+      "output_sha256": "c37630df656b33cdc3949ee40bbb1c755cdb68f20b07c2be34787de65e4e04fd"
+    },
+    "api-gateway-oracle.md": {
+      "source": "references/知识库/api-gateway-oracle.md",
+      "source_sha256": "823fa6bbcc92956844d83cd0c4ec09046dffbcbea4ff40a632832ca91ae31308",
+      "output_sha256": "edaee50d786b6c975192647e6d68219b9de3cd0c2b8e073cb34dcaf9d9bd8520"
+    },
+    "api-gateway-test.md": {
+      "source": "references/知识库/api-gateway-test.md",
+      "source_sha256": "56f51b9aa7c754c76c5535fb7efc0a081b3fe99c965a974285f46fee6d016ac3",
+      "output_sha256": "675f52175385dd44ff30fa801b18774c145a11abc1fd2e727e98452273a4c298"
+    },
+    "authbypass-test.md": {
+      "source": "references/知识库/authbypass-test.md",
+      "source_sha256": "1f3c8c983182bec8a4b1a50249bac3b46bf20889b3de1f78f5e59cc5191b25b7",
+      "output_sha256": "dfbac090aa97d6eba861954af58ecfe38d66d17506ffaf25767a244f9f2722f8"
+    },
+    "cache-poisoning-test.md": {
+      "source": "references/知识库/cache-poisoning-test.md",
+      "source_sha256": "58c5a53d0107eda480755b134d4a55b396a03e9b6a73dbebfbf93da54371c60a",
+      "output_sha256": "a6e214fd379370d41ac3a15da7428e88555008c53239a694e0a68ee51ec008e4"
+    },
+    "chromium-browser-policy-layering.md": {
+      "source": "references/知识库/chromium-browser-policy-layering.md",
+      "source_sha256": "6fe4d6b55cc2e0def20ada63d2a22b7639b0425db01d23c1f18dc04ad3f235b6",
+      "output_sha256": "9a5e6077b983c85f34425d47c4b65857c2fc06440f31c65d3ade90ef4be62363"
+    },
+    "clickjacking-test.md": {
+      "source": "references/知识库/clickjacking-test.md",
+      "source_sha256": "556d36d9edec4ef0071e177bc45d2107560dda0526c314056f1f2294815b9374",
+      "output_sha256": "a23c779722df7d426111bc638ea131952a0f1ec46e3d8cc9aa8fdbc46407d63a"
+    },
+    "cloud-ide-codex-rce-chain.md": {
+      "source": "references/知识库/cloud-ide-codex-rce-chain.md",
+      "source_sha256": "e99109eda3f905a17170c6f19dceb151d7f163f8f1994799b5d76d1b686d4d1d",
+      "output_sha256": "5c34ed8c36c34c9c5bdcb4e43f610809e8320048fb5b6dad246857915f80dcdd"
+    },
+    "cors-test.md": {
+      "source": "references/知识库/cors-test.md",
+      "source_sha256": "1906cc0c84def60f35806bdbdaec4390919feb197d4853966214cb50b047344d",
+      "output_sha256": "f67e02a287b71aaf100b9af3161627a0a479f8a5ce4c06f1a273226f69f656e6"
+    },
+    "crlf-injection-test.md": {
+      "source": "references/知识库/crlf-injection-test.md",
+      "source_sha256": "afa2333e598a7dfad73d7a60632e1c91fb28fd406b34dedf754988f3ac345e4a",
+      "output_sha256": "dd008e845236cbd6bc4cb9eb6ae02579bdd3f37b25d65757151d7c64fde04c9d"
+    },
+    "csp-bypass-test.md": {
+      "source": "references/知识库/csp-bypass-test.md",
+      "source_sha256": "5f462d0af83186fc0e8931cf73c79c8593e18bb0534728dcc96e3b6491b93978",
+      "output_sha256": "9af30405f52abb7c95f88836f3820bee8d7b7556adef6f2019cfae5fe3445575"
+    },
+    "csrf-test.md": {
+      "source": "references/知识库/csrf-test.md",
+      "source_sha256": "14774a4e0341209b32a9b108e93c402ed7932123be9d90b458b8836b55ff2a2a",
+      "output_sha256": "12fec1d8c0e25fb9f9198d2cfb745c1fc0158f95ef3ea631393a58b25a483099"
+    },
+    "csv-formula-injection-test.md": {
+      "source": "references/知识库/csv-formula-injection-test.md",
+      "source_sha256": "7369e711ae4f435d482ff34a510789b931a0fe5f4cb94516bd543fb4c4fd1fa8",
+      "output_sha256": "990529644a5d4384a53ed30966be736caac483d7ddcc98d7399ae299f61b9971"
+    },
+    "dangling-markup-test.md": {
+      "source": "references/知识库/dangling-markup-test.md",
+      "source_sha256": "8643db8ee91f6456774ce1d80dfb5043559a6945824eeddbff65c79bf4198015",
+      "output_sha256": "1438554bac2df2378c3ba05a56c10513d9358672ce723a24601e6d540870deed"
+    },
+    "dependency-confusion-test.md": {
+      "source": "references/知识库/dependency-confusion-test.md",
+      "source_sha256": "57dff989bc482a1f8690dd10f95668817569748f2f777a24eb777fb73d468b45",
+      "output_sha256": "b15c23cb0ab89785349f7e6f5868f7d7043b873ce22234102107570536a0e219"
+    },
+    "deserialization-test.md": {
+      "source": "references/知识库/deserialization-test.md",
+      "source_sha256": "58f8b95c166db243c3f56be796c7ed874321cf12e94f8f1c21b0f0e50b460f50",
+      "output_sha256": "c575153979a49499019585aefdfc7f8a1459bcb53bee62612c7a31a35705d6f5"
+    },
+    "dns-rebinding-test.md": {
+      "source": "references/知识库/dns-rebinding-test.md",
+      "source_sha256": "589ebdc0b1504d02ab453b465913248dc1a19a47e544d91315e8be2aa343cf61",
+      "output_sha256": "9c73766699dcbe639d294a5e2481dbdf8256cb0553b68bcb760b171e4f3e98a1"
+    },
+    "el-injection-test.md": {
+      "source": "references/知识库/el-injection-test.md",
+      "source_sha256": "20bf45d632a07761204736118276821dae20b964d1656c9f9a9301b6a22ea943",
+      "output_sha256": "d477eaacd3929d2a839af217e87352e3dc8cdb06b59094c1c7997bab8272e1f7"
+    },
+    "email-header-injection-test.md": {
+      "source": "references/知识库/email-header-injection-test.md",
+      "source_sha256": "3e67d60ea8624e5688c77ba8b1ae47eaf3515f9d262829fb34682fae1c986f76",
+      "output_sha256": "084438f4cdef7b271afaa2ea4f639af349bfd4fb243472b8068522bdf0e9e7f0"
+    },
+    "file-upload-test.md": {
+      "source": "references/知识库/file-upload-test.md",
+      "source_sha256": "3330dcac0d2f93e13170cbd9fb1e321da3bee5e4dd8bab28292fa56c51161ed7",
+      "output_sha256": "626cd3ac2d79c524cff81a4138eff8a577b1a2414abce62eb4cd34cd4f4a64f5"
+    },
+    "ghost-bits-cast-test.md": {
+      "source": "references/知识库/ghost-bits-cast-test.md",
+      "source_sha256": "319c6f5729bcb4bc1c6b9c071b0d7da3f354d45dc5edcb3cb7984859622fc1e0",
+      "output_sha256": "d2a1c40076fbaeab7082079c59611b9d7d9bd87a54ef30bcdddb9376a91eb78b"
+    },
+    "graphql-test.md": {
+      "source": "references/知识库/graphql-test.md",
+      "source_sha256": "11eea6f67c7dcce0e2c345602b6c312c188151ed5d9bbca43ed82a42b88d4bb1",
+      "output_sha256": "238afcf6b3ece0d7d5f5134e2956d026e9ba2272fe1940490351576810d4d1ef"
+    },
+    "hpp-test.md": {
+      "source": "references/知识库/hpp-test.md",
+      "source_sha256": "ce127d6643dbf9b28b35bf2d7fc63bc504c6f842b715c0efb2ba534cf3ce70f3",
+      "output_sha256": "2c0f2be3ca95df6f24ea58943e32b40caff69cb18c20b0703df625c659cee450"
+    },
+    "http-host-header-test.md": {
+      "source": "references/知识库/http-host-header-test.md",
+      "source_sha256": "c68d4c63666b07518be9f5307fa9921fa43ad8f6c0a07c6c70294a57f29c5ccb",
+      "output_sha256": "98316d3429818cfb38f430c0e315915719d0c58b489cb100ca1834213a592dd7"
+    },
+    "http-smuggling-test.md": {
+      "source": "references/知识库/http-smuggling-test.md",
+      "source_sha256": "1b7de876a75f37a52cf0498efea4ae091deb369bf550f6f3c1a003cdd5a0e2f0",
+      "output_sha256": "fa50470775acc6b86c3af0d827ff9c0b0a8a7ef9295c178245bb85df482b3828"
+    },
+    "http2-attacks-test.md": {
+      "source": "references/知识库/http2-attacks-test.md",
+      "source_sha256": "2fa0ed1bb7e985d0617b407ec2ad151de032dcdcb137874588314f6ed4c92caa",
+      "output_sha256": "e54ffc8bf3b19f603b568d95baab3d8de30ca9c478997a11edb33f60f1a49d0f"
+    },
+    "idor-test.md": {
+      "source": "references/知识库/idor-test.md",
+      "source_sha256": "0cd99c2b0fde144900b18317331c0072806187eeead49c0e048b3a97f4676860",
+      "output_sha256": "2e84cf3e7d28017d3dd0fe6ec7c5e017b7f83dbb3258ef9b8be4b6ac789bef10"
+    },
+    "info-leak-test.md": {
+      "source": "references/知识库/info-leak-test.md",
+      "source_sha256": "caeebc12bc2f88849a585053e5be49c3a3cf4406e72b2482494b93f87711088f",
+      "output_sha256": "6ce16154b8e94695dac58f5e22d9f1ac38331a8c3e81536a46c1df57257cc4e9"
+    },
+    "injection-test.md": {
+      "source": "references/知识库/injection-test.md",
+      "source_sha256": "379269606c26bf36cc9a829a53042cfca981b78353b9b8b67efb5fbe8b364328",
+      "output_sha256": "9c2c311842baa0bc1404a976a04c36e3a7b362ab64c41317cb9ac037929ebccf"
+    },
+    "insecure-scm-test.md": {
+      "source": "references/知识库/insecure-scm-test.md",
+      "source_sha256": "5721f4c5bc0ca0ec9463e1495473da0d666e6211daa3d9541990326da7560411",
+      "output_sha256": "16c81b7cadbfd7b77cf883777eed9a173f733a7f7f0e69db38135bc5b1178382"
+    },
+    "jndi-injection-test.md": {
+      "source": "references/知识库/jndi-injection-test.md",
+      "source_sha256": "132786e3a1170274a44fd0a9d9b4c694c324be93a6afe6dbb8a73363e5fefb7f",
+      "output_sha256": "7a7a2fdf1f7b5552eeb4041217fd774d519f1abf8148d615fb8b7d94127ffa51"
+    },
+    "js-reverse-guide.md": {
+      "source": "references/知识库/js-reverse-guide.md",
+      "source_sha256": "93685252dceac6f050e61dc86ee09f28c55dcc4355ca9e6cae5288c3b848f6db",
+      "output_sha256": "057f8271a60854ab65f6ca4e2b621b0672bba582a7b7f2aceafe5e87be5b9283"
+    },
+    "llm-security-test.md": {
+      "source": "references/知识库/llm-security-test.md",
+      "source_sha256": "a1e1430f2274c2ef94d510f4474028c0ed079133887506907252d4aba6404992",
+      "output_sha256": "362f7052975e6028ace20942c7b64a3e9fdb27ced67fe1fdf037b77b8c8349e5"
+    },
+    "logic-test.md": {
+      "source": "references/知识库/logic-test.md",
+      "source_sha256": "251809c586b1c99439b27ea8fb019edc2bbd6e7b19c7289b99533b688711a90d",
+      "output_sha256": "6a1759cb179fdcad3e1518abd696d027e7d06a437911d5a08046294dc64c9c34"
+    },
+    "miniprogram-capture-token.md": {
+      "source": "references/知识库/miniprogram-capture-token.md",
+      "source_sha256": "787826003237a38b423b628982a7556aaf084922e98555521296c161a5bebaa6",
+      "output_sha256": "394ea75a54506d55eba0eec8c10db66b031174069cc0f259ffcd79e624ad5d08"
+    },
+    "mobile-dcp-gateway.md": {
+      "source": "references/知识库/mobile-dcp-gateway.md",
+      "source_sha256": "5dfb61267a6fcc424b639524e76fec9bc07261f2629c14224641c67b04e60629",
+      "output_sha256": "496c899af38cfab073c1001804a1e88bb5ef74cf00a9a87ceae8891346a125f6"
+    },
+    "oauth-jwt-test.md": {
+      "source": "references/知识库/oauth-jwt-test.md",
+      "source_sha256": "87d724c710ac21920755af7e59caee87cefc416bf59daedf3b7f2aeb954b18fa",
+      "output_sha256": "facf1ac14a25146d5af5b15265cf859f1b377d80ce405f434fff77f16301299f"
+    },
+    "open-redirect-test.md": {
+      "source": "references/知识库/open-redirect-test.md",
+      "source_sha256": "fa4338cbca1bb62df86e0909b1da07be86d74ccb1be68509ce7763e2a69c43ab",
+      "output_sha256": "b4bb7531dcd7e71561ba191e13410985bb5152892f52dc731dc6dc4bcb2ed11d"
+    },
+    "osint-asset-intel.md": {
+      "source": "references/知识库/osint-asset-intel.md",
+      "source_sha256": "82347bf0f8991f8661ddefec42cb8094e52ae43262a2a58bcc975fd8756a4d8e",
+      "output_sha256": "6f202b447dc0de4f60fdf98341445c67668c09dd3ec9aa923bbeed976b54ab6c"
+    },
+    "path-traversal-lfi-test.md": {
+      "source": "references/知识库/path-traversal-lfi-test.md",
+      "source_sha256": "95b598448b749e98b6cf8583e9bb97c0e5587a05f85656c75c8ab819632ec30a",
+      "output_sha256": "7f578a1d8acd3e29d2d58e6830a3d4af7e2ed113891cf0995626968566490113"
+    },
+    "prototype-pollution-test.md": {
+      "source": "references/知识库/prototype-pollution-test.md",
+      "source_sha256": "cfed96a51996ab703ba2416053bdd6869c7a8636993adf7ad77d4c871597b8d2",
+      "output_sha256": "f6e592aab538f3bde14fd733a1db6bb056da2a635c05cff6e9fcbdd9305a2b20"
+    },
+    "race-condition-test.md": {
+      "source": "references/知识库/race-condition-test.md",
+      "source_sha256": "abd8dc078283410715adc584c7cfb8ee892c0b9671275e7f150ef865a3ff0e9a",
+      "output_sha256": "ba753e53aee7b08c8ac700c194c633220a9919911d298e684cb0179de6f0ffd8"
+    },
+    "recon-methodology.md": {
+      "source": "references/知识库/recon-methodology.md",
+      "source_sha256": "08439b6413b134a00aaef4a59a9a5a4465d3e8451c2a42f678fdd29ee3596f68",
+      "output_sha256": "526e7a7cb71abd0eb9d7b237f50cc2515372816d8f220072cb81178efa05f3d3"
+    },
+    "rendering-service-rce-triage.md": {
+      "source": "references/知识库/rendering-service-rce-triage.md",
+      "source_sha256": "f8d901a551ef311428c7a5bad6d0edad0b4dc11745ba1bcbc0b4e14639b2d0f7",
+      "output_sha256": "82b766bc7212d86e98ae7222ca31b6301bc26ecb37a6269e0305e6db27d1075c"
+    },
+    "river-security-bypass.md": {
+      "source": "references/知识库/river-security-bypass.md",
+      "source_sha256": "bf253dca710d53af28d4c5de79ee2cfec7548e35654a6d906135fe7ccc7dd21e",
+      "output_sha256": "47cdf6a6d81060f2d44ba53b5ed89b02b408cc905f9e7dd7fbfab0e733b4ef9d"
+    },
+    "scanner-fingerprint-n-day-triage.md": {
+      "source": "references/知识库/scanner-fingerprint-n-day-triage.md",
+      "source_sha256": "a2029f7a7931a5dcfdf3750d9646b4e64310d023dcd616533db18b6ca363823f",
+      "output_sha256": "b06e5999bfe727719a9183ce99a1ea8fb05027b690aa2f329d2f87417f0d8313"
+    },
+    "sms-login-test.md": {
+      "source": "references/知识库/sms-login-test.md",
+      "source_sha256": "5f4e0b45b9d795d48513fbde09343b813c1dabdad9578bd824183116d198b875",
+      "output_sha256": "21952826258ffd5908875c4426aa44a174bec72773d44cdc7aaf16fc25f37068"
+    },
+    "ssrf-test.md": {
+      "source": "references/知识库/ssrf-test.md",
+      "source_sha256": "065b40171213d250f9343a7dd34d402d064e98d322ab1529325b0691164708c3",
+      "output_sha256": "e989171af5b6ad0a27ae138ae660ee0fad902279bd586ece6ad17ed74c25a049"
+    },
+    "subdomain-takeover-test.md": {
+      "source": "references/知识库/subdomain-takeover-test.md",
+      "source_sha256": "060394e1f5ec9e007c06ae0ce5e3a7a4aecd198e1d6caa1870ee4d9d1285ab0f",
+      "output_sha256": "ac28d434d61881df2db25129cb437872b4891ea26d6e475a8ab0d9c313c90592"
+    },
+    "type-juggling-test.md": {
+      "source": "references/知识库/type-juggling-test.md",
+      "source_sha256": "f9e49ae7174ee623779e1a4b6fef5350a32feefa79a3fe0116e01c6fcbb417fd",
+      "output_sha256": "ffd3ea04be028c737558dc606c403c0dbe6c6494c6b9389145ae4ade4dc7d474"
+    },
+    "unauth-service-config-field-triage.md": {
+      "source": "references/知识库/unauth-service-config-field-triage.md",
+      "source_sha256": "a8dc1000004b6c3afe1c58aa51c66a46dda4ced489efe55652e973d6597497af",
+      "output_sha256": "249f53c112c6c5dc12a2c31658eccefbeae27927079cb582ce65e81bb9e67c97"
+    },
+    "verification-oracle-enum.md": {
+      "source": "references/知识库/verification-oracle-enum.md",
+      "source_sha256": "69c166c9441f7330f6d406171c9be47f65bddacc49cf8449ab5ec3d9d824d336",
+      "output_sha256": "ce29471f62821fc2dbfddfbaac6889a11efc4852a6cb4b03b2c2b6ad3b766669"
+    },
+    "waf-bypass-parser-layer.md": {
+      "source": "references/知识库/waf-bypass-parser-layer.md",
+      "source_sha256": "4853bbd499c571053cdcddcb9fc2e58b24a8e6c0add8767c97931257c16c3d60",
+      "output_sha256": "d9a6f3275deab2322b110bcae4bb0b4cff28e72c7b8bad9f86a743fbf363c5a0"
+    },
+    "waf-bypass-strategy-selection.md": {
+      "source": "references/知识库/waf-bypass-strategy-selection.md",
+      "source_sha256": "0638232c255027f0084285df483acbe346089acc6d5c77ed599e542f364f6382",
+      "output_sha256": "2d983d87b023877dc7f9d12d4508e9f82fdccb23165b64b3d199a049dcfa099e"
+    },
+    "waf-bypass.md": {
+      "source": "references/知识库/waf-bypass.md",
+      "source_sha256": "942897e02c4f422178afea965b0d93e6db47d03f594959b8d48449554ece6e2f",
+      "output_sha256": "514c8aae805b57582d6b5364390114f18373b5fbcc07c15336973eccfcee5504"
+    },
+    "websocket-test.md": {
+      "source": "references/知识库/websocket-test.md",
+      "source_sha256": "ef68088b3833fe49341ba3210080f11ec094c9ddff5350fe322e5b8e2e8dbd64",
+      "output_sha256": "4f790f14384ed740fef00c720fdde7c656306bef7ac26cd2ef40ba5d359437fd"
+    },
+    "xslt-injection-test.md": {
+      "source": "references/知识库/xslt-injection-test.md",
+      "source_sha256": "4ff4ed9016fc6691378d461a2dd8ae0d430822a2e222479de3e4fdbc92807761",
+      "output_sha256": "f77280f528f0eee5fda79407d0506cbbe30d6059139b4323069e7a379e5c0ced"
+    },
+    "xss-test.md": {
+      "source": "references/知识库/xss-test.md",
+      "source_sha256": "5f4ecec512bcabac72ec0f5301b9794998e982ccb7007ccb2ebeeb584332a621",
+      "output_sha256": "29719342cb0a24ebb1e543dac77854e192befff7529dadad7727ee377068bf8a"
+    },
+    "xxe-test.md": {
+      "source": "references/知识库/xxe-test.md",
+      "source_sha256": "0a80802df4ae4699dc494f16278bd617347f99d194132f647543aa5ef582fd79",
+      "output_sha256": "95624d24ce49c7bbac28045185e80d1fc5ed0734f16d8890de2fb7aacb596b7f"
+    },
+    "yakit-mcp-forensics.md": {
+      "source": "references/知识库/yakit-mcp-forensics.md",
+      "source_sha256": "3a180da3e0590eed40d77057b970ec17a5c600e586630c5b903f7e50bbabc3a7",
+      "output_sha256": "662b606ad38573b3a29b8d4972917fb4b32fa52141ec8092e70d54417558be4f"
+    },
+    "打穿短表.md": {
+      "source": "references/知识库/打穿短表.md",
+      "source_sha256": "456a8193ff47322b9dc56fd5538a54122f9c8211667d8d5d6950d7ab114cc4db",
+      "output_sha256": "c4092b6c06fba811f9166bdf8a8dedaa3d39333d3c0ddfae030f70df905f7964"
+    }
+  }
+}

@@ -3,9 +3,13 @@ name: "cache-poisoning-test"
 description: "缓存投毒测试手册"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 > 结构：上半原有是主线（unkeyed / 欺骗）；下半补充 + 文末附件加深。先确认缓存键再打投毒。短表「缓存欺骗偷会话页」在原有「四、Web 缓存欺骗」下，用标题搜即可。
 >
-> 写不写只认 `../03-vuln-report-format.md`。只探到缓存键、没有投毒/偷会话 → 继续跟投毒/偷会话。有会话个人页/账单/`/api/me` 就可以打后缀，不必先看见 `X-Cache`。没这类页，不要为了勾表空加 `.css`。
+> 写不写只认 `load_skill("src_hunt/03-vuln-report-format")`。只探到缓存键、没有投毒/偷会话 → 继续跟投毒/偷会话。有会话个人页/账单/`/api/me` 就可以打后缀，不必先看见 `X-Cache`。没这类页，不要为了勾表空加 `.css`。
 
 ## 一、原有知识库
 
@@ -1148,12 +1152,12 @@ User-Agent: Mozilla/5.0 (mobile)
 → Returns mobile version
 
 GET / HTTP/1.1  
-User-Agent: Mozilla/5.0 (desktop)
-→ Returns desktop version
+User-Agent: Mozilla/5.0 (05-desktop-task-folder)
+→ Returns 05-desktop-task-folder version
 
 ### If Vary does NOT include User-Agent:
 ### Cache stores one response for all User-Agent values
-### Attacker can poison mobile users with desktop content (or vice versa)
+### Attacker can poison mobile users with 05-desktop-task-folder content (or vice versa)
 ```
 
 ### 7.3 Vary Header Injection

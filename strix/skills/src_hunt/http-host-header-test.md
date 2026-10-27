@@ -3,7 +3,11 @@ name: "http-host-header-test"
 description: "http-host-header"
 ---
 
-> 短表「Host 毒重置信」在 §2 下，用标题搜即可。有重置/激活口就打 Host / XFH（`dig-scope` §4.2.2），不必先看见邮件长什么样。没这类口，不要拿随机页空改 Host 来勾表。
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
+> 短表「Host 毒重置信」在 §2 下，用标题搜即可。有重置/激活口就打 Host / XFH（`load_skill("src_hunt/01-dig-scope-workflow")` §4.2.2），不必先看见邮件长什么样。没这类口，不要拿随机页空改 Host 来勾表。
 
 # http-host-header
 
@@ -29,7 +33,7 @@ The Host header is used by web applications and infrastructure for:
 
 ### Host 毒重置信（短表有指针）
 
-认：清单有重置 / 激活 / 邀请发信口（`dig-scope` §4.2.2）。不必先看见邮件里是不是用 Host 拼的。
+认：清单有重置 / 激活 / 邀请发信口（`load_skill("src_hunt/01-dig-scope-workflow")` §4.2.2）。不必先看见邮件里是不是用 Host 拼的。
 
 打：
 

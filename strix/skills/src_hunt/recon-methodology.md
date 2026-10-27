@@ -1,35 +1,34 @@
 ---
 name: "recon-methodology"
-description: "recon-and-methodology"
+description: "侦察方法论：子域枚举、指纹、接口发现与资产测绘"
 ---
+
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
 
 # recon-and-methodology
 
-> **测绘节奏只认** `dig-scope` §1.0.1 / §2.1：只搜**当前这一个**种子；本种子剩余活面没挖完禁止新搜。认到短表形态只打当前站，禁止拿 Morph 去全网 FOFA。优质根域只回灌，本种子挖完才搜。
+> **测绘节奏只认** `load_skill("src_hunt/01-dig-scope-workflow")` §1.0.1 / §2.1：只搜**当前这一个**种子；本种子剩余活面没挖完禁止新搜。认到短表形态只打当前站，禁止拿 Morph 去全网资产搜索。优质根域只回灌，本种子挖完才搜。
 >
 > **全量 nuclei 不当进度。** nuclei 只在需要已知 CVE / 暴露面（actuator、swagger、已知中间件）时辅助；禁止把「全量模板扫一遍」当本站矩阵。
 >
-> 调搜用 MCP `fofa`（`fofa__get_alerts`），不要自己 curl。Key 在 `~/.workbuddy/mcp.json` `[mcp_servers.fofa.env]`：主号 → backup → backup2，`fofa.py` 遇 429/820041 自动切。限流闸认 `dig-scope` §2.1.4。**禁止**把 email / key 写进本文件或对话。
+> 测绘取材：项目资产清单 → `crt.sh` / `subfinder` → 进站 JS / 响应带出的范围内 host。
+> 当前环境没有外部测绘 MCP；来源限流就切换来源或先挖已入池资产，禁止空刷、禁止停工。
+> 限流闸认 `load_skill("src_hunt/01-dig-scope-workflow")` §2.1.4。**禁止**把 email / key 写进本文件或对话。
 
-### FOFA 最短语法（备忘，不是开场）
+### 资产搜索最短流程（备忘，不是开场）
 
-```
-qbase64：查询语句 UTF-8 再 Base64
-fields：host,ip,port,title,server
-size：先小后翻；本种子结果可翻页，不是换种子
-
-domain="target.com"
-header="application/json"
-body="actuator"
-port="8080"
-server="nginx" && domain="target.com"
-cert.subject="品牌"
-icon_hash="xxx"
-status_code="200"
-组合 && ；排除 !=
+```text
+1) 先项目资产：平台注入的 scope + 用户给的 URL/域名
+2) crt.sh：curl -s "https://crt.sh/?q=%25.<根域>&output=json" | jq -r '.[].name_value' | sort -u
+3) subfinder：subfinder -d <根域> -o subdomains.txt
+4) 进站后：JS / 响应 / 配置里带出的同产品业务 host
+5) 去重去废去非存活 → 再挖；只搜当前一个种子，本种子挖完才搜下一个
 ```
 
-Quake / 凤鸟只补**当前种子**缺口，不当开场必跑。语法对照与 ROI 过滤见下文各节；过滤仍服从 `dig-scope` 去废 / 去非存活 / 股权闸。
+来源限流（429 / 超时 / 空结果）就换来源或先挖已入池资产；不要为搜一个词空转。
+Quake / 凤鸟之类的平台只补当前种子缺口，不当开场必跑。
 
 # Recon and Methodology
 
@@ -225,7 +224,7 @@ https://target.com/backup.zip
 
 ## 7. ZSEANO'S TESTING METHODOLOGY
 
-> **节奏不听本节。** 自由跳 / 一种子 / 力气先砸哪认 `dig-scope` + `src-value` §1.1。本节只当：参数怎么想、错误页/旧版本/移动端 API 别漏。命令和思路仍用。
+> **节奏不听本节。** 自由跳 / 一种子 / 力气先砸哪认 `load_skill("src_hunt/01-dig-scope-workflow")` + `load_skill("src_hunt/02-src-value-hunting")` §1.1。本节只当：参数怎么想、错误页/旧版本/移动端 API 别漏。命令和思路仍用。
 
 ### Core Philosophy
 1. **Go deep on one program** rather than spread across many — learn the application thoroughly
@@ -259,7 +258,7 @@ For each input point:
 
 ## 8. BUG BOUNTY PROGRAM TRIAGE (WHERE TO SPEND TIME)
 
-> **节奏不听本节。** 自由跳种子/换站认 `dig-scope`；力气先砸哪认 `src-value` §1.1。下面 Priority 不是第二套测绘，也不是 SRC 定级。命令和参数思路仍用。
+> **节奏不听本节。** 自由跳种子/换站认 `load_skill("src_hunt/01-dig-scope-workflow")`；力气先砸哪认 `load_skill("src_hunt/02-src-value-hunting")` §1.1。下面 Priority 不是第二套测绘，也不是 SRC 定级。命令和参数思路仍用。
 
 ### High-Value Target Selection
 ```
@@ -420,14 +419,14 @@ cat subdomains.txt | nuclei -t exposures/ -t misconfiguration/ -o exposed.txt
 ## 14. 锁面清单的「探活 + 三分类」工作流（2026-09-18 乐信实证）
 
 > 场景：用户丢来一份**固定域名清单**（锁面），要求「探活 + 分类」。交付物是**资产分类表**，不是漏洞报告。
-> 参考实现：`C:/Users/86182/Desktop/乐信_SRC挖洞/乐信_dig/`（`probe.py` / `login_probe.py` / `make_table.py` / `ct/`）。
+> 参考实现：``/workspace``（`probe.py` / `login_probe.py` / `make_table.py` / `ct/`）。
 
 ### 14.1 三步走
 
 | 步 | 做什么 | 产出 |
 |---|---|---|
 | 1 | **探活**：每个 host 分别 `https` / `http` 单发一次；记 DNS、状态码、跳转链（自己实现 `HTTPRedirectHandler` 记录）、Server/Content-Type、title、body 长度；body 原样落 `raw/<host>.<scheme>.html` | `probe_raw*.json` + `raw/` |
-| 2 | **分类**：**必须用真实浏览器渲染**（`tools/cdp/cdp_batch.py`），抽渲染后 URL / 标题 / 输入框 placeholder / 密码框数 / 按钮文案 / 相关 href | `cdp_batch_out*.json` |
+| 2 | **分类**：**必须用真实浏览器渲染**（`agent-browser-cli（批量渲染）`），抽渲染后 URL / 标题 / 输入框 placeholder / 密码框数 / 按钮文案 / 相关 href | `cdp_batch_out*.json` |
 | 3 | 汇总成全表（host / 分类 / 存活 / 状态码 / 标题 / Server / 体积 / 说明） | `资产/资产总表.tsv` |
 
 脚本要支持 `probe.py <hosts文件> <输出后缀>` 多轮跑 —— 扩面会发现新 host，需要增量第二轮、第三轮。
@@ -534,7 +533,7 @@ curl -s "https://crt.sh/?q=%25.<域>&output=json" -o ct/<域>.json
   这一条与 §14.7 二的「页脚注册协议」、`指纹库` 章「实体名当指纹」是同一族假阳性。
 
 八、★★ **CDP 补渲染：IP 直连 / 自签证书站点会 `eval empty`，需第二个 Chrome 带 `--ignore-certificate-errors`**（2026-09-26 cdcas）。
-`tools/cdp/cdp.py` 启动 Chrome 时**不带** `--ignore-certificate-errors` ⇒ 形如
+`agent-browser-cli` 启动 Chrome 时**不带** `--ignore-certificate-errors` ⇒ 形如
 `https://<IP>:9443/`、SNI 不匹配的站点会停在证书拦截页，`cdp_batch.py` 记 `error:"eval empty"`（**不是站点死**）。
 对策（一条命令内完成）：自己起一个 Chrome 实例再指过去 ——
 ```bash

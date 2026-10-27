@@ -3,6 +3,10 @@ name: "http-smuggling-test"
 description: "HTTP 请求走私测试手册"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 > 结构：上半原有是主线（CL.TE / TE.CL）；下半补充 + 文末附件加深 H2。先时间差确认再走私。
 >
 > 与 `src-value-hunting` 冲突时以 rules 为准。只能探到解析差、没有绕 WAF/劫持/投毒 → 默认不写。

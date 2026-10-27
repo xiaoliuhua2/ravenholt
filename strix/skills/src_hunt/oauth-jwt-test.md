@@ -3,6 +3,10 @@ name: "oauth-jwt-test"
 description: "OAuth/JWT/SAML 安全测试手册"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 > 结构：上半原有是主线（JWT / OAuth / SAML）；下半补充按 api-auth / jwt-oauth / oidc / saml 加深。标题搜即可。
 >
 > 跨域读 token：SRC 不挖 CORS，**勿开** `cors-test.md`。有跨站写走 `csrf-test.md`，有越权读走 `idor-test.md`。

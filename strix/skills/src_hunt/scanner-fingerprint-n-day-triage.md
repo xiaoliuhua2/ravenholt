@@ -3,9 +3,13 @@ name: "scanner-fingerprint-n-day-triage"
 description: "扫描器导出资产的 n-day 排查（先证伪指纹，再谈 CVE）"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 扫描器导出资产的 n-day 排查（先证伪指纹，再谈 CVE）
 
-> 触发场景：用户丢来一份 TscanPlus / FOFA / 灯塔 / Xray 导出的资产清单（JSON/CSV），问
+> 触发场景：用户丢来一份 TscanPlus / 资产搜索 / 灯塔 / Xray 导出的资产清单（JSON/CSV），问
 > 「这些资产有没有 n-day / 已知漏洞 / 有没有能打的 CVE」。
 > **核心结论：不核实指纹就直接匹配 CVE，等于白干一轮** —— 扫描器的 banner 误报率能到 **70%+**。
 
@@ -210,17 +214,17 @@ Sorry, Please contact GSRM Security support for more information.
 **反面亲例**：259 条正常探活 + 60 次 actuator/nginx 探测**都没触发**；
 随后用 **Python 脚本裸打** `seal.sheincorp.cn` 的 ~16 个 WebLogic 路径 + 1 次 T3 握手 → **出口 IP 被全域拉黑**（跨域生效）。
 
-**正面亲例（同一目标，换 IP 后）**：改用 `tools/cdp/cdp_slow.py`，**30 个请求分布 6 个主机，零封禁**。
+**正面亲例（同一目标，换 IP 后）**：改用 `agent-browser-cli（低频探针）`，**30 个请求分布 6 个主机，零封禁**。
 → 说明这类 WAF 主要看**请求特征 + 速率**，不只看次数。
 
-#### 工具：`tools/cdp/cdp_slow.py`（低频浏览器内探针）
+#### 工具：`agent-browser-cli（低频探针）`（低频浏览器内探针）
 
 原理：**不在 Python 里裸打**，而是在**真实 Chrome 的页面上下文里用 `fetch`** 逐个取路径 ——
 浏览器自带真实 TLS 指纹/JA3、`Sec-Fetch-*`、`Referer`、Cookie 与 JS 执行环境，没有"脚本特征"。
 
 ```bash
 PY312="C:/Program Files/Python312/python.exe"
-cd E:/codex_work/WorkBuddy_渗透/tools/cdp
+cd E:/codex_work/ravenholt_渗透/agent-browser-cli
 "$PY312" cdp.py open "https://target/" --key target --port 9888      # 先建立正常访问轨迹
 CDP_PORT=9888 "$PY312" cdp_slow.py "https://target/" /a /b /c --dmin 6000 --dmax 12000
 # 多主机：CDP_PORT=9888 "$PY312" cdp_slow.py --plan plan.json --out result.json
@@ -1108,7 +1112,7 @@ matchers:                       # 但它自己的 matcher 只是"存在性"
 
 ## §30 ★★ 扫描器「未授权 / 协议指纹」类判定必须带**阳性对照**
 
-> **通用规则**。亲例（uWSGI / XXL-JOB / H2 三例）见任务归档 `桌面/内网_SRC挖洞/*_误报复核_*/结论.md`。
+> **通用规则**。亲例（uWSGI / XXL-JOB / H2 三例）见任务归档 `工作区/内网_SRC挖洞/*_误报复核_*/结论.md`。
 
 ### 30.1 ★★ 根因通用式：把**否定信号（无响应 / 无差异）当成了肯定信号**
 

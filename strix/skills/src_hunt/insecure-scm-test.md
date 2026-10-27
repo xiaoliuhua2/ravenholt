@@ -3,6 +3,10 @@ name: "insecure-scm-test"
 description: "insecure-scm"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # insecure-scm
 
 # Insecure Source Code Management
@@ -157,7 +161,7 @@ Probe (adjust for app root and naming conventions):
 
 `/.git/HEAD` 是仓库文件漏到公网。进了工蜂 / GitLab / 自研 Git 网页之后，面还在业务里：
 
-- README、Wiki、议题、评论：按存储 XSS 打；有桌面客户端就再看它是不是把同一段 HTML 当特权页渲（`xss-test.md` §8）
+- README、Wiki、议题、评论：按存储 XSS 打；有工作区客户端就再看它是不是把同一段 HTML 当特权页渲（`xss-test.md` §8）
 - 加组员 / 邀请：顺序 `user_id` + 批量写（`idor-test.md` §4 / §8），不是新洞种
 - 克隆 / 仓库列表不按人隔离：你的仓出现在对方客户端里，只是把上面那条 XSS 送过去
 

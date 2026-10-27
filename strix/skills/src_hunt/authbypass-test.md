@@ -3,10 +3,14 @@ name: "authbypass-test"
 description: "authbypass-authentication-flaws"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # authbypass-authentication-flaws
 
-打开是登录页 / SSO → 表单壳听 `dig-scope` §4.1.1：找业务面；别按本文件从头跑字典 / 验证码 / 无限试密。  
-发会话、重置、改绑、换票、2FA 按本文件 + `dig-scope` §4.2.2 探针打，不要因为 §4.1.1 整摊跳过。表是每站下限，不是只准打这几枪。  
+打开是登录页 / SSO → 表单壳听 `load_skill("src_hunt/01-dig-scope-workflow")` §4.1.1：找业务面；别按本文件从头跑字典 / 验证码 / 无限试密。  
+发会话、重置、改绑、换票、2FA 按本文件 + `load_skill("src_hunt/01-dig-scope-workflow")` §4.2.2 探针打，不要因为 §4.1.1 整摊跳过。表是每站下限，不是只准打这几枪。  
 中间件裸默认口可一眼。滑块 / 发码 / 没进号的试密 → 转认证链，别停半截。写不写只认 `03-vuln-report-format.md`。
 英文字典/验证码 20 法/重置矩阵已砍；短表指针用标题搜。Host 毒重置见 `http-host-header-test.md`。扫码登录 CSRF 见 `csrf-test.md` §18。
 

@@ -3,6 +3,10 @@ name: "deserialization-test"
 description: "deserialization"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # deserialization
 
 # Insecure Deserialization
@@ -235,7 +239,7 @@ autotype 与 `\x`/`\u` 宽容解码的方式**；异常原文不要回显。
 **闭环判据（靶机实测，三段带外证据缺一不可）**：目标主动连假 LDAP → 收 `BindRequest`
 （`300c020101600702010304008000`）→ 返回 `javaNamingReference` → 目标 `GET /<Class>.class` 下载 →
 类静态块回连并带出命令回显（实测 `uid=0(root)…`）。
-工具：`tools/jndi/`（纯 Python 假 LDAP + HTTP 托管，无需 Java）。
+工具：`沙箱内 Python 自建 LDAP/HTTP 服务`（纯 Python 假 LDAP + HTTP 托管，无需 Java）。
 
 **纪律**：本步已属「让目标执行我们提供的代码」⇒ 走 `SKILL.md §2` 第 9 条**档②：先向用户描述后果
 （载荷是什么 / 目标上会发生什么 / 副作用与影响面 / 中止与善后），取得明确同意后执行**。
@@ -972,7 +976,7 @@ jo.getObject("nokey", zzz.AppDto.class);
    所以"该放行却拒了"才是有信息量的那发）；② 必须做**同一请求内**的两字段形态（排除"两发不同 JVM"）。
 ★ **版本梯子纠错**：Maven Central 上 `1.2.81` / `1.2.82` **根本没有发布**（1.2.80 → 1.2.83 → 1.2.84）
 ⇒ 写「fastjson ≤1.2.82」是**不可能成立**的表述；正确写法：**区间 1.2.68–1.2.83，修复版 1.2.84**。
-（本地对照脚本：`桌面/CTF/SRC收集/<任务>_SRC挖洞/复核/lab_cache_bypass/run.sh`）
+（本地对照脚本：`/workspace/CTF/SRC收集/<任务>_SRC挖洞/复核/lab_cache_bypass/run.sh`）
 
 #### ★ 由此固化的动作顺序
 

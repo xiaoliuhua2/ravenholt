@@ -3,7 +3,11 @@ name: "file-upload-test"
 description: "文件上传漏洞测试手册"
 ---
 
-> 写不写只认 `../03-vuln-report-format.md`。本篇是测法：别停在能传能下，跟可执行/路径/SSRF/跨用户业务对象。
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
+> 写不写只认 `load_skill("src_hunt/03-vuln-report-format")`。本篇是测法：别停在能传能下，跟可执行/路径/SSRF/跨用户业务对象。
 > 短表指针用标题搜。PHP 马 / GIFAR / ImageTragick / 英文附件已砍；没对象存储不要空打跨桶。
 > **2026-09-21 留痕**：下文「传统上传点…」一节来源任务定级为**中危**，按用户当日明确指令补入（原文门槛为「来源须高危/严重、中危不进」）——此为显式破例，非门槛松动；具体目标已脱敏。
 

@@ -3,6 +3,10 @@ name: "unauth-service-config-field-triage"
 description: "未授权服务的「配置字段级差分」— 从类型错误反推服务端调用"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 未授权服务的「配置字段级差分」— 从类型错误反推服务端调用
 
 > 适用：目标是一个「无账号、无会话、纯功能型」的服务接口（渲染/转换/导出/截图/水印类最常见），

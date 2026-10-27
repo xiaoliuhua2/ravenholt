@@ -3,6 +3,10 @@ name: "waf-bypass-parser-layer"
 description: "waf-bypass-parser-layer"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # waf-bypass-parser-layer
 
 # 解析层 WAF 绕过（2025–2026 研究落地）
@@ -369,7 +373,7 @@ Bichnigauri / Shonia / Shonia（Georgian Technical University），
 MCAICT Transactions Vol.4 (2025), pp.89-93。
 
 **场景**：已经打进去了，要**把数据带出来**，但出网流量过 WAF/IDS。
-（对应我们自己：`hunt-iter` 里「打穿后」的阶段，属**证明型**而非**拖库型**用法。）
+（对应我们自己：`load_skill("src_hunt/04-hunt-iter")` 里「打穿后」的阶段，属**证明型**而非**拖库型**用法。）
 
 **手法**：**三层编码叠加** —— `Base64 → 反转（Reversal）→ Hex`，
 **请求里的命令**和**响应里的被窃数据**都编码。
@@ -689,7 +693,7 @@ payload 变形（waf-bypass）→ Ghost Bits（Java）→ SPCA（h2）」的顺�
 - 真实浏览器 + 低频 + 随机间隔 **30 次** → **零触发**
 
 ⇒ **它判断"像不像人在用浏览器"的优先级，高于"内容里有什么词"。**
-落地工具：`tools/cdp/cdp_slow.py`（页面内 fetch + 随机间隔 + 拦截页自动熔断）。
+落地工具：`agent-browser-cli（低频探针）`（页面内 fetch + 随机间隔 + 拦截页自动熔断）。
 
 ### 14.5 纪律
 

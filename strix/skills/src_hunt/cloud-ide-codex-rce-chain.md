@@ -3,6 +3,10 @@ name: "cloud-ide-codex-rce-chain"
 description: "云 IDE / Codex 系 AI 编程平台：弱口令→Root RCE→凭证链"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 云 IDE / Codex 系 AI 编程平台：弱口令→Root RCE→凭证链
 
 > 类型：认证缺陷 + 危险 RPC + 容器/集群凭证链  
@@ -14,7 +18,7 @@ description: "云 IDE / Codex 系 AI 编程平台：弱口令→Root RCE→凭�
 
 认：公网编程台有 `/tenant-api/login` + `/codex-api/rpc`（或同类租户登录 + Codex RPC）。不是对话口 bash 工具（那枪见 `agent-tool-exec-test.md`），也不是 VS Code 无登录墙读 environ（那枪见 `path-traversal-lfi-test.md`）。
 
-打：当前站。裸默认口拿会话，再 `command/exec` / `fs/*` / `env`。无 Cookie 也试 `meta/methods`。认到只打当前站，禁止开新种子 FOFA。
+打：当前站。裸默认口拿会话，再 `command/exec` / `fs/*` / `env`。无 Cookie 也试 `meta/methods`。认到只打当前站，禁止开新种子资产搜索。
 
 算成：root 且 hostname 像持久计算面 Pod，并能读出集群 SA 或模型 Key。
 
@@ -65,7 +69,7 @@ curl -sk -X POST "https://HOST/codex-api/rpc" \
 
 ### 2.2 弱口令（登录）
 
-只打**当前站**这形态控制台的裸默认口（`dig-scope` §4.1.1：登录表单字典不当必做）。一眼：
+只打**当前站**这形态控制台的裸默认口（`load_skill("src_hunt/01-dig-scope-workflow")` §4.1.1：登录表单字典不当必做）。一眼：
 
 ```bash
 curl -sk -X POST "https://HOST/tenant-api/login" \
@@ -138,7 +142,7 @@ curl -sk -X POST "https://HOST/codex-api/rpc" \
 
 ## 4. 资产怎么找
 
-**只打当前站。** 认到 `/tenant-api/login`、`/codex-api/rpc` 就在本 host 打 §2，禁止认到就新开种子、FOFA 全网同皮（hunt-iter 开场；`dig-scope` 一种子闭环）。优质根域只回灌，本种子剩余活面挖完才搜。
+**只打当前站。** 认到 `/tenant-api/login`、`/codex-api/rpc` 就在本 host 打 §2，禁止认到就新开种子、资产搜索全网同皮（hunt-iter 开场；`load_skill("src_hunt/01-dig-scope-workflow")` 一种子闭环）。优质根域只回灌，本种子剩余活面挖完才搜。
 
 下面语句**仅当本任务本种子已经是 Codex / 编程台这条**时，用来翻本种子结果，不是认到同框架就另开工厂：
 
@@ -158,7 +162,7 @@ body="@openai/codex" || body="command/exec"
 2. **注册接口 + 固定邀请码**：env 或前端硬编码 `TENANT_INVITE_CODE`
 3. **JWT 弱密钥 / 算法 none**：`tenant_session` 伪造 admin
 4. **WebSocket / 另一网关**：同源 Codex 走 WS 推命令
-5. **同种子 sibling**：去 `-dev` / 生产 host 只做一眼差分（新 path / 回码变了才升级）。禁止为此开新种子 FOFA
+5. **同种子 sibling**：去 `-dev` / 生产 host 只做一眼差分（新 path / 回码变了才升级）。禁止为此开新种子资产搜索
 6. **多租户隔离**：普通用户 session 是否也能 `command/exec`（垂直越权 RCE）
 
 ---

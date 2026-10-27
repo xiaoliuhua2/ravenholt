@@ -3,9 +3,13 @@ name: "miniprogram-capture-token"
 description: "小程序 / APP 抓包资产的凭证长效性验证（2026-09-15 · 联通小程序实证）"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 小程序 / APP 抓包资产的凭证长效性验证（2026-09-15 · 联通小程序实证）
 
-> 触发：用户丢来一份抓包（Yakit / Burp / mitm）说「挖这个小程序/APP」。这是**锁面**任务，不要 FOFA 出圈。
+> 触发：用户丢来一份抓包（Yakit / Burp / mitm）说「挖这个小程序/APP」。这是**锁面**任务，不要资产搜索出圈。
 > 核心思路：**抓包里的凭证会不会过期、能不能吊销、会不会被带出到别处** —— 这三问决定有没有洞。
 
 ## 0. 流水线（一次过）
@@ -173,7 +177,7 @@ for p in (r'"session_id":"([0-9a-f]{32})"', r'"token_id":"([^"]+)"',
 ### 7.2 解包
 
 ```bash
-python tools/wxapkg_v1mmwx.py <含 __APP__.wxapkg 的目录> <输出目录> <appid>
+python3 -m wxapkg <含 __APP__.wxapkg 的目录> <输出目录> <appid>
 ```
 
 - key 由 appid 派生（PBKDF2-SHA1(appid, "saltiest", 1000)），**不需要逆向**。

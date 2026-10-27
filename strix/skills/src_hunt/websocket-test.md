@@ -3,6 +3,10 @@ name: "websocket-test"
 description: "WebSocket 安全测试手册"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 > 结构：上半原有是主线（握手 / Origin / CSWSH / 注入）；下半补充加深（走私、Socket.IO）。短表没点名时先握手+越权消息。
 >
 > 与 `src-value-hunting` 冲突时以 rules 为准。仅 Origin 缺失、没有读到/改到他人数据 → 默认不写。

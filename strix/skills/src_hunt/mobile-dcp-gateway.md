@@ -3,6 +3,10 @@ name: "mobile-dcp-gateway"
 description: "运营商「dcp / 集中运营」类小程序加密网关（2026-09-17 四川移动实证）"
 ---
 
+> **ravenholt 环境版**：本文件由 `scripts/vendor_src_hunt.py` 按 `profiles/ravenholt.yaml` 生成。
+> 技能一律用 `load_skill("src_hunt/<name>")` 按名加载，正文里的旧文件路径只作索引；
+> `01`～`10` 指 `src_hunt/0X-*`。旧环境路径/工具名已替换；正文点名的脚本在沙箱里不存在时，改用等价工具，不要停工。
+
 # 运营商「dcp / 集中运营」类小程序加密网关（2026-09-17 四川移动实证）
 
 > **触发**：目标站是小程序 / APP，请求体是 `{"body":"<base64密文>","secRamSt":"<base64密文>"}`，响应是 `{"body":"...","key":"..."}`，
@@ -13,7 +17,7 @@ description: "运营商「dcp / 集中运营」类小程序加密网关（2026-0
 
 ```
 1) 解包小程序 → 找 $http 封装 → 抄出算法（这一层是平台级的，抄一次终身受用）
-2) 用 tools/dcp/dcp_gateway.py 自造合法请求（能发出去 + 解回响应 = 大门打开）
+2) 用 沙箱内 Python 脚本 自造合法请求（能发出去 + 解回响应 = 大门打开）
 3) 静态抽全量 API 映射表（几百条）→ 挑只读接口
 4) 批量「不带 Authorization + 空参」扫一遍 → 按回码分三类（登录闸 / 公开面 / 缺参可达）
 5) 对「缺参可达」逐个补参 → 找那些**吐内部数据的 /pub/ 口**
@@ -122,6 +126,6 @@ POST 业务请求：
   每次随机且打本网关一律 40001，**只是给 COC 平台的跳转票据**，不构成身份（但可记"生产凭证被明文拼进 URL 传给 dev 域"这类加固项）
 
 ## 4. 工具
-`tools/dcp/dcp_gateway.py`（`HOST` 可用 `DCP_HOST` 环境变量换站）：`Session().refresh()` 取钥 →
+`沙箱内 Python 脚本`（`HOST` 可用 `DCP_HOST` 环境变量换站）：`Session().refresh()` 取钥 →
 `call(path, payload)` 发请求 → `call_json()` 直出明文 JSON；`jsfun_encrypt_b64()` 打固定公钥那套；
 `last_packet` 现成的可粘贴整包。整包生成 + 原样重放验证见任务 `tmp/sc_packets.py` 思路。
