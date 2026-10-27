@@ -268,6 +268,8 @@ async def create_or_reuse(
     local_sources: list[dict[str, Any]],
     extra_files: list[dict[str, Any]] | None = None,
     status_sink: StatusSink | None = None,
+    extra_bind_mounts: list[dict[str, Any]] | None = None,
+    extra_environment: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return the existing session bundle for ``scan_id`` or create a new one.
 
@@ -278,6 +280,10 @@ async def create_or_reuse(
     "content": bytes | str}``) lands as a regular, agent-writable file at its
     ``workspace_path`` on every backend: the files are uploaded as one archive
     and unpacked inside the sandbox right after bring-up.
+
+    ``extra_bind_mounts`` adds host-directory mounts beyond the source trees
+    (e.g. a shared tool-data cache) and ``extra_environment`` adds container
+    environment entries (e.g. a registry mirror for tool databases).
     """
 
     def report(phase: str) -> None:
@@ -323,6 +329,7 @@ async def create_or_reuse(
                 "https_proxy": container_caido_url,
                 "ALL_PROXY": container_caido_url,
                 "NO_PROXY": "localhost,127.0.0.1",
+                **{key: str(value) for key, value in (extra_environment or {}).items() if value},
             },
         ),
     )
@@ -339,6 +346,7 @@ async def create_or_reuse(
         manifest=manifest,
         exposed_ports=(_CONTAINER_CAIDO_PORT, _CONTAINER_CONTROL_PORT),
         bind_mounts=bind_mounts,
+        extra_bind_mounts=extra_bind_mounts,
     )
 
     if extra_file_archive is not None:

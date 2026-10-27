@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -29,6 +30,18 @@ logger = logging.getLogger(__name__)
 CONTAINER_CAIDO_PORT = 48080
 # 容器内 Go 控制面端口（终端 / files / noVNC / 出网代理），端口映射同样写进记录。
 CONTAINER_CONTROL_PORT = 8000
+
+# 工具数据（trivy 漏洞库、observer_ward 指纹）在容器里按用户缓存，重建容器就会丢；
+# 统一挂到宿主缓存目录，全平台共享一份，既不重复下载也不占容器盘。容器内的 pentester
+# 需要能写，宿主侧把目录权限放开。
+_TRIVY_CACHE_TARGET = "/home/pentester/.cache/trivy"
+_OBSERVER_WARD_CACHE_TARGET = "/home/pentester/.config/observer_ward"
+# 默认真实漏洞库镜像：官方 mirror.gcr.io 在部分网络下不可达，ghcr.io 直连带宽也很低；
+# 国内镜像 11 秒可下完 130MiB，可由宿主环境变量覆盖。
+_DEFAULT_TRIVY_DB_REPOSITORY = "ghcr.nju.edu.cn/aquasecurity/trivy-db"
+_TRIVY_DB_REPOSITORY_ENV = "SANDBOX_TRIVY_DB_REPOSITORY"
+
+_warmup_tasks: set[asyncio.Task] = set()
 
 
 class SandboxProvisionError(RuntimeError):
@@ -134,6 +147,8 @@ async def provision_sandbox(
             image=image,
             local_sources=local_sources or [],
             extra_files=None,
+            extra_bind_mounts=_tool_cache_mounts(),
+            extra_environment=_tool_environment(),
         )
     except Exception as exc:  # noqa: BLE001 - 统一收敛成可降级的提供失败
         raise SandboxProvisionError(f"failed to bring up sandbox session: {exc}") from exc
@@ -146,6 +161,7 @@ async def provision_sandbox(
     control_host, control_port = await _resolve_exposed_endpoint(session, CONTAINER_CONTROL_PORT)
     gated = bind_policy_gate(session, session_id=session_id, publisher=_session_publisher(session_id))
     container_hash, container_name = _session_container(gated)
+    _spawn_tool_warmup(gated, session_id)
 
     result = SandboxProvisionResult(
         client=bundle.get("client"),
@@ -187,6 +203,73 @@ async def provision_sandbox(
         caido_host=result.caido_host,
         caido_port=result.caido_port,
     )
+
+
+def _tool_cache_mounts() -> list[dict[str, Any]]:
+    """宿主共享的工具数据目录（trivy 漏洞库 / observer_ward 指纹）挂进容器。
+
+    trivy 的 DB 解压后约 1.6GiB，按容器各存一份会迅速吃满宿主磁盘；共享一份后只有
+    首次下载有成本，后续容器直接复用。容器内以 pentester（非 root）写缓存，宿主目录
+    放宽到 0777。
+    """
+    from config import WORKSPACE
+
+    cache_root = WORKSPACE / "cache"
+    specs = (
+        (cache_root / "trivy", _TRIVY_CACHE_TARGET),
+        (cache_root / "observer_ward", _OBSERVER_WARD_CACHE_TARGET),
+    )
+    mounts: list[dict[str, Any]] = []
+    for source, target in specs:
+        try:
+            source.mkdir(parents=True, exist_ok=True)
+            os.chmod(source, 0o777)
+        except OSError:
+            logger.warning("tool cache dir is not writable: %s", source, exc_info=True)
+        mounts.append({"source": str(source), "target": target, "read_only": False})
+    return mounts
+
+
+def _tool_environment() -> dict[str, str]:
+    repository = os.environ.get(_TRIVY_DB_REPOSITORY_ENV, _DEFAULT_TRIVY_DB_REPOSITORY).strip()
+    return {"TRIVY_DB_REPOSITORY": repository} if repository else {}
+
+
+def _spawn_tool_warmup(session: Any, session_id: str) -> None:
+    task = asyncio.create_task(
+        _warm_tool_data(session, session_id),
+        name=f"tool-warmup-{session_id}",
+    )
+    _warmup_tasks.add(task)
+    task.add_done_callback(_warmup_tasks.discard)
+
+
+async def _warm_tool_data(session: Any, session_id: str) -> None:
+    """后台补齐容器内工具数据：observer_ward 指纹 / trivy 漏洞库。
+
+    best-effort：拿不到只记日志，不阻断回合；首次全平台共享目录为空时才真正下载
+    （trivy 约 130MiB，镜像源 10s 级），后续容器命中共享缓存后只做一次元数据检查。
+    """
+    commands = (
+        ("observer_ward -u", 120),
+        ("trivy fs --download-db-only", 300),
+    )
+    for command, timeout in commands:
+        try:
+            result = await session.exec("sh", "-c", command, timeout=timeout)
+            logger.info(
+                "tool data warm-up session=%s cmd=%r ok=%s",
+                session_id,
+                command,
+                result.ok() if hasattr(result, "ok") else True,
+            )
+        except Exception:  # noqa: BLE001 - 工具数据缺失不应影响渗透任务
+            logger.warning(
+                "tool data warm-up failed session=%s cmd=%r",
+                session_id,
+                command,
+                exc_info=True,
+            )
 
 
 async def _resolve_exposed_endpoint(session: Any, port: int) -> tuple[str, int]:
