@@ -80,7 +80,7 @@
 
 .chat-message-user {
   justify-items: end;
-  max-width: min(620px, 78%);
+  max-width: min(720px, 82%);
 }
 
 .message-timestamp {
@@ -92,7 +92,7 @@
   letter-spacing: 0.04em;
 }
 
-/* 用户消息：右对齐纯文本 + 右侧一条品牌色竖线 */
+/* 用户消息：气泡靠右，正文左对齐（长任务/多行清单右对齐会碎成锯齿状） */
 .user-bubble {
   padding: 0 14px 0 0;
   color: var(--z-text);
@@ -103,7 +103,7 @@
   border-radius: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
-  text-align: right;
+  text-align: left;
 }
 
 .user-bubble-text {

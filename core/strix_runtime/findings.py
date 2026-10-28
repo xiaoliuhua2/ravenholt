@@ -11,6 +11,7 @@ ravenholt 独立验证器重放复现（关联 ``evidence_id``）后才可能升
 
 from __future__ import annotations
 
+import difflib
 import logging
 import re
 from typing import Any
@@ -133,7 +134,7 @@ def report_to_finding_request(
         str(report.get("severity") or "").strip().lower(),
         WorkProjectFindingSeverity.INFO,
     )
-    title = str(report.get("title") or "").strip() or "Untitled finding"
+    title = str(report.get("title") or "").strip() or "未命名发现"
     return WorkProjectFindingRequest(
         title=title[:255],
         severity=severity,
@@ -156,7 +157,7 @@ def _compose_description(report: dict[str, Any]) -> str:
     ``strix/skills/src_hunt/03-vuln-report-format.md`` 是同一份文件，md5 一致）。
     落库正文即规范版 ⇒ 报告界面原样渲染该骨架，另由证据包注入可重放整包。
     """
-    title = str(report.get("title") or "").strip() or "Untitled finding"
+    title = str(report.get("title") or "").strip() or "未命名发现"
     target = str(report.get("target") or "").strip()
     endpoint = str(report.get("endpoint") or "").strip()
     method = str(report.get("method") or "").strip()
@@ -256,6 +257,39 @@ def _report_url(report: dict[str, Any]) -> str:
         if value:
             return value
     return ""
+
+
+_CWE_PATTERN = re.compile(r"CWE-\d+", re.IGNORECASE)
+
+
+def _normalized_location(url: str) -> str:
+    return str(url or "").strip().lower().rstrip("/")
+
+
+def _cwe_of(text: str) -> str:
+    match = _CWE_PATTERN.search(str(text or ""))
+    return match.group(0).upper() if match else ""
+
+
+def _titles_alike(left: str, right: str) -> bool:
+    left_key = re.sub(r"[^\w\u4e00-\u9fff]+", "", left.lower())
+    right_key = re.sub(r"[^\w\u4e00-\u9fff]+", "", right.lower())
+    if not left_key or not right_key:
+        return False
+    return difflib.SequenceMatcher(None, left_key, right_key).ratio() >= 0.5
+
+
+def _summary_location(url: str) -> str:
+    """总结去重只看「主机+端口+路径」：同一接口换对象 id / 参数仍算同一问题。"""
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    split = urlsplit(raw if "://" in raw else f"//{raw}")
+    host = (split.hostname or "").lower()
+    if not host:
+        return raw.lower().rstrip("/")
+    port = split.port or (443 if split.scheme == "https" else 80)
+    return f"{host}:{port}{split.path.rstrip('/') or '/'}"
 
 
 async def _resolve_asset_id(project_id: int, report: dict[str, Any]) -> int | None:
@@ -382,12 +416,114 @@ class WorkProjectFindingMirror:
         self._session_id = session_id
         self._agent_code = agent_code
         self._pending: list[dict[str, Any]] = []
+        self._withdrawn: list[str] = []
         self.finding_ids: list[int] = []
 
     def on_report(self, report: dict[str, Any]) -> None:
         """ravenholt ``vulnerability_found_callback``（同步）——仅入队。"""
         if isinstance(report, dict):
             self._pending.append(dict(report))
+
+    def on_delete(self, report: dict[str, Any]) -> None:
+        """ravenholt ``vulnerability_deleted_callback``（同步）——撤稿后不再镜像。"""
+        if not isinstance(report, dict):
+            return
+        report_id = str(report.get("id") or "").strip()
+        if not report_id:
+            return
+        self._pending = [
+            item for item in self._pending if str(item.get("id") or "") != report_id
+        ]
+        if report_id not in self._withdrawn:
+            self._withdrawn.append(report_id)
+
+    async def _drop_withdrawn_findings(self) -> None:
+        """删掉之前回合已经镜像、但本轮被撤稿的报告对应 finding。"""
+        if not self._withdrawn:
+            return
+        from sqlmodel import select
+
+        from database import get_async_session
+        from model.work_project.findings import WorkProjectFinding
+        from service.work_project.findings import delete_work_project_finding
+
+        doomed: list[int] = []
+        async with get_async_session() as session:
+            for report_id in self._withdrawn:
+                rows = (
+                    await session.exec(
+                        select(WorkProjectFinding).where(
+                            WorkProjectFinding.project_id == self._project_id,
+                            WorkProjectFinding.created_from_session_id == self._session_id,
+                            WorkProjectFinding.description.contains(
+                                f"ravenholt 报告 {report_id}"
+                            ),
+                        )
+                    )
+                ).all()
+                doomed.extend(int(row.id) for row in rows if row.id is not None)
+        for finding_id in doomed:
+            await delete_work_project_finding(self._project_id, finding_id)
+        self._withdrawn.clear()
+
+    async def _existing_finding_for_location(self, report: dict[str, Any]) -> int | None:
+        """同一证据地址已经落过 finding 时不再重复镜像（证据路径 + 报告路径归一）。"""
+        location = _normalized_location(_report_url(report))
+        if not location:
+            return None
+        from sqlmodel import select
+
+        from database import get_async_session
+        from model.evidence.evidence import Evidence
+        from model.work_project.findings import WorkProjectFinding
+
+        async with get_async_session() as session:
+            rows = (
+                await session.exec(
+                    select(WorkProjectFinding).where(
+                        WorkProjectFinding.project_id == self._project_id,
+                        WorkProjectFinding.created_from_session_id == self._session_id,
+                        WorkProjectFinding.evidence_id.is_not(None),
+                    )
+                )
+            ).all()
+            if not rows:
+                return None
+            evidence_ids = [int(row.evidence_id) for row in rows if row.evidence_id is not None]
+            evidence_rows = (
+                await session.exec(select(Evidence).where(Evidence.id.in_(evidence_ids)))
+            ).all()
+        by_id = {
+            int(item.id): (
+                _normalized_location(item.url),
+                str(item.method or "").strip().upper(),
+            )
+            for item in evidence_rows
+            if item.id is not None
+        }
+        candidate_method = str(report.get("method") or "").strip().upper()
+        candidate_cwe = _cwe_of(str(report.get("cwe") or "")) or _cwe_of(
+            str(report.get("description") or "")
+        )
+        candidate_title = str(report.get("title") or "")
+        for row in rows:
+            if row.evidence_id is None:
+                continue
+            evidence_url, evidence_method = by_id.get(int(row.evidence_id), ("", ""))
+            if evidence_url != location:
+                continue
+            if candidate_method and evidence_method and candidate_method != evidence_method:
+                continue
+            row_cwe = _cwe_of(str(row.description or ""))
+            if candidate_cwe and row_cwe and candidate_cwe != row_cwe:
+                continue
+            # 两边都缺 CWE 时，只合并标题高度相似的记录，避免同地址不同漏洞被吞掉。
+            if not (candidate_cwe and row_cwe) and not _titles_alike(
+                candidate_title, str(row.title or "")
+            ):
+                continue
+            return int(row.id) if row.id is not None else None
+        return None
 
     async def flush(self) -> list[int]:
         """把已收集的报告落库为 finding，返回新建 finding id 列表。
@@ -397,9 +533,15 @@ class WorkProjectFindingMirror:
         """
         from service.work_project.findings import create_work_project_finding
 
+        await self._drop_withdrawn_findings()
         created: list[int] = []
         while self._pending:
             report = self._pending.pop(0)
+            existing_id = await self._existing_finding_for_location(report)
+            if existing_id is not None:
+                # 同一地址已由证据路径落库，报告不再重复记一条 finding。
+                self.finding_ids.append(existing_id)
+                continue
             asset_id = await _resolve_asset_id(self._project_id, report)
             evidence_id = await _persist_replay(report)
             request = report_to_finding_request(
@@ -465,6 +607,27 @@ _SUMMARY_INTERNAL_TOOL = re.compile(
     r"update_vulnerability_report|finish_scan|agent_finish|create_agent|send_message_to_agent|"
     r"wait_for_agents|view_agent_graph|stop_agent)\b"
 )
+# coverage 台账里的内部状态码（needs_follow_up / PASS / FAIL…）不该出现在给用户看的总结里，
+# 统一换成中性中文说法。
+_SUMMARY_STATUS = re.compile(
+    r"(?<![A-Za-z0-9_])(needs_follow_up|not_tested|pass|degraded|fail)(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+_SUMMARY_STATUS_LABEL = {
+    "needs_follow_up": "待补测",
+    "not_tested": "未测试",
+    "pass": "通过",
+    "degraded": "受限",
+    "fail": "未通过",
+}
+# 总结里不出现 finding 这类通用英文词；CVE、CWE、JWT、API 等专业术语保持原样。
+_SUMMARY_FINDING = re.compile(
+    r"(?<![A-Za-z0-9_])findings?(?![A-Za-z0-9_])", re.IGNORECASE
+)
+
+
+def _public_title(text: str) -> str:
+    return _SUMMARY_FINDING.sub("发现", str(text or "").strip())
 
 
 def _sanitize_public_text(text: str) -> str:
@@ -474,10 +637,15 @@ def _sanitize_public_text(text: str) -> str:
     cleaned = _SUMMARY_SLICE.sub("", cleaned)
     cleaned = _SUMMARY_INTERNAL_PATH.sub("（内部路径已隐去）", cleaned)
     cleaned = _SUMMARY_INTERNAL_TOOL.sub("", cleaned)
+    cleaned = _SUMMARY_STATUS.sub(
+        lambda match: _SUMMARY_STATUS_LABEL.get(match.group(1).lower(), ""),
+        cleaned,
+    )
     cleaned = _SUMMARY_PRODUCT.sub(
         lambda match: _SUMMARY_PRODUCT_LABEL.get(match.group(1).lower(), "平台"),
         cleaned,
     )
+    cleaned = _SUMMARY_FINDING.sub("发现", cleaned)
     cleaned = re.sub(r"[（(]\s*[，、；;:：]?\s*[）)]", "", cleaned)
     cleaned = cleaned.replace("（内部路径已隐去）)", "（内部路径已隐去）")
     cleaned = cleaned.replace("（内部路径已隐去））", "（内部路径已隐去）")
@@ -487,15 +655,42 @@ def _sanitize_public_text(text: str) -> str:
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
+def _dedupe_title(text: str) -> str:
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", text.lower())
+
+
+def _prefer_finding(left: Any, right: Any) -> Any:
+    """同一漏洞有两条台账时保留信息更强的一条：已验证优先，其次严重度更高。"""
+    left_validated = (
+        str(getattr(left, "status", "") or "").strip().lower()
+        == WorkProjectFindingStatus.VALIDATED.value
+    )
+    right_validated = (
+        str(getattr(right, "status", "") or "").strip().lower()
+        == WorkProjectFindingStatus.VALIDATED.value
+    )
+    if left_validated != right_validated:
+        return left if left_validated else right
+    left_rank = _SEVERITY_RANK.get(str(getattr(left, "severity", "") or "").strip().lower(), 9)
+    right_rank = _SEVERITY_RANK.get(str(getattr(right, "severity", "") or "").strip().lower(), 9)
+    return left if left_rank <= right_rank else right
+
+
 async def build_session_findings_summary(project_id: int, session_id: str) -> dict[str, Any]:
     """汇总某会话的 finding，按「证据是否可复现」分成三类。
 
     分类只看平台落库后的状态与 evidence 关联，不看 agent 自述：
     ``validated`` → 已验证；``suspected`` 但有 evidence → 复验未通过；无 evidence → 无法验证。
+
+    同一条漏洞可能同时有「证据台账」和「正式报告」两条 finding：证据包 URL 相同且标题
+    高度相似（或标题完全一致）时合并为一条，避免结论把同一问题重复列成多个漏洞。
     """
+    import difflib
+
     from sqlmodel import select
 
     from database import get_async_session
+    from model.evidence.evidence import Evidence
     from model.work_project.findings import WorkProjectFinding
 
     async with get_async_session() as session:
@@ -509,24 +704,67 @@ async def build_session_findings_summary(project_id: int, session_id: str) -> di
                 .order_by(WorkProjectFinding.id)
             )
         ).all()
+        evidence_ids = [row.evidence_id for row in rows if row.evidence_id is not None]
+        urls: dict[int, str] = {}
+        if evidence_ids:
+            evidence_rows = (
+                await session.exec(
+                    select(Evidence).where(Evidence.id.in_(evidence_ids))
+                )
+            ).all()
+            urls = {
+                int(item.id): _summary_location(item.url)
+                for item in evidence_rows
+                if item.id is not None
+            }
 
     def _item(row: WorkProjectFinding) -> dict[str, Any]:
         return {
-            "title": str(row.title or "").strip() or "Untitled finding",
+            "title": _public_title(str(row.title or "")) or "未命名发现",
             "severity": str(row.severity or "").strip().lower(),
         }
 
     ordered = sorted(
-        rows,
+        (
+            row
+            for row in rows
+            if str(row.status or "").strip().lower()
+            != WorkProjectFindingStatus.FALSE_POSITIVE.value
+        ),
         key=lambda row: (
             _SEVERITY_RANK.get(str(row.severity or "").strip().lower(), 9),
             row.id or 0,
         ),
     )
+
+    kept: list[tuple[Any, str, str]] = []
+    for row in ordered:
+        url = urls.get(int(row.evidence_id), "") if row.evidence_id is not None else ""
+        title_key = _dedupe_title(str(row.title or ""))
+        duplicate_at = None
+        for index, (other, other_url, other_title) in enumerate(kept):
+            same_location = bool(url and other_url and url == other_url)
+            location_unknown = not url or not other_url
+            # 标题完全一致时，只有地址相同（或一方缺地址）才合并；避免不同接口同标题被误吞。
+            if title_key and other_title and title_key == other_title and (
+                same_location or location_unknown
+            ):
+                duplicate_at = index
+                break
+            if same_location and title_key and other_title:
+                if difflib.SequenceMatcher(None, title_key, other_title).ratio() >= 0.5:
+                    duplicate_at = index
+                    break
+        if duplicate_at is None:
+            kept.append((row, url, title_key))
+            continue
+        if _prefer_finding(row, kept[duplicate_at][0]) is row:
+            kept[duplicate_at] = (row, url, title_key)
+
     verified: list[dict[str, Any]] = []
     suspected: list[dict[str, Any]] = []
     unverifiable: list[dict[str, Any]] = []
-    for row in ordered:
+    for row, _url, _title in kept:
         entry = _item(row)
         if str(row.status or "").strip().lower() == WorkProjectFindingStatus.VALIDATED.value:
             verified.append(entry)
@@ -535,7 +773,7 @@ async def build_session_findings_summary(project_id: int, session_id: str) -> di
         else:
             unverifiable.append(entry)
     return {
-        "total": len(ordered),
+        "total": len(kept),
         "verified": verified,
         "suspected": suspected,
         "unverifiable": unverifiable,
@@ -549,7 +787,8 @@ def _summary_section(title: str, entries: list[dict[str, Any]], empty: str) -> l
     for index, entry in enumerate(entries, start=1):
         severity = str(entry.get("severity") or "")
         label = _SUMMARY_SEVERITY_LABEL.get(severity, severity or "信息")
-        lines.append(f"{index}. **{label}** — {entry.get('title') or 'Untitled finding'}")
+        title = _public_title(str(entry.get("title") or "")) or "未命名发现"
+        lines.append(f"{index}. **{label}** — {title}")
     lines.append("")
     return lines
 
@@ -568,7 +807,7 @@ def render_findings_summary(
     lines: list[str] = [
         "## 测试总结",
         "",
-        "平台在本次测试结束后按「证据是否可复现」自动汇总全部 finding，"
+        "平台在本次测试结束后按「证据是否可复现」自动汇总全部发现，"
         f"共 **{total}** 条。",
         "",
     ]
@@ -580,7 +819,7 @@ def render_findings_summary(
         "无。",
     )
     if surfaces:
-        lines += [f"### 未完成验证的测试面（needs_follow_up）· {len(surfaces)} 项", ""]
+        lines += [f"### 尚未完成验证的测试面 · {len(surfaces)} 项", ""]
         for surface in surfaces:
             name = _sanitize_public_text(str(surface.get("surface") or "")).strip() or "（未命名测试面）"
             area = _sanitize_public_text(str(surface.get("risk_area") or "")).strip()
@@ -593,7 +832,7 @@ def render_findings_summary(
 
     lines += ["### 结论", ""]
     if total == 0:
-        lines.append("本次测试未形成漏洞 finding，未完成测试面需人工跟进。")
+        lines.append("本次测试未形成漏洞发现，未完成测试面需人工跟进。")
     else:
         lines.append(f"- 已验证 **{len(verified)}** 条，可直接复现并交付。")
         pending = len(suspected) + len(unverifiable)
@@ -601,7 +840,7 @@ def render_findings_summary(
             lines.append(f"- 疑似与无法验证共 **{pending}** 条，需人工复核或补证后重测。")
         if surfaces:
             lines.append(
-                f"- 另有 **{len(surfaces)}** 个测试面停在 needs_follow_up，需补测或人工确认。"
+                f"- 另有 **{len(surfaces)}** 个测试面尚未完成验证，需补测或人工确认。"
             )
     return "\n".join(lines).rstrip()
 

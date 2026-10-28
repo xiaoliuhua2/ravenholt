@@ -233,6 +233,7 @@ class AgentSession:
                 agent_code=agent_code,
             )
             report_state.vulnerability_found_callback = mirror.on_report
+            report_state.vulnerability_deleted_callback = mirror.on_delete
         set_global_report_state(report_state)
 
         try:
